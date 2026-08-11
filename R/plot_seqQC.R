@@ -124,7 +124,7 @@ plot_seqQC <- function(filePath,
       show.legend = FALSE,
       bins = 30
     ) +
-    ggplot2::facet_wrap(ggplot2::vars(.data$sample), scales = "free", ncol = 12) +
+    ggplot2::facet_wrap(ggplot2::vars(.data$sample), scales = "free", ncol = 12, drop = FALSE) +
     ggplot2::scale_x_log10() +
     ggplot2::annotation_logticks(sides = "b") +
     seqqc_theme() +
