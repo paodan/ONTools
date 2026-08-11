@@ -26,6 +26,9 @@ test_that("igv_snapshot writes an IGV batch file in dry-run mode", {
   expect_equal(res$args, c("-b", batch_file))
   expect_equal(res$status, 0L)
   expect_equal(res$format, "png")
+  expect_true(res$quiet)
+  expect_false(res$stdout)
+  expect_false(res$stderr)
   expect_true(file.exists(batch_file))
   expect_equal(readLines(batch_file), res$commands)
   expect_true(any(grepl("^genome ", res$commands)))
@@ -35,6 +38,29 @@ test_that("igv_snapshot writes an IGV batch file in dry-run mode", {
   expect_true(any(res$commands == "collapse"))
   expect_true(any(res$commands == "snapshot barcode09.png"))
   expect_equal(res$snapshot, file.path(normalizePath(out_dir), "barcode09.png"))
+})
+
+test_that("igv_snapshot can leave command output unsuppressed for debugging", {
+  ref <- tempfile(fileext = ".fasta")
+  bam <- tempfile(fileext = ".bam")
+  writeLines(c(">contig1", "ACGT"), ref)
+  file.create(paste0(ref, ".fai"))
+  file.create(bam)
+  file.create(paste0(bam, ".bai"))
+
+  res <- igv_snapshot(
+    genome_fasta = ref,
+    bam = bam,
+    chr = "contig1",
+    start = 1,
+    end = 4,
+    quiet = FALSE,
+    dry_run = TRUE
+  )
+
+  expect_false(res$quiet)
+  expect_equal(res$stdout, "")
+  expect_equal(res$stderr, "")
 })
 
 test_that("igv_snapshot can generate PDF snapshot names", {

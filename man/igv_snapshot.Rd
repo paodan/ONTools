@@ -23,6 +23,7 @@ igv_snapshot(
   extra_commands = NULL,
   use_xvfb = FALSE,
   dry_run = FALSE,
+  quiet = TRUE,
   overwrite = TRUE
 )
 }
@@ -74,6 +75,9 @@ headless Linux servers.}
 
 \item{dry_run}{Logical. If \code{TRUE}, write and return the batch script and
 command without launching IGV.}
+
+\item{quiet}{Logical. If \code{TRUE}, suppress console output from FASTA indexing
+and the IGV system command. Set to \code{FALSE} to show IGV logs while debugging.}
 
 \item{overwrite}{Logical. If \code{FALSE}, stop when \code{batch_file} already exists.}
 }

@@ -33,6 +33,8 @@
 #'   headless Linux servers.
 #' @param dry_run Logical. If `TRUE`, write and return the batch script and
 #'   command without launching IGV.
+#' @param quiet Logical. If `TRUE`, suppress console output from FASTA indexing
+#'   and the IGV system command. Set to `FALSE` to show IGV logs while debugging.
 #' @param overwrite Logical. If `FALSE`, stop when `batch_file` already exists.
 #'
 #' @details
@@ -95,6 +97,7 @@ igv_snapshot <- function(genome_fasta,
                          extra_commands = NULL,
                          use_xvfb = FALSE,
                          dry_run = FALSE,
+                         quiet = TRUE,
                          overwrite = TRUE) {
   check_file_arg(genome_fasta, "genome_fasta")
   check_file_arg(bam, "bam")
@@ -118,6 +121,10 @@ igv_snapshot <- function(genome_fasta,
   if (!is.logical(auto_index_fasta) || length(auto_index_fasta) != 1L ||
       is.na(auto_index_fasta)) {
     stop("`auto_index_fasta` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
+
+  if (!is.logical(quiet) || length(quiet) != 1L || is.na(quiet)) {
+    stop("`quiet` must be `TRUE` or `FALSE`.", call. = FALSE)
   }
 
   if (!is.null(batch_file)) {
@@ -162,7 +169,11 @@ igv_snapshot <- function(genome_fasta,
   fasta_index <- paste0(genome_fasta, ".fai")
   fasta_index_created <- FALSE
   if (!file.exists(fasta_index) && isTRUE(auto_index_fasta)) {
-    Rsamtools::indexFa(genome_fasta)
+    if (isTRUE(quiet)) {
+      suppressMessages(suppressWarnings(Rsamtools::indexFa(genome_fasta)))
+    } else {
+      Rsamtools::indexFa(genome_fasta)
+    }
     fasta_index_created <- file.exists(fasta_index)
     if (!isTRUE(fasta_index_created)) {
       stop("Failed to create FASTA index with Rsamtools::indexFa(): ",
@@ -241,8 +252,15 @@ igv_snapshot <- function(genome_fasta,
   }
 
   status <- 0L
+  system_stdout <- if (isTRUE(quiet)) FALSE else ""
+  system_stderr <- if (isTRUE(quiet)) FALSE else ""
   if (!isTRUE(dry_run)) {
-    status <- system2(command, args = args)
+    status <- system2(
+      command,
+      args = args,
+      stdout = system_stdout,
+      stderr = system_stderr
+    )
     if (!identical(status, 0L)) {
       stop("IGV command failed with exit status ", status, ".", call. = FALSE)
     }
@@ -255,6 +273,9 @@ igv_snapshot <- function(genome_fasta,
     args = args,
     status = status,
     format = format,
+    quiet = quiet,
+    stdout = system_stdout,
+    stderr = system_stderr,
     fasta_index = fasta_index,
     fasta_index_created = fasta_index_created,
     snapshot = file.path(out_dir, snapshot_name)
