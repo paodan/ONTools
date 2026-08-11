@@ -16,7 +16,16 @@ plot_seqQC(
   length_col = "sequence_length_template",
   min_read_length = NULL,
   max_read_length = NULL,
-  filename_suffix = NULL
+  filename_suffix = NULL,
+  len_read_width = NULL,
+  len_read_height = NULL,
+  len_read_unit_width = 2,
+  len_read_unit_height = 2,
+  len_read_ncol = 12,
+  save_sample_len_plots = TRUE,
+  sample_len_subdir = "seqLength_by_sample",
+  sample_len_width = 5,
+  sample_len_height = 4
 )
 }
 \arguments{
@@ -51,13 +60,34 @@ use sample labels as they appear in the sequencing summary file.}
 \item{filename_suffix}{Optional suffix added to output filenames before the
 file extension. When \code{NULL}, a suffix is generated from length filters, for
 example \code{"len1200-1800"}.}
+
+\item{len_read_width, len_read_height}{Width and height in inches for the
+combined read-length distribution plot. When either value is \code{NULL}, it is
+calculated from the number of facets and the corresponding unit size.}
+
+\item{len_read_unit_width, len_read_unit_height}{Width and height in inches
+used per facet when calculating the combined read-length plot size.}
+
+\item{len_read_ncol}{Number of facet columns in the combined read-length
+distribution plot.}
+
+\item{save_sample_len_plots}{Logical. If \code{TRUE}, save one read-length
+distribution plot per sample.}
+
+\item{sample_len_subdir}{Subdirectory under \code{out_dir/device} where per-sample
+read-length plots are saved.}
+
+\item{sample_len_width, sample_len_height}{Width and height in inches for each
+per-sample read-length plot.}
 }
 \value{
 Invisibly returns a list with the read-count plot (\code{numRead}), the
 read-length plot (\code{lenRead}), demultiplexing recovery percentage
 (\code{recovery}), per-sample read counts (\code{read_counts}), total reads before
 filtering (\code{n_reads_raw}), total reads after filtering (\code{n_reads_filtered}),
-filters applied (\code{filters}), and paths written (\code{files}).
+filters applied (\code{filters}), combined read-length plot size
+(\code{len_read_size}), paths for combined plots (\code{files}), and paths for
+per-sample read-length plots (\code{sample_len_files}).
 }
 \description{
 \code{plot_seqQC()} reads a MinKNOW or dorado \code{sequencing_summary*.txt} file and

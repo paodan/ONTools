@@ -23,12 +23,27 @@
 #' @param filename_suffix Optional suffix added to output filenames before the
 #'   file extension. When `NULL`, a suffix is generated from length filters, for
 #'   example `"len1200-1800"`.
+#' @param len_read_width,len_read_height Width and height in inches for the
+#'   combined read-length distribution plot. When either value is `NULL`, it is
+#'   calculated from the number of facets and the corresponding unit size.
+#' @param len_read_unit_width,len_read_unit_height Width and height in inches
+#'   used per facet when calculating the combined read-length plot size.
+#' @param len_read_ncol Number of facet columns in the combined read-length
+#'   distribution plot.
+#' @param save_sample_len_plots Logical. If `TRUE`, save one read-length
+#'   distribution plot per sample.
+#' @param sample_len_subdir Subdirectory under `out_dir/device` where per-sample
+#'   read-length plots are saved.
+#' @param sample_len_width,sample_len_height Width and height in inches for each
+#'   per-sample read-length plot.
 #'
 #' @return Invisibly returns a list with the read-count plot (`numRead`), the
 #'   read-length plot (`lenRead`), demultiplexing recovery percentage
 #'   (`recovery`), per-sample read counts (`read_counts`), total reads before
 #'   filtering (`n_reads_raw`), total reads after filtering (`n_reads_filtered`),
-#'   filters applied (`filters`), and paths written (`files`).
+#'   filters applied (`filters`), combined read-length plot size
+#'   (`len_read_size`), paths for combined plots (`files`), and paths for
+#'   per-sample read-length plots (`sample_len_files`).
 #'
 #' @examples
 #' summary_file <- tempfile(fileext = ".txt")
@@ -69,7 +84,16 @@ plot_seqQC <- function(filePath,
                        length_col = "sequence_length_template",
                        min_read_length = NULL,
                        max_read_length = NULL,
-                       filename_suffix = NULL) {
+                       filename_suffix = NULL,
+                       len_read_width = NULL,
+                       len_read_height = NULL,
+                       len_read_unit_width = 2,
+                       len_read_unit_height = 2,
+                       len_read_ncol = 12,
+                       save_sample_len_plots = TRUE,
+                       sample_len_subdir = "seqLength_by_sample",
+                       sample_len_width = 5,
+                       sample_len_height = 4) {
   if (!is.character(filePath) || length(filePath) != 1L || is.na(filePath)) {
     stop("`filePath` must be a single file path.", call. = FALSE)
   }
@@ -108,6 +132,37 @@ plot_seqQC <- function(filePath,
       max_read_length = max_read_length
     )
   }
+  len_read_ncol <- seqqc_validate_positive_integer(len_read_ncol, "len_read_ncol")
+  len_read_unit_width <- seqqc_validate_positive_number(
+    len_read_unit_width,
+    "len_read_unit_width"
+  )
+  len_read_unit_height <- seqqc_validate_positive_number(
+    len_read_unit_height,
+    "len_read_unit_height"
+  )
+  len_read_width <- seqqc_validate_optional_positive_number(
+    len_read_width,
+    "len_read_width"
+  )
+  len_read_height <- seqqc_validate_optional_positive_number(
+    len_read_height,
+    "len_read_height"
+  )
+  sample_len_width <- seqqc_validate_positive_number(
+    sample_len_width,
+    "sample_len_width"
+  )
+  sample_len_height <- seqqc_validate_positive_number(
+    sample_len_height,
+    "sample_len_height"
+  )
+  if (!is.logical(save_sample_len_plots) ||
+      length(save_sample_len_plots) != 1L ||
+      is.na(save_sample_len_plots)) {
+    stop("`save_sample_len_plots` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
+  check_scalar_character(sample_len_subdir, "sample_len_subdir")
 
   seq_summary <- utils::read.delim(
     filePath,
@@ -170,6 +225,14 @@ plot_seqQC <- function(filePath,
     stringsAsFactors = FALSE
   )
   seq_len_df <- seq_len_df[is.finite(seq_len_df$seq_len) & seq_len_df$seq_len > 0, ]
+  len_read_size <- seqqc_len_read_plot_size(
+    n_facets = length(sample_levels),
+    ncol = len_read_ncol,
+    width = len_read_width,
+    height = len_read_height,
+    unit_width = len_read_unit_width,
+    unit_height = len_read_unit_height
+  )
 
   g2 <- ggplot2::ggplot(seq_len_df, ggplot2::aes(.data$seq_len)) +
     ggplot2::geom_histogram(
@@ -177,7 +240,12 @@ plot_seqQC <- function(filePath,
       show.legend = FALSE,
       bins = 30
     ) +
-    ggplot2::facet_wrap(ggplot2::vars(.data$sample), scales = "free", ncol = 12, drop = FALSE) +
+    ggplot2::facet_wrap(
+      ggplot2::vars(.data$sample),
+      scales = "free",
+      ncol = len_read_ncol,
+      drop = FALSE
+    ) +
     ggplot2::scale_x_log10() +
     ggplot2::annotation_logticks(sides = "b") +
     seqqc_theme() +
@@ -185,6 +253,7 @@ plot_seqQC <- function(filePath,
     ggplot2::ylab("Reads")
 
   files <- character()
+  sample_len_files <- character()
   if (!is.null(device)) {
     plot_dir <- file.path(out_dir, device)
     dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
@@ -216,9 +285,24 @@ plot_seqQC <- function(filePath,
     ggplot2::ggsave(
       files[["lenRead"]],
       plot = g2,
-      width = 24,
-      height = max(2, 2 * ceiling(length(sample_levels) / 12))
+      width = len_read_size$width,
+      height = len_read_size$height
     )
+
+    if (isTRUE(save_sample_len_plots)) {
+      sample_len_dir <- file.path(plot_dir, sample_len_subdir)
+      dir.create(sample_len_dir, recursive = TRUE, showWarnings = FALSE)
+      sample_len_files <- seqqc_save_sample_len_plots(
+        seq_len_df = seq_len_df,
+        sample_levels = sample_levels,
+        runName = runName,
+        filename_suffix = filename_suffix,
+        device = device,
+        sample_len_dir = sample_len_dir,
+        width = sample_len_width,
+        height = sample_len_height
+      )
+    }
   }
 
   invisible(list(
@@ -233,7 +317,9 @@ plot_seqQC <- function(filePath,
       max_read_length = max_read_length
     ),
     filename_suffix = filename_suffix,
-    files = files
+    len_read_size = len_read_size,
+    files = files,
+    sample_len_files = sample_len_files
   ))
 }
 
@@ -248,6 +334,102 @@ seqqc_validate_length_filter <- function(x, name) {
   }
 
   x
+}
+
+seqqc_validate_optional_positive_number <- function(x, name) {
+  if (is.null(x)) {
+    return(NULL)
+  }
+
+  seqqc_validate_positive_number(x, name)
+}
+
+seqqc_validate_positive_number <- function(x, name) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) || !is.finite(x) || x <= 0) {
+    stop("`", name, "` must be a single positive numeric value.",
+         call. = FALSE)
+  }
+
+  x
+}
+
+seqqc_validate_positive_integer <- function(x, name) {
+  seqqc_validate_positive_number(x, name)
+  if (x != as.integer(x)) {
+    stop("`", name, "` must be a positive integer.", call. = FALSE)
+  }
+
+  as.integer(x)
+}
+
+seqqc_len_read_plot_size <- function(n_facets,
+                                     ncol,
+                                     width,
+                                     height,
+                                     unit_width,
+                                     unit_height) {
+  n_facets <- max(1L, n_facets)
+  ncol_used <- min(ncol, n_facets)
+  nrow_used <- ceiling(n_facets / ncol)
+
+  list(
+    width = if (is.null(width)) ncol_used * unit_width else width,
+    height = if (is.null(height)) nrow_used * unit_height else height,
+    ncol = ncol_used,
+    nrow = nrow_used,
+    unit_width = unit_width,
+    unit_height = unit_height
+  )
+}
+
+seqqc_save_sample_len_plots <- function(seq_len_df,
+                                        sample_levels,
+                                        runName,
+                                        filename_suffix,
+                                        device,
+                                        sample_len_dir,
+                                        width,
+                                        height) {
+  sample_len_files <- stats::setNames(
+    file.path(
+      sample_len_dir,
+      paste0(
+        "Distribution_seqLength__",
+        runName,
+        "__",
+        seqqc_safe_filename(sample_levels),
+        filename_suffix,
+        ".",
+        device
+      )
+    ),
+    sample_levels
+  )
+
+  for (sample in sample_levels) {
+    sample_df <- seq_len_df[seq_len_df$sample == sample, , drop = FALSE]
+    sample_plot <- ggplot2::ggplot(sample_df, ggplot2::aes(.data$seq_len)) +
+      ggplot2::geom_histogram(bins = 30) +
+      ggplot2::scale_x_log10() +
+      ggplot2::annotation_logticks(sides = "b") +
+      seqqc_theme() +
+      ggplot2::ggtitle(sample) +
+      ggplot2::xlab("Sequence length") +
+      ggplot2::ylab("Reads")
+
+    ggplot2::ggsave(
+      sample_len_files[[sample]],
+      plot = sample_plot,
+      width = width,
+      height = height
+    )
+  }
+
+  sample_len_files
+}
+
+seqqc_safe_filename <- function(x) {
+  gsub("[^A-Za-z0-9_.-]+", "_", x)
 }
 
 seqqc_filter_filename_suffix <- function(min_read_length, max_read_length) {

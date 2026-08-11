@@ -17,8 +17,11 @@ test_that("plot_seqQC returns plots and recovery without writing files", {
   expect_s3_class(qc$lenRead, "ggplot")
   expect_equal(qc$recovery, 75)
   expect_equal(qc$files, character())
+  expect_equal(qc$sample_len_files, character())
   expect_equal(qc$n_reads_raw, 4L)
   expect_equal(qc$n_reads_filtered, 4L)
+  expect_equal(qc$len_read_size$width, 6)
+  expect_equal(qc$len_read_size$height, 2)
   expect_null(qc$filters$min_read_length)
   expect_null(qc$filters$max_read_length)
   expect_equal(qc$filename_suffix, "")
@@ -84,6 +87,78 @@ test_that("plot_seqQC adds filter information to output filenames", {
 
   expect_true(all(grepl("__len1200-1800\\.png$", qc$files)))
   expect_true(all(file.exists(qc$files)))
+  expect_equal(names(qc$sample_len_files), c("barcode01", "unclassified"))
+  expect_true(all(file.exists(qc$sample_len_files)))
+  expect_true(all(grepl("seqLength_by_sample", qc$sample_len_files)))
+})
+
+test_that("plot_seqQC can customize combined read-length plot size", {
+  summary_file <- tempfile(fileext = ".txt")
+  write.table(
+    data.frame(
+      alias = c("barcode01", "barcode02", "barcode03"),
+      sequence_length_template = c(1000, 1200, 1400)
+    ),
+    summary_file,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+
+  auto_qc <- plot_seqQC(
+    summary_file,
+    device = NULL,
+    barcodes = 1:3,
+    len_read_ncol = 2,
+    len_read_unit_width = 2,
+    len_read_unit_height = 2
+  )
+  fixed_qc <- plot_seqQC(
+    summary_file,
+    device = NULL,
+    barcodes = 1:3,
+    len_read_width = 7,
+    len_read_height = 5
+  )
+
+  expect_equal(auto_qc$len_read_size$width, 4)
+  expect_equal(auto_qc$len_read_size$height, 4)
+  expect_equal(auto_qc$len_read_size$ncol, 2L)
+  expect_equal(auto_qc$len_read_size$nrow, 2)
+  expect_equal(fixed_qc$len_read_size$width, 7)
+  expect_equal(fixed_qc$len_read_size$height, 5)
+})
+
+test_that("plot_seqQC can skip per-sample read-length files", {
+  skip_if_not(
+    capabilities("png"),
+    "PNG graphics device is not available on this platform."
+  )
+
+  summary_file <- tempfile(fileext = ".txt")
+  out_dir <- tempfile("seqqc-figs-")
+  write.table(
+    data.frame(
+      alias = "barcode01",
+      sequence_length_template = 1000
+    ),
+    summary_file,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+
+  qc <- plot_seqQC(
+    summary_file,
+    runName = "run-no-samples",
+    device = "png",
+    barcodes = 1,
+    out_dir = out_dir,
+    save_sample_len_plots = FALSE
+  )
+
+  expect_equal(qc$sample_len_files, character())
+  expect_false(dir.exists(file.path(out_dir, "png", "seqLength_by_sample")))
 })
 
 test_that("plot_seqQC validates length filters", {
