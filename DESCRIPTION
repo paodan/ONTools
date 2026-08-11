@@ -1,0 +1,23 @@
+Package: ONTools
+Title: Utilities for Oxford Nanopore Sequencing Results
+Version: 0.1.0
+Authors@R:
+    person("Weiyang", "Tao", role = c("aut", "cre"),
+           email = "weiyang.tao@example.com")
+Author: Weiyang Tao [aut, cre]
+Maintainer: Weiyang Tao <weiyang.tao@example.com>
+Description: Utilities for Oxford Nanopore sequencing results, including DNA
+    sequence comparison and quality-control plots for sequencing summary files.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    Biostrings,
+    ggplot2,
+    pwalign,
+    rlang,
+    stringr
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
