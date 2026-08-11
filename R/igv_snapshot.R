@@ -6,8 +6,10 @@
 #' @param genome_fasta Path to the reference FASTA file loaded by IGV.
 #' @param bam Path to the coordinate-sorted BAM file loaded by IGV.
 #' @param chr Reference sequence, chromosome, or contig name passed to IGV.
-#' @param start Start coordinate of the region passed to IGV.
-#' @param end End coordinate of the region passed to IGV.
+#' @param start Optional start coordinate of the region passed to IGV. When
+#'   both `start` and `end` are `NULL`, the whole `chr` is shown.
+#' @param end Optional end coordinate of the region passed to IGV. When both
+#'   `start` and `end` are `NULL`, the whole `chr` is shown.
 #' @param out_dir Directory where IGV writes snapshot images.
 #' @param format Snapshot output format used when `snapshot_name` is `NULL`.
 #'   Supported values are `"png"`, `"pdf"`, `"svg"`, `"jpg"`, and `"jpeg"`.
@@ -82,8 +84,8 @@
 igv_snapshot <- function(genome_fasta,
                          bam,
                          chr,
-                         start,
-                         end,
+                         start = NULL,
+                         end = NULL,
                          out_dir = "alignment",
                          format = "png",
                          snapshot_name = NULL,
@@ -102,17 +104,29 @@ igv_snapshot <- function(genome_fasta,
   check_file_arg(genome_fasta, "genome_fasta")
   check_file_arg(bam, "bam")
   check_scalar_character(chr, "chr")
-  check_region_coordinate(start, "start")
-  check_region_coordinate(end, "end")
   check_scalar_character(out_dir, "out_dir")
   check_scalar_character(igv, "igv")
   format <- match.arg(format, c("png", "pdf", "svg", "jpg", "jpeg"))
 
-  if (start > end) {
-    stop("`start` must be less than or equal to `end`.", call. = FALSE)
+  if (xor(is.null(start), is.null(end))) {
+    stop("`start` and `end` must both be supplied or both be `NULL`.",
+         call. = FALSE)
   }
 
-  locus <- paste0(chr, ":", start, "-", end)
+  if (!is.null(start)) {
+    check_region_coordinate(start, "start")
+    check_region_coordinate(end, "end")
+
+    if (start > end) {
+      stop("`start` must be less than or equal to `end`.", call. = FALSE)
+    }
+  }
+
+  locus <- if (is.null(start)) {
+    chr
+  } else {
+    paste0(chr, ":", start, "-", end)
+  }
 
   if (!is.null(index)) {
     check_file_arg(index, "index")

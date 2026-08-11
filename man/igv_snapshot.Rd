@@ -8,8 +8,8 @@ igv_snapshot(
   genome_fasta,
   bam,
   chr,
-  start,
-  end,
+  start = NULL,
+  end = NULL,
   out_dir = "alignment",
   format = "png",
   snapshot_name = NULL,
@@ -34,9 +34,11 @@ igv_snapshot(
 
 \item{chr}{Reference sequence, chromosome, or contig name passed to IGV.}
 
-\item{start}{Start coordinate of the region passed to IGV.}
+\item{start}{Optional start coordinate of the region passed to IGV. When
+both \code{start} and \code{end} are \code{NULL}, the whole \code{chr} is shown.}
 
-\item{end}{End coordinate of the region passed to IGV.}
+\item{end}{Optional end coordinate of the region passed to IGV. When both
+\code{start} and \code{end} are \code{NULL}, the whole \code{chr} is shown.}
 
 \item{out_dir}{Directory where IGV writes snapshot images.}
 

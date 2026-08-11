@@ -86,6 +86,45 @@ test_that("igv_snapshot can generate PDF snapshot names", {
   expect_match(res$snapshot, "\\.pdf$")
 })
 
+test_that("igv_snapshot can show a whole contig when start and end are omitted", {
+  ref <- tempfile(fileext = ".fasta")
+  bam <- tempfile(fileext = ".bam")
+  writeLines(c(">contig1", "ACGT"), ref)
+  file.create(paste0(ref, ".fai"))
+  file.create(bam)
+  file.create(paste0(bam, ".bai"))
+
+  res <- igv_snapshot(
+    genome_fasta = ref,
+    bam = bam,
+    chr = "contig1",
+    dry_run = TRUE
+  )
+
+  expect_true(any(res$commands == "goto contig1"))
+  expect_true(any(res$commands == "snapshot contig1.png"))
+})
+
+test_that("igv_snapshot requires start and end together", {
+  ref <- tempfile(fileext = ".fasta")
+  bam <- tempfile(fileext = ".bam")
+  writeLines(c(">contig1", "ACGT"), ref)
+  file.create(paste0(ref, ".fai"))
+  file.create(bam)
+  file.create(paste0(bam, ".bai"))
+
+  expect_error(
+    igv_snapshot(
+      genome_fasta = ref,
+      bam = bam,
+      chr = "contig1",
+      start = 1,
+      dry_run = TRUE
+    ),
+    "both be supplied"
+  )
+})
+
 test_that("igv_snapshot checks snapshot extension against format", {
   ref <- tempfile(fileext = ".fasta")
   bam <- tempfile(fileext = ".bam")
