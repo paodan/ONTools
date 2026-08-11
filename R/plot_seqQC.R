@@ -18,11 +18,17 @@
 #'   `"alias"`, matching the existing ONTools workflow.
 #' @param length_col Column containing read lengths. Defaults to
 #'   `"sequence_length_template"`.
+#' @param min_read_length Optional minimum read length to keep before plotting.
+#' @param max_read_length Optional maximum read length to keep before plotting.
+#' @param filename_suffix Optional suffix added to output filenames before the
+#'   file extension. When `NULL`, a suffix is generated from length filters, for
+#'   example `"len1200-1800"`.
 #'
 #' @return Invisibly returns a list with the read-count plot (`numRead`), the
 #'   read-length plot (`lenRead`), demultiplexing recovery percentage
-#'   (`recovery`), per-sample read counts (`read_counts`), and paths written
-#'   (`files`).
+#'   (`recovery`), per-sample read counts (`read_counts`), total reads before
+#'   filtering (`n_reads_raw`), total reads after filtering (`n_reads_filtered`),
+#'   filters applied (`filters`), and paths written (`files`).
 #'
 #' @examples
 #' summary_file <- tempfile(fileext = ".txt")
@@ -40,6 +46,16 @@
 #' qc <- plot_seqQC(summary_file, runName = "example", device = NULL, barcodes = 1)
 #' qc$recovery
 #'
+#' filtered_qc <- plot_seqQC(
+#'   summary_file,
+#'   runName = "example_filtered",
+#'   device = NULL,
+#'   barcodes = 1,
+#'   min_read_length = 1000,
+#'   max_read_length = 1800
+#' )
+#' filtered_qc$n_reads_filtered
+#'
 #' @importFrom rlang .data
 #' @export
 plot_seqQC <- function(filePath,
@@ -50,7 +66,10 @@ plot_seqQC <- function(filePath,
                        barcode_digits = 2,
                        out_dir = "figs",
                        sample_col = "alias",
-                       length_col = "sequence_length_template") {
+                       length_col = "sequence_length_template",
+                       min_read_length = NULL,
+                       max_read_length = NULL,
+                       filename_suffix = NULL) {
   if (!is.character(filePath) || length(filePath) != 1L || is.na(filePath)) {
     stop("`filePath` must be a single file path.", call. = FALSE)
   }
@@ -65,6 +84,29 @@ plot_seqQC <- function(filePath,
 
   if (is.null(runName)) {
     runName <- tools::file_path_sans_ext(basename(filePath))
+  }
+
+  min_read_length <- seqqc_validate_length_filter(
+    min_read_length,
+    "min_read_length"
+  )
+  max_read_length <- seqqc_validate_length_filter(
+    max_read_length,
+    "max_read_length"
+  )
+  if (!is.null(min_read_length) && !is.null(max_read_length) &&
+      min_read_length > max_read_length) {
+    stop("`min_read_length` must be less than or equal to `max_read_length`.",
+         call. = FALSE)
+  }
+
+  if (!is.null(filename_suffix)) {
+    check_scalar_character(filename_suffix, "filename_suffix")
+  } else {
+    filename_suffix <- seqqc_filter_filename_suffix(
+      min_read_length = min_read_length,
+      max_read_length = max_read_length
+    )
   }
 
   seq_summary <- utils::read.delim(
@@ -86,6 +128,17 @@ plot_seqQC <- function(filePath,
   seq_summary[[sample_col]] <- as.character(seq_summary[[sample_col]])
   seq_summary[[length_col]] <- suppressWarnings(as.numeric(seq_summary[[length_col]]))
   seq_summary <- seq_summary[!is.na(seq_summary[[sample_col]]), , drop = FALSE]
+  n_reads_raw <- nrow(seq_summary)
+
+  keep_reads <- !is.na(seq_summary[[length_col]])
+  if (!is.null(min_read_length)) {
+    keep_reads <- keep_reads & seq_summary[[length_col]] >= min_read_length
+  }
+  if (!is.null(max_read_length)) {
+    keep_reads <- keep_reads & seq_summary[[length_col]] <= max_read_length
+  }
+  seq_summary <- seq_summary[keep_reads, , drop = FALSE]
+  n_reads_filtered <- nrow(seq_summary)
 
   sample_levels <- seqqc_sample_levels(
     labels = seq_summary[[sample_col]],
@@ -139,11 +192,23 @@ plot_seqQC <- function(filePath,
     files <- c(
       numRead = file.path(
         plot_dir,
-        paste0("Distribution_num_of_reads__", runName, ".", device)
+        paste0(
+          "Distribution_num_of_reads__",
+          runName,
+          filename_suffix,
+          ".",
+          device
+        )
       ),
       lenRead = file.path(
         plot_dir,
-        paste0("Distribution_seqLength__", runName, ".", device)
+        paste0(
+          "Distribution_seqLength__",
+          runName,
+          filename_suffix,
+          ".",
+          device
+        )
       )
     )
 
@@ -161,8 +226,47 @@ plot_seqQC <- function(filePath,
     lenRead = g2,
     recovery = recoveryRate(read_counts, unclassified = unclassified),
     read_counts = read_counts,
+    n_reads_raw = n_reads_raw,
+    n_reads_filtered = n_reads_filtered,
+    filters = list(
+      min_read_length = min_read_length,
+      max_read_length = max_read_length
+    ),
+    filename_suffix = filename_suffix,
     files = files
   ))
+}
+
+seqqc_validate_length_filter <- function(x, name) {
+  if (is.null(x)) {
+    return(NULL)
+  }
+
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) || !is.finite(x) || x < 0) {
+    stop("`", name, "` must be a single non-negative numeric value or `NULL`.",
+         call. = FALSE)
+  }
+
+  x
+}
+
+seqqc_filter_filename_suffix <- function(min_read_length, max_read_length) {
+  if (is.null(min_read_length) && is.null(max_read_length)) {
+    return("")
+  }
+
+  min_label <- if (is.null(min_read_length)) {
+    "min"
+  } else {
+    format(min_read_length, scientific = FALSE, trim = TRUE)
+  }
+  max_label <- if (is.null(max_read_length)) {
+    "max"
+  } else {
+    format(max_read_length, scientific = FALSE, trim = TRUE)
+  }
+
+  paste0("__len", min_label, "-", max_label)
 }
 
 seqqc_sample_levels <- function(labels,

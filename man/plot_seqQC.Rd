@@ -13,7 +13,10 @@ plot_seqQC(
   barcode_digits = 2,
   out_dir = "figs",
   sample_col = "alias",
-  length_col = "sequence_length_template"
+  length_col = "sequence_length_template",
+  min_read_length = NULL,
+  max_read_length = NULL,
+  filename_suffix = NULL
 )
 }
 \arguments{
@@ -40,12 +43,21 @@ use sample labels as they appear in the sequencing summary file.}
 
 \item{length_col}{Column containing read lengths. Defaults to
 \code{"sequence_length_template"}.}
+
+\item{min_read_length}{Optional minimum read length to keep before plotting.}
+
+\item{max_read_length}{Optional maximum read length to keep before plotting.}
+
+\item{filename_suffix}{Optional suffix added to output filenames before the
+file extension. When \code{NULL}, a suffix is generated from length filters, for
+example \code{"len1200-1800"}.}
 }
 \value{
 Invisibly returns a list with the read-count plot (\code{numRead}), the
 read-length plot (\code{lenRead}), demultiplexing recovery percentage
-(\code{recovery}), per-sample read counts (\code{read_counts}), and paths written
-(\code{files}).
+(\code{recovery}), per-sample read counts (\code{read_counts}), total reads before
+filtering (\code{n_reads_raw}), total reads after filtering (\code{n_reads_filtered}),
+filters applied (\code{filters}), and paths written (\code{files}).
 }
 \description{
 \code{plot_seqQC()} reads a MinKNOW or dorado \code{sequencing_summary*.txt} file and
@@ -66,5 +78,15 @@ write.table(
 
 qc <- plot_seqQC(summary_file, runName = "example", device = NULL, barcodes = 1)
 qc$recovery
+
+filtered_qc <- plot_seqQC(
+  summary_file,
+  runName = "example_filtered",
+  device = NULL,
+  barcodes = 1,
+  min_read_length = 1000,
+  max_read_length = 1800
+)
+filtered_qc$n_reads_filtered
 
 }
