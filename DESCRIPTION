@@ -17,6 +17,7 @@ Imports:
     ggplot2,
     pwalign,
     rlang,
+    Rsamtools,
     stringr
 Suggests:
     testthat (>= 3.0.0)
