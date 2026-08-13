@@ -41,7 +41,9 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_true(dir.exists(file.path(output_dir, "barcode57")))
   expect_true(dir.exists(file.path(output_dir, "barcode58")))
   expect_true(dir.exists(file.path(output_dir, "execution")))
-  expect_true(file.exists(file.path(output_dir, "wf-amplicon-report.html")))
+  expect_false(file.exists(file.path(output_dir, "wf-amplicon-report.html")))
+  expect_false(file.exists(file.path(output_dir, "params.json")))
+  expect_false(file.exists(file.path(output_dir, "versions.txt")))
   expect_true(file.exists(file.path(output_dir, "README.txt")))
   expect_true(any(copied$label == "README"))
 
@@ -50,6 +52,8 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_true(any(grepl("all-consensus-seqs_trimmed.fasta", readme)))
   expect_true(any(grepl("sample_map.tsv", readme)))
   expect_true(any(grepl("barcode57", readme)))
+  expect_false(any(grepl("Workflow reports", readme)))
+  expect_false(any(grepl("params.json", readme)))
 })
 
 test_that("collect_amplicon_results reports missing optional files", {
@@ -63,8 +67,7 @@ test_that("collect_amplicon_results reports missing optional files", {
 
   copied <- collect_amplicon_results(
     result_dir = result_dir,
-    output_dir = output_dir,
-    include_reports = FALSE
+    output_dir = output_dir
   )
 
   expect_false(copied$exists[copied$label == "untrimmed_consensus"])

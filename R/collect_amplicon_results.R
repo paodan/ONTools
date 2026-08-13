@@ -17,9 +17,6 @@
 #'   directories.
 #' @param include_execution Logical. If `TRUE`, copy the `execution` directory
 #'   when present.
-#' @param include_reports Logical. If `TRUE`, copy common workflow report files
-#'   such as `wf-amplicon-report.html`, `params.json`, and `versions.txt` when
-#'   present.
 #' @param readme_name README filename written into `output_dir`.
 #' @param overwrite Logical. If `TRUE`, replace existing files in `output_dir`.
 #'
@@ -49,7 +46,6 @@ collect_amplicon_results <- function(result_dir,
                                      trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
                                      barcode_pattern = "^barcode[0-9]+$",
                                      include_execution = FALSE,
-                                     include_reports = TRUE,
                                      readme_name = "README.txt",
                                      overwrite = TRUE) {
   check_dir_arg(result_dir, "result_dir")
@@ -60,7 +56,6 @@ collect_amplicon_results <- function(result_dir,
   check_scalar_character(barcode_pattern, "barcode_pattern")
   check_scalar_character(readme_name, "readme_name")
   check_logical_scalar(include_execution, "include_execution")
-  check_logical_scalar(include_reports, "include_reports")
   check_logical_scalar(overwrite, "overwrite")
 
   result_dir <- normalizePath(result_dir, mustWork = TRUE)
@@ -150,26 +145,6 @@ collect_amplicon_results <- function(result_dir,
     )
   }
 
-  if (isTRUE(include_reports)) {
-    report_files <- c(
-      "wf-amplicon-report.html",
-      "params.json",
-      "versions.txt"
-    )
-    for (report_file in report_files) {
-      items <- rbind(
-        items,
-        collect_item(
-          label = report_file,
-          source = file.path(result_dir, report_file),
-          destination = file.path(output_dir, report_file),
-          type = "file",
-          overwrite = overwrite
-        )
-      )
-    }
-  }
-
   readme_path <- file.path(output_dir, readme_name)
   writeLines(
     amplicon_results_readme(
@@ -178,8 +153,7 @@ collect_amplicon_results <- function(result_dir,
       consensus_index_file = consensus_index_file,
       sample_map_name = if (is.null(sample_map)) NULL else basename(sample_map),
       barcode_names = basename(barcode_dirs),
-      include_execution = include_execution,
-      include_reports = include_reports
+      include_execution = include_execution
     ),
     readme_path
   )
@@ -235,8 +209,7 @@ amplicon_results_readme <- function(trimmed_consensus_file,
                                     consensus_index_file,
                                     sample_map_name,
                                     barcode_names,
-                                    include_execution,
-                                    include_reports) {
+                                    include_execution) {
   lines <- c(
     "Amplicon sequencing final results",
     "=================================",
@@ -298,18 +271,6 @@ amplicon_results_readme <- function(trimmed_consensus_file,
     )
   } else {
     lines <- c(lines, "- No barcode folders were found in the source result directory.")
-  }
-
-  if (isTRUE(include_reports)) {
-    lines <- c(
-      lines,
-      "",
-      "Workflow reports",
-      "----------------",
-      "- wf-amplicon-report.html: workflow HTML report.",
-      "- params.json: workflow parameter record.",
-      "- versions.txt: software version record."
-    )
   }
 
   if (isTRUE(include_execution)) {

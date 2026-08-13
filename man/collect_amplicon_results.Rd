@@ -13,7 +13,6 @@ collect_amplicon_results(
   trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
   barcode_pattern = "^barcode[0-9]+$",
   include_execution = FALSE,
-  include_reports = TRUE,
   readme_name = "README.txt",
   overwrite = TRUE
 )
@@ -38,10 +37,6 @@ directories.}
 
 \item{include_execution}{Logical. If \code{TRUE}, copy the \code{execution} directory
 when present.}
-
-\item{include_reports}{Logical. If \code{TRUE}, copy common workflow report files
-such as \code{wf-amplicon-report.html}, \code{params.json}, and \code{versions.txt} when
-present.}
 
 \item{readme_name}{README filename written into \code{output_dir}.}
 
