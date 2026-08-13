@@ -12,6 +12,8 @@ collect_amplicon_results(
   consensus_index_file = paste0(consensus_file, ".fai"),
   trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
   barcode_pattern = "^barcode[0-9]+$",
+  fastq_pass_trim_dir = NULL,
+  sample_length_plot_pattern = "^Distribution_seqLength__.*\\\\.png$",
   include_execution = FALSE,
   readme_name = "README.txt",
   overwrite = TRUE
@@ -34,6 +36,15 @@ is copied into \code{output_dir}.}
 
 \item{barcode_pattern}{Regular expression used to identify barcode
 directories.}
+
+\item{fastq_pass_trim_dir}{Optional directory containing per-barcode
+\code{fastq_pass_trim} folders. When supplied, per-barcode read-length
+distribution images are copied into the corresponding final barcode
+folders.}
+
+\item{sample_length_plot_pattern}{Regular expression used to identify
+per-barcode read-length distribution image files inside each
+\verb{fastq_pass_trim/<barcode>} folder.}
 
 \item{include_execution}{Logical. If \code{TRUE}, copy the \code{execution} directory
 when present.}

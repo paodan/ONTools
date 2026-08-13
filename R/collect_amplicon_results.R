@@ -15,6 +15,13 @@
 #'   `result_dir`. The generated README recommends this file for downstream use.
 #' @param barcode_pattern Regular expression used to identify barcode
 #'   directories.
+#' @param fastq_pass_trim_dir Optional directory containing per-barcode
+#'   `fastq_pass_trim` folders. When supplied, per-barcode read-length
+#'   distribution images are copied into the corresponding final barcode
+#'   folders.
+#' @param sample_length_plot_pattern Regular expression used to identify
+#'   per-barcode read-length distribution image files inside each
+#'   `fastq_pass_trim/<barcode>` folder.
 #' @param include_execution Logical. If `TRUE`, copy the `execution` directory
 #'   when present.
 #' @param readme_name README filename written into `output_dir`.
@@ -45,6 +52,8 @@ collect_amplicon_results <- function(result_dir,
                                      consensus_index_file = paste0(consensus_file, ".fai"),
                                      trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
                                      barcode_pattern = "^barcode[0-9]+$",
+                                     fastq_pass_trim_dir = NULL,
+                                     sample_length_plot_pattern = "^Distribution_seqLength__.*\\.png$",
                                      include_execution = FALSE,
                                      readme_name = "README.txt",
                                      overwrite = TRUE) {
@@ -54,6 +63,7 @@ collect_amplicon_results <- function(result_dir,
   check_scalar_character(consensus_index_file, "consensus_index_file")
   check_scalar_character(trimmed_consensus_file, "trimmed_consensus_file")
   check_scalar_character(barcode_pattern, "barcode_pattern")
+  check_scalar_character(sample_length_plot_pattern, "sample_length_plot_pattern")
   check_scalar_character(readme_name, "readme_name")
   check_logical_scalar(include_execution, "include_execution")
   check_logical_scalar(overwrite, "overwrite")
@@ -62,6 +72,10 @@ collect_amplicon_results <- function(result_dir,
   if (!is.null(sample_map)) {
     check_file_arg(sample_map, "sample_map")
     sample_map <- normalizePath(sample_map, mustWork = TRUE)
+  }
+  if (!is.null(fastq_pass_trim_dir)) {
+    check_dir_arg(fastq_pass_trim_dir, "fastq_pass_trim_dir")
+    fastq_pass_trim_dir <- normalizePath(fastq_pass_trim_dir, mustWork = TRUE)
   }
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -120,16 +134,37 @@ collect_amplicon_results <- function(result_dir,
   }
 
   for (barcode_dir in barcode_dirs) {
+    barcode_name <- basename(barcode_dir)
     items <- rbind(
       items,
       collect_item(
-        label = basename(barcode_dir),
+        label = barcode_name,
         source = barcode_dir,
-        destination = file.path(output_dir, basename(barcode_dir)),
+        destination = file.path(output_dir, barcode_name),
         type = "directory",
         overwrite = overwrite
       )
     )
+
+    if (!is.null(fastq_pass_trim_dir)) {
+      plot_files <- find_sample_length_plots(
+        fastq_pass_trim_dir = fastq_pass_trim_dir,
+        barcode_name = barcode_name,
+        pattern = sample_length_plot_pattern
+      )
+      for (plot_file in plot_files) {
+        items <- rbind(
+          items,
+          collect_item(
+            label = paste0(barcode_name, "_read_length_plot"),
+            source = plot_file,
+            destination = file.path(output_dir, barcode_name, basename(plot_file)),
+            type = "file",
+            overwrite = overwrite
+          )
+        )
+      }
+    }
   }
 
   if (isTRUE(include_execution)) {
@@ -153,6 +188,7 @@ collect_amplicon_results <- function(result_dir,
       consensus_index_file = consensus_index_file,
       sample_map_name = if (is.null(sample_map)) NULL else basename(sample_map),
       barcode_names = basename(barcode_dirs),
+      include_sample_length_plots = !is.null(fastq_pass_trim_dir),
       include_execution = include_execution
     ),
     readme_path
@@ -189,6 +225,7 @@ collect_item <- function(label, source, destination, type, overwrite) {
       }
       copied <- file.copy(source, dirname(destination), recursive = TRUE)
     } else {
+      dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
       copied <- file.copy(source, destination, overwrite = overwrite)
     }
   }
@@ -204,11 +241,26 @@ collect_item <- function(label, source, destination, type, overwrite) {
   )
 }
 
+find_sample_length_plots <- function(fastq_pass_trim_dir, barcode_name, pattern) {
+  barcode_dir <- file.path(fastq_pass_trim_dir, barcode_name)
+  if (!dir.exists(barcode_dir)) {
+    return(character())
+  }
+
+  list.files(
+    barcode_dir,
+    pattern = pattern,
+    full.names = TRUE,
+    recursive = FALSE
+  )
+}
+
 amplicon_results_readme <- function(trimmed_consensus_file,
                                     consensus_file,
                                     consensus_index_file,
                                     sample_map_name,
                                     barcode_names,
+                                    include_sample_length_plots,
                                     include_execution) {
   lines <- c(
     "Amplicon sequencing final results",
@@ -265,6 +317,9 @@ amplicon_results_readme <- function(trimmed_consensus_file,
       "- barcode*/alignments/*.bam: read alignments for the barcode.",
       "- barcode*/alignments/*.bam.bai: BAM index files.",
       "- barcode*/alignments/*.png: alignment snapshot images when generated.",
+      if (isTRUE(include_sample_length_plots)) {
+        "- barcode*/Distribution_seqLength__*.png: per-barcode read length distribution plot generated from filtered reads."
+      },
       "",
       "Included barcode folders:",
       paste0("- ", barcode_names)

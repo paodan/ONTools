@@ -6,6 +6,9 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   dir.create(file.path(result_dir, "barcode57", "consensus"), recursive = TRUE)
   dir.create(file.path(result_dir, "barcode58", "alignments"), recursive = TRUE)
   dir.create(file.path(result_dir, "execution"), recursive = TRUE)
+  fastq_pass_trim_dir <- tempfile("fastq-pass-trim-")
+  dir.create(file.path(fastq_pass_trim_dir, "barcode57"), recursive = TRUE)
+  dir.create(file.path(fastq_pass_trim_dir, "barcode58"), recursive = TRUE)
 
   writeLines(">barcode57\nACGT", file.path(result_dir, "all-consensus-seqs.fasta"))
   writeLines(
@@ -24,6 +27,22 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   writeLines("{}", file.path(result_dir, "params.json"))
   writeLines("versions", file.path(result_dir, "versions.txt"))
   writeLines("trace", file.path(result_dir, "execution", "trace.txt"))
+  writeLines(
+    "read length png",
+    file.path(
+      fastq_pass_trim_dir,
+      "barcode57",
+      "Distribution_seqLength__sup__barcode57.png"
+    )
+  )
+  writeLines(
+    "read length png",
+    file.path(
+      fastq_pass_trim_dir,
+      "barcode58",
+      "Distribution_seqLength__sup__barcode58.png"
+    )
+  )
   sample_map <- file.path(result_dir, "sample_map.tsv")
   writeLines("barcode\tsample\nbarcode57\tsampleA", sample_map)
 
@@ -31,6 +50,7 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
     result_dir = result_dir,
     output_dir = output_dir,
     sample_map = sample_map,
+    fastq_pass_trim_dir = fastq_pass_trim_dir,
     include_execution = TRUE
   )
 
@@ -40,6 +60,16 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_true(file.exists(file.path(output_dir, "sample_map.tsv")))
   expect_true(dir.exists(file.path(output_dir, "barcode57")))
   expect_true(dir.exists(file.path(output_dir, "barcode58")))
+  expect_true(file.exists(file.path(
+    output_dir,
+    "barcode57",
+    "Distribution_seqLength__sup__barcode57.png"
+  )))
+  expect_true(file.exists(file.path(
+    output_dir,
+    "barcode58",
+    "Distribution_seqLength__sup__barcode58.png"
+  )))
   expect_true(dir.exists(file.path(output_dir, "execution")))
   expect_false(file.exists(file.path(output_dir, "wf-amplicon-report.html")))
   expect_false(file.exists(file.path(output_dir, "params.json")))
@@ -52,6 +82,8 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_true(any(grepl("all-consensus-seqs_trimmed.fasta", readme)))
   expect_true(any(grepl("sample_map.tsv", readme)))
   expect_true(any(grepl("barcode57", readme)))
+  expect_true(any(grepl("read length distribution", readme)))
+  expect_true(any(grepl("Distribution_seqLength", readme)))
   expect_false(any(grepl("Workflow reports", readme)))
   expect_false(any(grepl("params.json", readme)))
 })
