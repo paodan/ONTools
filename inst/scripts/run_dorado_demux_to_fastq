@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  run_dorado_demux_to_fastq --proj PROJECT_DIR [options]
+
+Description:
+  Dorado demux-to-FASTQ pipeline:
+
+    1. Basecall POD5 files with dorado basecaller
+    2. Demultiplex BAM with dorado demux
+    3. Convert demuxed BAM files to fastq.gz while preserving barcode structure
+
+  This script intentionally stops after fastq.gz generation. Run downstream
+  analysis, such as wf-amplicon, separately for each project/sample group so
+  project-specific amplicon length and filtering parameters are not mixed.
+
+Required:
+  --proj PATH
+      Project directory containing pod5/.
+      Example:
+      /data/minknow/data/20260807-96-pcr-test/no_sample_id/20260807_1818_P2S-03637-A_PBM52489_dbecab3d
+
+Options:
+  --kit-name STR
+      Dorado barcode kit name.
+      Default: EXP-NBD196
+
+  --model STR
+      Dorado basecalling model or model alias.
+      Default: sup
+
+  --demux-out STR
+      Demux output directory name under PROJECT_DIR.
+      Default: demux_out_<KIT_NAME>
+
+  --fastq-out STR
+      FASTQ output directory name created inside each Dorado run directory.
+      Default: fastq_pass_trim
+
+  -h, --help
+      Show this help message.
+
+Example:
+  run_dorado_demux_to_fastq \
+      --proj "/data/minknow/data/20260807-96-pcr-test/no_sample_id/20260807_1818_P2S-03637-A_PBM52489_dbecab3d" \
+      --kit-name EXP-NBD196 \
+      --model sup
+
+Output Structure:
+  PROJECT_DIR/
+    bam/
+      calls_<MODEL>.bam
+    demux_out_<KIT_NAME>/
+      <experiment_id>/
+        <sample_id>/
+          <run_id_directory>/
+            bam_pass/
+            fastq_pass_trim/
+EOF
+}
+
+require_command() {
+    local cmd="$1"
+
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: required command not found: $cmd" >&2
+        return 1
+    fi
+}
+
+run_dorado_demux_to_fastq() {
+    local PROJ=""
+    local KIT_NAME="EXP-NBD196"
+    local MODEL="sup"
+    local OUT=""
+    local FASTQ_OUT="fastq_pass_trim"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                return 0
+                ;;
+            --proj)
+                PROJ="$2"
+                shift 2
+                ;;
+            --kit-name)
+                KIT_NAME="$2"
+                shift 2
+                ;;
+            --model)
+                MODEL="$2"
+                shift 2
+                ;;
+            --demux-out)
+                OUT="$2"
+                shift 2
+                ;;
+            --fastq-out)
+                FASTQ_OUT="$2"
+                shift 2
+                ;;
+            *)
+                echo "Error: unknown argument: $1" >&2
+                echo "Run with --help for usage." >&2
+                return 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$PROJ" ]]; then
+        echo "Error: --proj is required" >&2
+        echo "Run with --help for usage." >&2
+        return 1
+    fi
+
+    if [[ ! -d "$PROJ" ]]; then
+        echo "Error: project directory does not exist: $PROJ" >&2
+        return 1
+    fi
+
+    local POD5_DIR="$PROJ/pod5"
+    if [[ ! -d "$POD5_DIR" ]]; then
+        echo "Error: POD5 directory does not exist: $POD5_DIR" >&2
+        return 1
+    fi
+
+    require_command dorado
+    require_command samtools
+    require_command gzip
+    require_command find
+    require_command grep
+    require_command sort
+    require_command xargs
+
+    if [[ -z "$OUT" ]]; then
+        OUT="demux_out_${KIT_NAME}"
+    fi
+
+    local BAM_DIR="$PROJ/bam"
+    local CALLS_BAM="$BAM_DIR/calls_${MODEL}.bam"
+    local DEMUX_DIR="$PROJ/$OUT"
+
+    mkdir -p "$BAM_DIR"
+
+    echo "Basecalling: $POD5_DIR -> $CALLS_BAM"
+    dorado basecaller "$MODEL" "$POD5_DIR/" > "$CALLS_BAM"
+
+    echo "Demux: $CALLS_BAM -> $DEMUX_DIR"
+    dorado demux \
+        --kit-name "$KIT_NAME" \
+        --output-dir "$DEMUX_DIR" \
+        --emit-summary \
+        --barcode-both-ends \
+        "$CALLS_BAM"
+
+    echo "Converting BAM files to FASTQ.GZ"
+
+    local found_bam_pass=0
+
+    while IFS= read -r -d '' BAM_PASS_DIR; do
+        found_bam_pass=1
+
+        local RUN_DIR
+        RUN_DIR="$(dirname "$BAM_PASS_DIR")"
+
+        echo "Run directory: $RUN_DIR"
+
+        find "$BAM_PASS_DIR" -mindepth 1 -type d -print0 | sort -z | while IFS= read -r -d '' dir; do
+            if ! find "$dir" -maxdepth 1 -type f -name '*.bam' -print -quit | grep -q .; then
+                continue
+            fi
+
+            local rel_path output_name out_dir out_fastq
+            rel_path="${dir#$BAM_PASS_DIR/}"
+            output_name="$(basename "$dir")"
+            out_dir="$RUN_DIR/$FASTQ_OUT/$rel_path"
+            out_fastq="$out_dir/${output_name}.fastq.gz"
+
+            mkdir -p "$out_dir"
+
+            echo "Processing: $dir -> $out_fastq"
+
+            find "$dir" -maxdepth 1 -type f -name '*.bam' -print0 |
+                sort -z |
+                xargs -0 samtools fastq -n -T '*' |
+                gzip > "$out_fastq"
+        done
+
+        echo "FASTQ output ready: $RUN_DIR/$FASTQ_OUT"
+    done < <(find "$DEMUX_DIR" -type d -name bam_pass -print0)
+
+    if [[ "$found_bam_pass" -eq 0 ]]; then
+        echo "Error: no bam_pass directory found under: $DEMUX_DIR" >&2
+        return 1
+    fi
+}
+
+run_dorado_demux_to_fastq "$@"
