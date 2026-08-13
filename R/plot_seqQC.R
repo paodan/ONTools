@@ -33,7 +33,13 @@
 #' @param save_sample_len_plots Logical. If `TRUE`, save one read-length
 #'   distribution plot per sample.
 #' @param sample_len_subdir Subdirectory under `out_dir/device` where per-sample
-#'   read-length plots are saved.
+#'   read-length plots are saved when `sample_len_dir_mode = "subdir"`.
+#' @param sample_len_dir_mode Where per-sample read-length plots are saved.
+#'   `"subdir"` saves all plots under `out_dir/device/sample_len_subdir`.
+#'   `"fastq_pass_trim"` saves each plot under
+#'   `fastq_pass_trim_dir/<sample>/`.
+#' @param fastq_pass_trim_dir Directory containing per-barcode fastq_pass_trim
+#'   folders. Used when `sample_len_dir_mode = "fastq_pass_trim"`.
 #' @param sample_len_width,sample_len_height Width and height in inches for each
 #'   per-sample read-length plot.
 #'
@@ -92,6 +98,8 @@ plot_seqQC <- function(filePath,
                        len_read_ncol = 12,
                        save_sample_len_plots = TRUE,
                        sample_len_subdir = "seqLength_by_sample",
+                       sample_len_dir_mode = c("subdir", "fastq_pass_trim"),
+                       fastq_pass_trim_dir = "fastq_pass_trim",
                        sample_len_width = 5,
                        sample_len_height = 4) {
   if (!is.character(filePath) || length(filePath) != 1L || is.na(filePath)) {
@@ -163,6 +171,8 @@ plot_seqQC <- function(filePath,
     stop("`save_sample_len_plots` must be `TRUE` or `FALSE`.", call. = FALSE)
   }
   check_scalar_character(sample_len_subdir, "sample_len_subdir")
+  sample_len_dir_mode <- match.arg(sample_len_dir_mode)
+  check_scalar_character(fastq_pass_trim_dir, "fastq_pass_trim_dir")
 
   seq_summary <- utils::read.delim(
     filePath,
@@ -290,15 +300,16 @@ plot_seqQC <- function(filePath,
     )
 
     if (isTRUE(save_sample_len_plots)) {
-      sample_len_dir <- file.path(plot_dir, sample_len_subdir)
-      dir.create(sample_len_dir, recursive = TRUE, showWarnings = FALSE)
       sample_len_files <- seqqc_save_sample_len_plots(
         seq_len_df = seq_len_df,
         sample_levels = sample_levels,
         runName = runName,
         filename_suffix = filename_suffix,
         device = device,
-        sample_len_dir = sample_len_dir,
+        plot_dir = plot_dir,
+        sample_len_subdir = sample_len_subdir,
+        sample_len_dir_mode = sample_len_dir_mode,
+        fastq_pass_trim_dir = fastq_pass_trim_dir,
         width = sample_len_width,
         height = sample_len_height
       )
@@ -318,6 +329,7 @@ plot_seqQC <- function(filePath,
     ),
     filename_suffix = filename_suffix,
     len_read_size = len_read_size,
+    sample_len_dir_mode = sample_len_dir_mode,
     files = files,
     sample_len_files = sample_len_files
   ))
@@ -387,12 +399,22 @@ seqqc_save_sample_len_plots <- function(seq_len_df,
                                         runName,
                                         filename_suffix,
                                         device,
-                                        sample_len_dir,
+                                        plot_dir,
+                                        sample_len_subdir,
+                                        sample_len_dir_mode,
+                                        fastq_pass_trim_dir,
                                         width,
                                         height) {
+  sample_len_dirs <- seqqc_sample_len_dirs(
+    sample_levels = sample_levels,
+    plot_dir = plot_dir,
+    sample_len_subdir = sample_len_subdir,
+    sample_len_dir_mode = sample_len_dir_mode,
+    fastq_pass_trim_dir = fastq_pass_trim_dir
+  )
   sample_len_files <- stats::setNames(
     file.path(
-      sample_len_dir,
+      sample_len_dirs,
       paste0(
         "Distribution_seqLength__",
         runName,
@@ -407,6 +429,7 @@ seqqc_save_sample_len_plots <- function(seq_len_df,
   )
 
   for (sample in sample_levels) {
+    dir.create(dirname(sample_len_files[[sample]]), recursive = TRUE, showWarnings = FALSE)
     sample_df <- seq_len_df[seq_len_df$sample == sample, , drop = FALSE]
     sample_plot <- ggplot2::ggplot(sample_df, ggplot2::aes(.data$seq_len)) +
       ggplot2::geom_histogram(bins = 30) +
@@ -426,6 +449,18 @@ seqqc_save_sample_len_plots <- function(seq_len_df,
   }
 
   sample_len_files
+}
+
+seqqc_sample_len_dirs <- function(sample_levels,
+                                  plot_dir,
+                                  sample_len_subdir,
+                                  sample_len_dir_mode,
+                                  fastq_pass_trim_dir) {
+  if (identical(sample_len_dir_mode, "fastq_pass_trim")) {
+    return(file.path(fastq_pass_trim_dir, sample_levels))
+  }
+
+  rep(file.path(plot_dir, sample_len_subdir), length(sample_levels))
 }
 
 seqqc_safe_filename <- function(x) {

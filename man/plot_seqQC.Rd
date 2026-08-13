@@ -24,6 +24,8 @@ plot_seqQC(
   len_read_ncol = 12,
   save_sample_len_plots = TRUE,
   sample_len_subdir = "seqLength_by_sample",
+  sample_len_dir_mode = c("subdir", "fastq_pass_trim"),
+  fastq_pass_trim_dir = "fastq_pass_trim",
   sample_len_width = 5,
   sample_len_height = 4
 )
@@ -75,7 +77,15 @@ distribution plot.}
 distribution plot per sample.}
 
 \item{sample_len_subdir}{Subdirectory under \code{out_dir/device} where per-sample
-read-length plots are saved.}
+read-length plots are saved when \code{sample_len_dir_mode = "subdir"}.}
+
+\item{sample_len_dir_mode}{Where per-sample read-length plots are saved.
+\code{"subdir"} saves all plots under \code{out_dir/device/sample_len_subdir}.
+\code{"fastq_pass_trim"} saves each plot under
+\verb{fastq_pass_trim_dir/<sample>/}.}
+
+\item{fastq_pass_trim_dir}{Directory containing per-barcode fastq_pass_trim
+folders. Used when \code{sample_len_dir_mode = "fastq_pass_trim"}.}
 
 \item{sample_len_width, sample_len_height}{Width and height in inches for each
 per-sample read-length plot.}

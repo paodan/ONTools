@@ -161,6 +161,43 @@ test_that("plot_seqQC can skip per-sample read-length files", {
   expect_false(dir.exists(file.path(out_dir, "png", "seqLength_by_sample")))
 })
 
+test_that("plot_seqQC can save per-sample read-length plots into fastq_pass_trim barcode folders", {
+  skip_if_not(
+    capabilities("png"),
+    "PNG graphics device is not available on this platform."
+  )
+
+  summary_file <- tempfile(fileext = ".txt")
+  out_dir <- tempfile("seqqc-figs-")
+  fastq_pass_trim_dir <- tempfile("fastq-pass-trim-")
+  write.table(
+    data.frame(
+      alias = c("barcode01", "barcode02"),
+      sequence_length_template = c(1000, 1200)
+    ),
+    summary_file,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+
+  qc <- plot_seqQC(
+    summary_file,
+    runName = "run-fastq-pass-trim",
+    device = "png",
+    barcodes = 1:2,
+    out_dir = out_dir,
+    sample_len_dir_mode = "fastq_pass_trim",
+    fastq_pass_trim_dir = fastq_pass_trim_dir
+  )
+
+  expect_equal(qc$sample_len_dir_mode, "fastq_pass_trim")
+  expect_true(file.exists(qc$sample_len_files[["barcode01"]]))
+  expect_true(file.exists(qc$sample_len_files[["barcode02"]]))
+  expect_true(grepl(file.path(fastq_pass_trim_dir, "barcode01"), qc$sample_len_files[["barcode01"]], fixed = TRUE))
+  expect_true(grepl(file.path(fastq_pass_trim_dir, "barcode02"), qc$sample_len_files[["barcode02"]], fixed = TRUE))
+})
+
 test_that("plot_seqQC validates length filters", {
   summary_file <- tempfile(fileext = ".txt")
   write.table(
