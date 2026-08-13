@@ -1,0 +1,326 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  run_dorado_amplicon_pipeline_end2end --proj PROJECT_DIR [options]
+
+Description:
+  End-to-end Dorado amplicon pipeline:
+
+    1. Basecall POD5 files with dorado basecaller
+    2. Detect the full Dorado basecaller config from the generated BAM header
+    3. Demultiplex BAM with dorado demux
+    4. Convert demuxed BAM files to fastq.gz while preserving barcode structure
+    5. Run Nextflow wf-amplicon in each Dorado-generated run directory
+
+Required:
+  --proj PATH
+      Project directory containing pod5/.
+      Example:
+      /data/minknow/data/20260807-96-pcr-test/no_sample_id/20260807_1818_P2S-03637-A_PBM52489_dbecab3d
+
+Options:
+  --kit-name STR
+      Dorado barcode kit name.
+      Default: EXP-NBD196
+
+  --model STR
+      Dorado basecalling model or model alias.
+      Default: sup
+
+  --demux-out STR
+      Demux output directory name under PROJECT_DIR.
+      Default: demux_out_<KIT_NAME>
+
+  --fastq-out STR
+      FASTQ output directory name created inside each Dorado run directory.
+      Default: fastq_pass_trim
+
+  --wf-out-dir STR
+      wf-amplicon output directory inside each Dorado run directory.
+      Default: results/wf_amplicon_denovo
+
+  --min-read-length INT
+      Minimum read length passed to wf-amplicon.
+      Default: 1300
+
+  --max-read-length INT
+      Maximum read length passed to wf-amplicon.
+      Default: 1900
+
+  --min-read-qual INT
+      Minimum read quality passed to wf-amplicon.
+      Default: 10
+
+  --min-n-reads INT
+      Minimum number of reads passed to wf-amplicon.
+      Default: 50
+
+  --force-spoa-length-threshold INT
+      SPOA length threshold passed to wf-amplicon.
+      Default: 2000
+
+  -h, --help
+      Show this help message.
+
+Fixed Settings:
+  Nextflow workflow:
+      julibeg/wf-amplicon
+
+  Nextflow profile:
+      standard
+
+  wf-amplicon --override_basecaller_cfg:
+      Automatically detected from the generated BAM @RG DS:basecall_model field.
+
+Example:
+  run_dorado_amplicon_pipeline_end2end \
+      --proj "/data/minknow/data/20260807-96-pcr-test/no_sample_id/20260807_1818_P2S-03637-A_PBM52489_dbecab3d" \
+      --kit-name EXP-NBD196 \
+      --model sup \
+      --min-read-length 1300 \
+      --max-read-length 1900 \
+      --min-read-qual 10 \
+      --min-n-reads 50
+
+Output Structure:
+  PROJECT_DIR/
+    bam/
+      calls_<MODEL>.bam
+    demux_out_<KIT_NAME>/
+      <experiment_id>/
+        <sample_id>/
+          <run_id_directory>/
+            bam_pass/
+            fastq_pass_trim/
+            results/wf_amplicon_denovo/
+EOF
+}
+
+get_basecaller_cfg_from_bam() {
+    local bam="$1"
+
+    samtools view -H "$bam" |
+        awk '
+            /^@RG/ {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^DS:/) {
+                        ds = substr($i, 4)
+                        for (j = i + 1; j <= NF; j++) {
+                            if ($j ~ /^[A-Za-z][A-Za-z0-9]:/) {
+                                break
+                            }
+                            ds = ds " " $j
+                        }
+                        n = split(ds, a, " ")
+                        for (k = 1; k <= n; k++) {
+                            if (a[k] ~ /^basecall_model=/) {
+                                sub(/^basecall_model=/, "", a[k])
+                                print a[k]
+                                exit
+                            }
+                        }
+                    }
+                }
+            }
+        '
+}
+
+require_command() {
+    local cmd="$1"
+
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: required command not found: $cmd" >&2
+        return 1
+    fi
+}
+
+run_dorado_amplicon_pipeline_end2end() {
+    local PROJ=""
+    local KIT_NAME="EXP-NBD196"
+    local MODEL="sup"
+    local OUT=""
+    local FASTQ_OUT="fastq_pass_trim"
+
+    local WF_OUT_DIR="results/wf_amplicon_denovo"
+    local MIN_READ_LENGTH="1300"
+    local MAX_READ_LENGTH="1900"
+    local MIN_READ_QUAL="10"
+    local MIN_N_READS="50"
+    local FORCE_SPOA_LENGTH_THRESHOLD="2000"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                return 0
+                ;;
+            --proj)
+                PROJ="$2"
+                shift 2
+                ;;
+            --kit-name)
+                KIT_NAME="$2"
+                shift 2
+                ;;
+            --model)
+                MODEL="$2"
+                shift 2
+                ;;
+            --demux-out)
+                OUT="$2"
+                shift 2
+                ;;
+            --fastq-out)
+                FASTQ_OUT="$2"
+                shift 2
+                ;;
+            --wf-out-dir)
+                WF_OUT_DIR="$2"
+                shift 2
+                ;;
+            --min-read-length)
+                MIN_READ_LENGTH="$2"
+                shift 2
+                ;;
+            --max-read-length)
+                MAX_READ_LENGTH="$2"
+                shift 2
+                ;;
+            --min-read-qual)
+                MIN_READ_QUAL="$2"
+                shift 2
+                ;;
+            --min-n-reads)
+                MIN_N_READS="$2"
+                shift 2
+                ;;
+            --force-spoa-length-threshold)
+                FORCE_SPOA_LENGTH_THRESHOLD="$2"
+                shift 2
+                ;;
+            *)
+                echo "Error: unknown argument: $1" >&2
+                echo "Run with --help for usage." >&2
+                return 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$PROJ" ]]; then
+        echo "Error: --proj is required" >&2
+        echo "Run with --help for usage." >&2
+        return 1
+    fi
+
+    if [[ ! -d "$PROJ" ]]; then
+        echo "Error: project directory does not exist: $PROJ" >&2
+        return 1
+    fi
+
+    local POD5_DIR="$PROJ/pod5"
+    if [[ ! -d "$POD5_DIR" ]]; then
+        echo "Error: POD5 directory does not exist: $POD5_DIR" >&2
+        return 1
+    fi
+
+    require_command dorado
+    require_command samtools
+    require_command nextflow
+    require_command gzip
+    require_command awk
+    require_command find
+    require_command sort
+    require_command xargs
+
+    if [[ -z "$OUT" ]]; then
+        OUT="demux_out_${KIT_NAME}"
+    fi
+
+    local BAM_DIR="$PROJ/bam"
+    local CALLS_BAM="$BAM_DIR/calls_${MODEL}.bam"
+    local DEMUX_DIR="$PROJ/$OUT"
+
+    mkdir -p "$BAM_DIR"
+
+    echo "Basecalling: $POD5_DIR -> $CALLS_BAM"
+    dorado basecaller "$MODEL" "$POD5_DIR/" > "$CALLS_BAM"
+
+    local BASECALLER_CFG
+    BASECALLER_CFG="$(get_basecaller_cfg_from_bam "$CALLS_BAM")"
+
+    if [[ -z "$BASECALLER_CFG" ]]; then
+        echo "Error: failed to detect basecall_model from BAM header: $CALLS_BAM" >&2
+        return 1
+    fi
+
+    echo "Detected basecaller config: $BASECALLER_CFG"
+
+    echo "Demux: $CALLS_BAM -> $DEMUX_DIR"
+    dorado demux \
+        --kit-name "$KIT_NAME" \
+        --output-dir "$DEMUX_DIR" \
+        --emit-summary \
+        --barcode-both-ends \
+        "$CALLS_BAM"
+
+    echo "Converting BAM files to FASTQ.GZ and running wf-amplicon"
+
+    local found_bam_pass=0
+
+    while IFS= read -r -d '' BAM_PASS_DIR; do
+        found_bam_pass=1
+
+        local RUN_DIR
+        RUN_DIR="$(dirname "$BAM_PASS_DIR")"
+
+        echo "Run directory: $RUN_DIR"
+
+        find "$BAM_PASS_DIR" -mindepth 1 -type d -print0 | sort -z | while IFS= read -r -d '' dir; do
+            if ! find "$dir" -maxdepth 1 -type f -name '*.bam' -print -quit | grep -q .; then
+                continue
+            fi
+
+            local rel_path output_name out_dir out_fastq
+            rel_path="${dir#$BAM_PASS_DIR/}"
+            output_name="$(basename "$dir")"
+            out_dir="$RUN_DIR/$FASTQ_OUT/$rel_path"
+            out_fastq="$out_dir/${output_name}.fastq.gz"
+
+            mkdir -p "$out_dir"
+
+            echo "Processing: $dir -> $out_fastq"
+
+            find "$dir" -maxdepth 1 -type f -name '*.bam' -print0 |
+                sort -z |
+                xargs -0 samtools fastq -n -T '*' |
+                gzip > "$out_fastq"
+        done
+
+        echo "Running wf-amplicon in: $RUN_DIR"
+
+        (
+            cd "$RUN_DIR"
+
+            nextflow run julibeg/wf-amplicon \
+                --fastq "./$FASTQ_OUT" \
+                --out_dir "./$WF_OUT_DIR" \
+                --min_read_length "$MIN_READ_LENGTH" \
+                --max_read_length "$MAX_READ_LENGTH" \
+                --min_read_qual "$MIN_READ_QUAL" \
+                --min_n_reads "$MIN_N_READS" \
+                --force_spoa_length_threshold "$FORCE_SPOA_LENGTH_THRESHOLD" \
+                --override_basecaller_cfg "$BASECALLER_CFG" \
+                -profile standard
+        )
+    done < <(find "$DEMUX_DIR" -type d -name bam_pass -print0)
+
+    if [[ "$found_bam_pass" -eq 0 ]]; then
+        echo "Error: no bam_pass directory found under: $DEMUX_DIR" >&2
+        return 1
+    fi
+}
+
+run_dorado_amplicon_pipeline_end2end "$@"
