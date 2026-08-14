@@ -2,6 +2,7 @@
 
 export(collect_amplicon_results)
 export(compare_consensus)
+export(get_primers)
 export(igv_snapshot)
 export(move_fastq_to_folders)
 export(plot_seqQC)
