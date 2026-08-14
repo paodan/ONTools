@@ -17,8 +17,10 @@ run_wf_amplicon(
   resume = TRUE,
   workflow = "julibeg/wf-amplicon",
   nextflow = "nextflow",
+  quiet = FALSE,
   extra_args = NULL,
   syntax_parser = "v1",
+  ansi_log = FALSE,
   nextflow_env = NULL,
   dry_run = FALSE,
   echo = TRUE,
@@ -54,6 +56,9 @@ run_wf_amplicon(
 
 \item{nextflow}{Nextflow executable name or path.}
 
+\item{quiet}{Logical. If \code{TRUE}, pass \code{-q} to Nextflow to reduce its log
+output.}
+
 \item{extra_args}{Optional raw command-line string appended after the standard
 arguments. Use this for additional wf-amplicon parameters exactly as you
 would type them in the shell.}
@@ -62,6 +67,10 @@ would type them in the shell.}
 \code{NXF_SYNTAX_PARSER} environment variable. Defaults to \code{"v1"} because
 \code{julibeg/wf-amplicon} currently uses legacy Nextflow syntax that can fail
 with newer Nextflow releases. Use \code{NULL} to leave the environment unchanged.}
+
+\item{ansi_log}{Logical. Passed as the \code{NXF_ANSI_LOG} environment variable.
+Defaults to \code{FALSE} to avoid frequent dynamic Nextflow status updates in the
+R console.}
 
 \item{nextflow_env}{Optional character vector of additional environment
 variables passed to \code{\link[=system2]{system2()}}, formatted as \code{"NAME=value"}.}
@@ -103,5 +112,14 @@ res2 <- run_wf_amplicon(
   dry_run = TRUE
 )
 res2$command_string
+
+# Reduce console output from Nextflow
+res3 <- run_wf_amplicon(
+  quiet = TRUE,
+  echo = FALSE,
+  stdout = FALSE,
+  stderr = FALSE,
+  dry_run = TRUE
+)
 
 }

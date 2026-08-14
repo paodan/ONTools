@@ -19,6 +19,8 @@
 #' @param resume Logical. If `TRUE`, append `-resume`.
 #' @param workflow Nextflow workflow name or path.
 #' @param nextflow Nextflow executable name or path.
+#' @param quiet Logical. If `TRUE`, pass `-q` to Nextflow to reduce its log
+#'   output.
 #' @param extra_args Optional raw command-line string appended after the standard
 #'   arguments. Use this for additional wf-amplicon parameters exactly as you
 #'   would type them in the shell.
@@ -26,6 +28,9 @@
 #'   `NXF_SYNTAX_PARSER` environment variable. Defaults to `"v1"` because
 #'   `julibeg/wf-amplicon` currently uses legacy Nextflow syntax that can fail
 #'   with newer Nextflow releases. Use `NULL` to leave the environment unchanged.
+#' @param ansi_log Logical. Passed as the `NXF_ANSI_LOG` environment variable.
+#'   Defaults to `FALSE` to avoid frequent dynamic Nextflow status updates in the
+#'   R console.
 #' @param nextflow_env Optional character vector of additional environment
 #'   variables passed to [system2()], formatted as `"NAME=value"`.
 #' @param dry_run Logical. If `TRUE`, return the command without running it.
@@ -57,6 +62,15 @@
 #' )
 #' res2$command_string
 #'
+#' # Reduce console output from Nextflow
+#' res3 <- run_wf_amplicon(
+#'   quiet = TRUE,
+#'   echo = FALSE,
+#'   stdout = FALSE,
+#'   stderr = FALSE,
+#'   dry_run = TRUE
+#' )
+#'
 #' @export
 run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
                             out_dir = "./results/wf_amplicon_denovo",
@@ -70,8 +84,10 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
                             resume = TRUE,
                             workflow = "julibeg/wf-amplicon",
                             nextflow = "nextflow",
+                            quiet = FALSE,
                             extra_args = NULL,
                             syntax_parser = "v1",
+                            ansi_log = FALSE,
                             nextflow_env = NULL,
                             dry_run = FALSE,
                             echo = TRUE,
@@ -85,6 +101,8 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
   check_scalar_character(workflow, "workflow")
   check_scalar_character(nextflow, "nextflow")
   check_logical_scalar(resume, "resume")
+  check_logical_scalar(quiet, "quiet")
+  check_logical_scalar(ansi_log, "ansi_log")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   check_logical_scalar(wait, "wait")
@@ -109,9 +127,15 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
   if (!is.null(syntax_parser)) {
     check_scalar_character(syntax_parser, "syntax_parser")
   }
-  nextflow_env <- build_nextflow_env(syntax_parser, nextflow_env)
+  nextflow_env <- build_nextflow_env(syntax_parser, ansi_log, nextflow_env)
+
+  args <- character()
+  if (isTRUE(quiet)) {
+    args <- c(args, "-q")
+  }
 
   args <- c(
+    args,
     "run", workflow,
     "--fastq", fastq,
     "--out_dir", out_dir,
@@ -223,12 +247,13 @@ validate_nonnegative_number <- function(x, name) {
   x
 }
 
-build_nextflow_env <- function(syntax_parser, nextflow_env) {
+build_nextflow_env <- function(syntax_parser, ansi_log, nextflow_env) {
   env <- character()
 
   if (!is.null(syntax_parser)) {
     env <- c(env, paste0("NXF_SYNTAX_PARSER=", syntax_parser))
   }
+  env <- c(env, paste0("NXF_ANSI_LOG=", tolower(as.character(ansi_log))))
 
   if (!is.null(nextflow_env)) {
     if (!is.character(nextflow_env) || anyNA(nextflow_env) ||
