@@ -243,7 +243,7 @@ if [[ "$RUN_MULTIQC" -eq 1 ]]; then
       -mindepth 2 \
       -maxdepth 2 \
       -type f \
-      -name 'NanoStats.txt' \
+      -name '*NanoStats.txt' \
       | sort)
 
     MULTIQC_NANOSTATS_COUNT="$(find "$MULTIQC_INPUT" -type f -name '*_NanoStats.txt' | wc -l | tr -d ' ')"

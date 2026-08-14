@@ -106,14 +106,16 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
     c(
       "#!/usr/bin/env bash",
       "outdir=''",
+      "prefix=''",
       "while [[ $# -gt 0 ]]; do",
       "  case \"$1\" in",
       "    --outdir) outdir=\"$2\"; shift 2 ;;",
+      "    --prefix) prefix=\"$2\"; shift 2 ;;",
       "    *) shift ;;",
       "  esac",
       "done",
       "mkdir -p \"$outdir\"",
-      "printf 'metric\\tvalue\\nreads\\t1\\n' > \"$outdir/NanoStats.txt\""
+      "printf 'metric\\tvalue\\nreads\\t1\\n' > \"$outdir/${prefix}NanoStats.txt\""
     ),
     file.path(fake_bin, "NanoPlot")
   )
