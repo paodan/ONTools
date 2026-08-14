@@ -22,6 +22,12 @@
 #' @param extra_args Optional raw command-line string appended after the standard
 #'   arguments. Use this for additional wf-amplicon parameters exactly as you
 #'   would type them in the shell.
+#' @param syntax_parser Nextflow syntax parser version passed as the
+#'   `NXF_SYNTAX_PARSER` environment variable. Defaults to `"v1"` because
+#'   `julibeg/wf-amplicon` currently uses legacy Nextflow syntax that can fail
+#'   with newer Nextflow releases. Use `NULL` to leave the environment unchanged.
+#' @param nextflow_env Optional character vector of additional environment
+#'   variables passed to [system2()], formatted as `"NAME=value"`.
 #' @param dry_run Logical. If `TRUE`, return the command without running it.
 #' @param echo Logical. If `TRUE`, print the command before execution.
 #' @param wait Logical. Passed to [system2()]. Use `FALSE` to launch the command
@@ -31,7 +37,7 @@
 #'
 #' @return Invisibly returns a list with `command`, `args`, `extra_args`,
 #'   `command_string`, `execution_command`, `execution_args`, `uses_shell`,
-#'   `status`, and `paths`.
+#'   `env`, `status`, and `paths`.
 #'
 #' @examples
 #' res <- run_wf_amplicon(
@@ -65,6 +71,8 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
                             workflow = "julibeg/wf-amplicon",
                             nextflow = "nextflow",
                             extra_args = NULL,
+                            syntax_parser = "v1",
+                            nextflow_env = NULL,
                             dry_run = FALSE,
                             echo = TRUE,
                             wait = TRUE,
@@ -98,6 +106,10 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
   if (!is.null(extra_args)) {
     check_scalar_character(extra_args, "extra_args")
   }
+  if (!is.null(syntax_parser)) {
+    check_scalar_character(syntax_parser, "syntax_parser")
+  }
+  nextflow_env <- build_nextflow_env(syntax_parser, nextflow_env)
 
   args <- c(
     "run", workflow,
@@ -138,6 +150,9 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
   }
 
   if (isTRUE(echo)) {
+    if (length(nextflow_env) > 0L) {
+      message(paste(nextflow_env, collapse = " "))
+    }
     message(command_string)
   }
 
@@ -150,6 +165,7 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
       execution_command = execution_command,
       execution_args = execution_args,
       uses_shell = uses_shell,
+      env = nextflow_env,
       status = NA_integer_,
       paths = paths
     )))
@@ -164,6 +180,7 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
   status <- system2(
     command = execution_command,
     args = execution_args,
+    env = nextflow_env,
     stdout = stdout,
     stderr = stderr,
     wait = wait
@@ -181,6 +198,7 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
     execution_command = execution_command,
     execution_args = execution_args,
     uses_shell = uses_shell,
+    env = nextflow_env,
     shell_script = shell_script,
     status = status,
     paths = paths
@@ -203,4 +221,25 @@ validate_nonnegative_number <- function(x, name) {
   }
 
   x
+}
+
+build_nextflow_env <- function(syntax_parser, nextflow_env) {
+  env <- character()
+
+  if (!is.null(syntax_parser)) {
+    env <- c(env, paste0("NXF_SYNTAX_PARSER=", syntax_parser))
+  }
+
+  if (!is.null(nextflow_env)) {
+    if (!is.character(nextflow_env) || anyNA(nextflow_env) ||
+        any(!nzchar(nextflow_env)) ||
+        any(!grepl("^[A-Za-z_][A-Za-z0-9_]*=", nextflow_env))) {
+      stop("`nextflow_env` must be a character vector formatted as `NAME=value`.",
+           call. = FALSE)
+    }
+    env <- c(env, nextflow_env)
+  }
+
+  env_names <- sub("=.*", "", env)
+  env[!duplicated(env_names, fromLast = TRUE)]
 }

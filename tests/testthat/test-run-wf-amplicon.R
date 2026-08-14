@@ -5,6 +5,7 @@ test_that("run_wf_amplicon builds the default Nextflow command", {
   expect_equal(res$execution_command, "nextflow")
   expect_equal(res$execution_args, res$args)
   expect_false(res$uses_shell)
+  expect_equal(res$env, "NXF_SYNTAX_PARSER=v1")
   expect_equal(res$status, NA_integer_)
   expect_true(any(res$args == "julibeg/wf-amplicon"))
   expect_true(any(res$args == "--fastq"))
@@ -39,6 +40,26 @@ test_that("run_wf_amplicon appends raw extra arguments", {
   expect_match(res$command_string, "--threads 16 --custom_param 'raw value'", fixed = TRUE)
 })
 
+test_that("run_wf_amplicon can override Nextflow environment", {
+  res <- run_wf_amplicon(
+    syntax_parser = NULL,
+    nextflow_env = c("NXF_OFFLINE=true", "NXF_ANSI_LOG=false"),
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_equal(res$env, c("NXF_OFFLINE=true", "NXF_ANSI_LOG=false"))
+
+  res2 <- run_wf_amplicon(
+    syntax_parser = "v1",
+    nextflow_env = "NXF_SYNTAX_PARSER=v2",
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_equal(res2$env, "NXF_SYNTAX_PARSER=v2")
+})
+
 test_that("run_wf_amplicon validates numeric arguments", {
   expect_error(
     run_wf_amplicon(
@@ -56,5 +77,9 @@ test_that("run_wf_amplicon validates numeric arguments", {
   expect_error(
     run_wf_amplicon(min_read_qual = -1, dry_run = TRUE, echo = FALSE),
     "min_read_qual"
+  )
+  expect_error(
+    run_wf_amplicon(nextflow_env = "bad-env", dry_run = TRUE, echo = FALSE),
+    "nextflow_env"
   )
 })

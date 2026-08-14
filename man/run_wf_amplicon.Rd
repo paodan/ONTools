@@ -18,6 +18,8 @@ run_wf_amplicon(
   workflow = "julibeg/wf-amplicon",
   nextflow = "nextflow",
   extra_args = NULL,
+  syntax_parser = "v1",
+  nextflow_env = NULL,
   dry_run = FALSE,
   echo = TRUE,
   wait = TRUE,
@@ -56,6 +58,14 @@ run_wf_amplicon(
 arguments. Use this for additional wf-amplicon parameters exactly as you
 would type them in the shell.}
 
+\item{syntax_parser}{Nextflow syntax parser version passed as the
+\code{NXF_SYNTAX_PARSER} environment variable. Defaults to \code{"v1"} because
+\code{julibeg/wf-amplicon} currently uses legacy Nextflow syntax that can fail
+with newer Nextflow releases. Use \code{NULL} to leave the environment unchanged.}
+
+\item{nextflow_env}{Optional character vector of additional environment
+variables passed to \code{\link[=system2]{system2()}}, formatted as \code{"NAME=value"}.}
+
 \item{dry_run}{Logical. If \code{TRUE}, return the command without running it.}
 
 \item{echo}{Logical. If \code{TRUE}, print the command before execution.}
@@ -69,7 +79,7 @@ console.}
 \value{
 Invisibly returns a list with \code{command}, \code{args}, \code{extra_args},
 \code{command_string}, \code{execution_command}, \code{execution_args}, \code{uses_shell},
-\code{status}, and \code{paths}.
+\code{env}, \code{status}, and \code{paths}.
 }
 \description{
 \code{run_wf_amplicon()} is an R wrapper around \verb{nextflow run julibeg/wf-amplicon} for ONT amplicon consensus analysis. Common parameters
