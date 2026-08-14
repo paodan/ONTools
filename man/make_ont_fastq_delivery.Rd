@@ -12,6 +12,7 @@ make_ont_fastq_delivery(
   threads = 8,
   run_nanoplot = TRUE,
   run_multiqc = TRUE,
+  overwrite = FALSE,
   script = NULL,
   bash = "bash",
   dry_run = FALSE,
@@ -41,6 +42,11 @@ file. Set to \code{FALSE} to pass \code{--skip-nanoplot}.}
 
 \item{run_multiqc}{Logical. If \code{TRUE}, run MultiQC on the QC output
 directory. Set to \code{FALSE} to pass \code{--skip-multiqc}.}
+
+\item{overwrite}{Logical. If \code{TRUE}, remove an existing
+\verb{<output>/<project>_delivery/} directory or
+\verb{<output>/<project>_delivery.tar.gz} archive before rebuilding. Defaults to
+\code{FALSE} to protect existing delivery packages.}
 
 \item{script}{Path to the shell script. Defaults to the script bundled with
 ONTools.}

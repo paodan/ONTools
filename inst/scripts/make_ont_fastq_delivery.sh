@@ -10,6 +10,7 @@ Usage:
     --project PROJECT_ID \
     [--sample-sheet /path/to/sample_sheet.xlsx|csv|tsv] \
     [--threads 8] \
+    [--overwrite] \
     [--skip-nanoplot] \
     [--skip-multiqc]
 
@@ -90,6 +91,7 @@ SAMPLE_SHEET=""
 THREADS=8
 RUN_NANOPLOT=1
 RUN_MULTIQC=1
+OVERWRITE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -112,6 +114,10 @@ while [[ $# -gt 0 ]]; do
     --threads)
       THREADS="${2:-}"
       shift 2
+      ;;
+    --overwrite)
+      OVERWRITE=1
+      shift
       ;;
     --skip-nanoplot)
       RUN_NANOPLOT=0
@@ -160,7 +166,12 @@ DELIVERY_DIR="$OUTPUT_ROOT/${PROJECT_ID}_delivery"
 ARCHIVE="$OUTPUT_ROOT/${PROJECT_ID}_delivery.tar.gz"
 
 if [[ -e "$DELIVERY_DIR" || -e "$ARCHIVE" ]]; then
-  die "Output already exists. Remove it first or choose another --project/--output: $DELIVERY_DIR"
+  if [[ "$OVERWRITE" -eq 1 ]]; then
+    log "Removing existing output because --overwrite was supplied."
+    rm -rf "$DELIVERY_DIR" "$ARCHIVE"
+  else
+    die "Output already exists. Remove it first or choose another --project/--output: $DELIVERY_DIR"
+  fi
 fi
 
 mkdir -p \

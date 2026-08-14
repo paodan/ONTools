@@ -20,6 +20,10 @@
 #'   file. Set to `FALSE` to pass `--skip-nanoplot`.
 #' @param run_multiqc Logical. If `TRUE`, run MultiQC on the QC output
 #'   directory. Set to `FALSE` to pass `--skip-multiqc`.
+#' @param overwrite Logical. If `TRUE`, remove an existing
+#'   `<output>/<project>_delivery/` directory or
+#'   `<output>/<project>_delivery.tar.gz` archive before rebuilding. Defaults to
+#'   `FALSE` to protect existing delivery packages.
 #' @param script Path to the shell script. Defaults to the script bundled with
 #'   ONTools.
 #' @param bash Bash executable used to run `script`.
@@ -86,6 +90,7 @@ make_ont_fastq_delivery <- function(input,
                                     threads = 8,
                                     run_nanoplot = TRUE,
                                     run_multiqc = TRUE,
+                                    overwrite = FALSE,
                                     script = NULL,
                                     bash = "bash",
                                     dry_run = FALSE,
@@ -99,6 +104,7 @@ make_ont_fastq_delivery <- function(input,
   check_scalar_character(bash, "bash")
   check_logical_scalar(run_nanoplot, "run_nanoplot")
   check_logical_scalar(run_multiqc, "run_multiqc")
+  check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   check_logical_scalar(wait, "wait")
@@ -135,6 +141,9 @@ make_ont_fastq_delivery <- function(input,
 
   if (!is.null(sample_sheet)) {
     args <- c(args, "--sample-sheet", sample_sheet)
+  }
+  if (isTRUE(overwrite)) {
+    args <- c(args, "--overwrite")
   }
   if (!isTRUE(run_nanoplot)) {
     args <- c(args, "--skip-nanoplot")

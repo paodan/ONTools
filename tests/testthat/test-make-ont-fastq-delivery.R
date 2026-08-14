@@ -15,6 +15,7 @@ test_that("make_ont_fastq_delivery builds the default command", {
     threads = 4,
     run_nanoplot = FALSE,
     run_multiqc = FALSE,
+    overwrite = TRUE,
     dry_run = TRUE,
     echo = FALSE
   )
@@ -31,6 +32,7 @@ test_that("make_ont_fastq_delivery builds the default command", {
   expect_true(any(res$args == "4"))
   expect_true(any(res$args == "--sample-sheet"))
   expect_true(any(res$args == normalizePath(sample_sheet)))
+  expect_true(any(res$args == "--overwrite"))
   expect_true(any(res$args == "--skip-nanoplot"))
   expect_true(any(res$args == "--skip-multiqc"))
   expect_match(res$command_string, "make_ont_fastq_delivery.sh", fixed = TRUE)
@@ -70,6 +72,17 @@ test_that("make_ont_fastq_delivery validates arguments", {
       input = fastq_dir,
       output = output_dir,
       project = "PROJECT001",
+      overwrite = "yes",
+      dry_run = TRUE,
+      echo = FALSE
+    ),
+    "overwrite"
+  )
+  expect_error(
+    make_ont_fastq_delivery(
+      input = fastq_dir,
+      output = output_dir,
+      project = "PROJECT001",
       sample_sheet = file.path(output_dir, "missing.csv"),
       dry_run = TRUE,
       echo = FALSE
@@ -85,6 +98,9 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
   dir.create(fastq_dir)
   dir.create(output_dir)
   dir.create(fake_bin)
+  dir.create(file.path(output_dir, "PROJECT001_delivery"))
+  writeLines("stale", file.path(output_dir, "PROJECT001_delivery", "stale.txt"))
+  writeLines("stale", file.path(output_dir, "PROJECT001_delivery.tar.gz"))
 
   writeLines(c("@read1", "ACGT", "+", "!!!!"), file.path(fastq_dir, "barcode01.fastq"))
   writeLines(c("@read1", "TGCA", "+", "!!!!"), file.path(fastq_dir, "barcode02.fastq"))
@@ -149,6 +165,7 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
     output = output_dir,
     project = "PROJECT001",
     script = system.file("scripts", "make_ont_fastq_delivery.sh", package = "ONTools"),
+    overwrite = TRUE,
     echo = FALSE,
     stdout = FALSE,
     stderr = FALSE
@@ -172,6 +189,7 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
 
   expect_equal(multiqc_inputs, c("barcode01_NanoStats.txt", "barcode02_NanoStats.txt"))
   expect_equal(fastq_stats$file, c("01_fastq/barcode01.fastq", "01_fastq/barcode02.fastq"))
+  expect_false(file.exists(file.path(output_dir, "PROJECT001_delivery", "stale.txt")))
   expect_false(dir.exists(file.path(
     output_dir,
     "PROJECT001_delivery",
