@@ -158,8 +158,18 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
     "02_qc_report",
     "multiqc_input_files.txt"
   ))
+  fastq_stats <- utils::read.delim(
+    file.path(
+      output_dir,
+      "PROJECT001_delivery",
+      "02_qc_report",
+      "fastq_stats.tsv"
+    ),
+    check.names = FALSE
+  )
 
   expect_equal(multiqc_inputs, c("barcode01_NanoStats.txt", "barcode02_NanoStats.txt"))
+  expect_equal(fastq_stats$file, c("01_fastq/barcode01.fastq", "01_fastq/barcode02.fastq"))
   expect_false(dir.exists(file.path(
     output_dir,
     "PROJECT001_delivery",

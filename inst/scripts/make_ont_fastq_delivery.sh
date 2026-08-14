@@ -203,7 +203,10 @@ while IFS= read -r fastq; do
 done < "$FASTQ_LIST"
 
 log "Generating seqkit statistics."
-seqkit stats -a -T "$DELIVERY_DIR"/01_fastq/*.f*q* > "$DELIVERY_DIR/02_qc_report/fastq_stats.tsv"
+(
+  cd "$DELIVERY_DIR"
+  seqkit stats -a -T 01_fastq/*.f*q* > 02_qc_report/fastq_stats.tsv
+)
 
 if [[ "$RUN_NANOPLOT" -eq 1 ]]; then
   log "Generating NanoPlot reports."
