@@ -67,7 +67,8 @@ asynchronously.}
 console.}
 }
 \value{
-Invisibly returns a list with \code{command}, \code{args}, \code{command_string},
+Invisibly returns a list with \code{command}, \code{args}, \code{extra_args},
+\code{command_string}, \code{execution_command}, \code{execution_args}, \code{uses_shell},
 \code{status}, and \code{paths}.
 }
 \description{

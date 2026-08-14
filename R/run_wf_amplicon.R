@@ -29,7 +29,8 @@
 #' @param stdout,stderr Passed to [system2()]. Defaults stream output to the R
 #'   console.
 #'
-#' @return Invisibly returns a list with `command`, `args`, `command_string`,
+#' @return Invisibly returns a list with `command`, `args`, `extra_args`,
+#'   `command_string`, `execution_command`, `execution_args`, `uses_shell`,
 #'   `status`, and `paths`.
 #'
 #' @examples
@@ -126,6 +127,16 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
     out_dir = out_dir
   )
 
+  uses_shell <- !is.null(extra_args)
+  execution_command <- nextflow
+  execution_args <- args
+  shell_script <- NULL
+
+  if (isTRUE(uses_shell)) {
+    execution_command <- "sh"
+    execution_args <- "<temporary shell script>"
+  }
+
   if (isTRUE(echo)) {
     message(command_string)
   }
@@ -136,14 +147,23 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
       args = args,
       extra_args = extra_args,
       command_string = command_string,
+      execution_command = execution_command,
+      execution_args = execution_args,
+      uses_shell = uses_shell,
       status = NA_integer_,
       paths = paths
     )))
   }
 
+  if (isTRUE(uses_shell)) {
+    shell_script <- tempfile("run_wf_amplicon_", fileext = ".sh")
+    writeLines(c("#!/bin/sh", "set -e", command_string), shell_script)
+    execution_args <- shell_script
+  }
+
   status <- system2(
-    command = "sh",
-    args = c("-c", command_string),
+    command = execution_command,
+    args = execution_args,
     stdout = stdout,
     stderr = stderr,
     wait = wait
@@ -158,6 +178,10 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
     args = args,
     extra_args = extra_args,
     command_string = command_string,
+    execution_command = execution_command,
+    execution_args = execution_args,
+    uses_shell = uses_shell,
+    shell_script = shell_script,
     status = status,
     paths = paths
   ))

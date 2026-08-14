@@ -2,6 +2,9 @@ test_that("run_wf_amplicon builds the default Nextflow command", {
   res <- run_wf_amplicon(dry_run = TRUE, echo = FALSE)
 
   expect_equal(res$command, "nextflow")
+  expect_equal(res$execution_command, "nextflow")
+  expect_equal(res$execution_args, res$args)
+  expect_false(res$uses_shell)
   expect_equal(res$status, NA_integer_)
   expect_true(any(res$args == "julibeg/wf-amplicon"))
   expect_true(any(res$args == "--fastq"))
@@ -30,6 +33,9 @@ test_that("run_wf_amplicon appends raw extra arguments", {
 
   expect_false(any(res$args == "-resume"))
   expect_equal(res$extra_args, "--threads 16 --custom_param 'raw value'")
+  expect_equal(res$execution_command, "sh")
+  expect_equal(res$execution_args, "<temporary shell script>")
+  expect_true(res$uses_shell)
   expect_match(res$command_string, "--threads 16 --custom_param 'raw value'", fixed = TRUE)
 })
 
