@@ -44,9 +44,13 @@ asynchronously.}
 console.}
 }
 \value{
-Invisibly returns a list with \code{command}, \code{args}, and \code{status}. In
-\code{dry_run = TRUE}, \code{status} is \code{NA_integer_}. With \code{wait = FALSE}, \code{status}
-is the return value from \code{\link[=system2]{system2()}}.
+Invisibly returns a list with \code{command}, \code{args}, \code{status}, and
+\code{paths}. \code{paths} contains the project directory, \verb{pod5/}, \verb{bam/}, generated
+calls BAM path, demux output directory, and, after a completed run, any
+discovered Dorado run directories, \verb{bam_pass/} directories, and FASTQ output
+directories. In \code{dry_run = TRUE}, \code{status} is \code{NA_integer_}. With
+\code{wait = FALSE}, \code{status} is the return value from \code{\link[=system2]{system2()}} and dynamic
+output directories may not exist yet.
 }
 \description{
 \code{run_dorado_demux_to_fastq()} is an R wrapper around the shell command
