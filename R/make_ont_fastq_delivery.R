@@ -20,6 +20,11 @@
 #'   file. Set to `FALSE` to pass `--skip-nanoplot`.
 #' @param run_multiqc Logical. If `TRUE`, run MultiQC on the QC output
 #'   directory. Set to `FALSE` to pass `--skip-multiqc`.
+#' @param reuse_nanoplot Logical. If `TRUE`, reuse existing per-sample NanoPlot
+#'   reports when `overwrite = TRUE` rebuilds an existing delivery directory.
+#'   A sample is reused when its NanoPlot output directory already contains a
+#'   `*NanoStats.txt` file. Set to `FALSE` to pass `--no-reuse-nanoplot` and
+#'   force NanoPlot to run again for all samples.
 #' @param overwrite Logical. If `TRUE`, remove an existing
 #'   `<output>/<project>_delivery/` directory or
 #'   `<output>/<project>_delivery.tar.gz` archive before rebuilding. Defaults to
@@ -90,6 +95,7 @@ make_ont_fastq_delivery <- function(input,
                                     threads = 8,
                                     run_nanoplot = TRUE,
                                     run_multiqc = TRUE,
+                                    reuse_nanoplot = TRUE,
                                     overwrite = FALSE,
                                     script = NULL,
                                     bash = "bash",
@@ -104,6 +110,7 @@ make_ont_fastq_delivery <- function(input,
   check_scalar_character(bash, "bash")
   check_logical_scalar(run_nanoplot, "run_nanoplot")
   check_logical_scalar(run_multiqc, "run_multiqc")
+  check_logical_scalar(reuse_nanoplot, "reuse_nanoplot")
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
@@ -144,6 +151,9 @@ make_ont_fastq_delivery <- function(input,
   }
   if (isTRUE(overwrite)) {
     args <- c(args, "--overwrite")
+  }
+  if (!isTRUE(reuse_nanoplot)) {
+    args <- c(args, "--no-reuse-nanoplot")
   }
   if (!isTRUE(run_nanoplot)) {
     args <- c(args, "--skip-nanoplot")

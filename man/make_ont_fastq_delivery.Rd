@@ -12,6 +12,7 @@ make_ont_fastq_delivery(
   threads = 8,
   run_nanoplot = TRUE,
   run_multiqc = TRUE,
+  reuse_nanoplot = TRUE,
   overwrite = FALSE,
   script = NULL,
   bash = "bash",
@@ -42,6 +43,12 @@ file. Set to \code{FALSE} to pass \code{--skip-nanoplot}.}
 
 \item{run_multiqc}{Logical. If \code{TRUE}, run MultiQC on the QC output
 directory. Set to \code{FALSE} to pass \code{--skip-multiqc}.}
+
+\item{reuse_nanoplot}{Logical. If \code{TRUE}, reuse existing per-sample NanoPlot
+reports when \code{overwrite = TRUE} rebuilds an existing delivery directory.
+A sample is reused when its NanoPlot output directory already contains a
+\verb{*NanoStats.txt} file. Set to \code{FALSE} to pass \code{--no-reuse-nanoplot} and
+force NanoPlot to run again for all samples.}
 
 \item{overwrite}{Logical. If \code{TRUE}, remove an existing
 \verb{<output>/<project>_delivery/} directory or

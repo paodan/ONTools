@@ -11,6 +11,7 @@ Usage:
     [--sample-sheet /path/to/sample_sheet.xlsx|csv|tsv] \
     [--threads 8] \
     [--overwrite] \
+    [--no-reuse-nanoplot] \
     [--skip-nanoplot] \
     [--skip-multiqc]
 
@@ -92,6 +93,15 @@ THREADS=8
 RUN_NANOPLOT=1
 RUN_MULTIQC=1
 OVERWRITE=0
+REUSE_NANOPLOT=1
+FASTQ_LIST=""
+PRESERVED_NANOPLOT_DIR=""
+
+cleanup() {
+  [[ -n "${FASTQ_LIST:-}" ]] && rm -f "$FASTQ_LIST"
+  [[ -n "${PRESERVED_NANOPLOT_DIR:-}" ]] && rm -rf "$PRESERVED_NANOPLOT_DIR"
+}
+trap cleanup EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -117,6 +127,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --overwrite)
       OVERWRITE=1
+      shift
+      ;;
+    --no-reuse-nanoplot)
+      REUSE_NANOPLOT=0
       shift
       ;;
     --skip-nanoplot)
@@ -167,6 +181,11 @@ ARCHIVE="$OUTPUT_ROOT/${PROJECT_ID}_delivery.tar.gz"
 
 if [[ -e "$DELIVERY_DIR" || -e "$ARCHIVE" ]]; then
   if [[ "$OVERWRITE" -eq 1 ]]; then
+    if [[ "$RUN_NANOPLOT" -eq 1 && "$REUSE_NANOPLOT" -eq 1 && -d "$DELIVERY_DIR/02_qc_report/nanoplot" ]]; then
+      PRESERVED_NANOPLOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/make_ont_fastq_delivery_nanoplot.XXXXXX")"
+      log "Preserving existing NanoPlot reports for reuse."
+      cp -pR "$DELIVERY_DIR/02_qc_report/nanoplot/." "$PRESERVED_NANOPLOT_DIR/"
+    fi
     log "Removing existing output because --overwrite was supplied."
     rm -rf "$DELIVERY_DIR" "$ARCHIVE"
   else
@@ -180,8 +199,12 @@ mkdir -p \
   "$DELIVERY_DIR/02_qc_report/nanoplot" \
   "$DELIVERY_DIR/03_md5"
 
+if [[ -n "$PRESERVED_NANOPLOT_DIR" ]]; then
+  cp -pR "$PRESERVED_NANOPLOT_DIR/." "$DELIVERY_DIR/02_qc_report/nanoplot/"
+fi
+
 log "Collecting FASTQ files from: $INPUT_DIR"
-FASTQ_LIST="$DELIVERY_DIR/02_qc_report/fastq_files.txt"
+FASTQ_LIST="$(mktemp "${TMPDIR:-/tmp}/make_ont_fastq_delivery_fastq_list.XXXXXX")"
 find "$INPUT_DIR" -type f \( \
   -name '*.fastq' -o -name '*.fq' -o \
   -name '*.fastq.gz' -o -name '*.fq.gz' \
@@ -228,6 +251,10 @@ if [[ "$RUN_NANOPLOT" -eq 1 ]]; then
     sample="${sample%.fq}"
     sample_out="$DELIVERY_DIR/02_qc_report/nanoplot/$sample"
     mkdir -p "$sample_out"
+    if [[ "$REUSE_NANOPLOT" -eq 1 ]] && find "$sample_out" -maxdepth 1 -type f -name '*NanoStats.txt' | grep -q .; then
+      log "Reusing existing NanoPlot report for: $sample"
+      continue
+    fi
     NanoPlot \
       --fastq "$delivered_fastq" \
       --outdir "$sample_out" \
