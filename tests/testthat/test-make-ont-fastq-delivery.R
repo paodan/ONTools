@@ -77,3 +77,93 @@ test_that("make_ont_fastq_delivery validates arguments", {
     "sample_sheet"
   )
 })
+
+test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
+  fastq_dir <- tempfile("ont-fastq-")
+  output_dir <- tempfile("ont-delivery-")
+  fake_bin <- tempfile("ont-delivery-bin-")
+  dir.create(fastq_dir)
+  dir.create(output_dir)
+  dir.create(fake_bin)
+
+  writeLines(c("@read1", "ACGT", "+", "!!!!"), file.path(fastq_dir, "barcode01.fastq"))
+  writeLines(c("@read1", "TGCA", "+", "!!!!"), file.path(fastq_dir, "barcode02.fastq"))
+
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "printf 'file\\tformat\\ttype\\tnum_seqs\\tsum_len\\n'",
+      "for f in \"$@\"; do",
+      "  case \"$f\" in",
+      "    --*) ;;",
+      "    *) [[ -f \"$f\" ]] && printf '%s\\tFASTQ\\tDNA\\t1\\t4\\n' \"$f\" ;;",
+      "  esac",
+      "done"
+    ),
+    file.path(fake_bin, "seqkit")
+  )
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "outdir=''",
+      "while [[ $# -gt 0 ]]; do",
+      "  case \"$1\" in",
+      "    --outdir) outdir=\"$2\"; shift 2 ;;",
+      "    *) shift ;;",
+      "  esac",
+      "done",
+      "mkdir -p \"$outdir\"",
+      "printf 'metric\\tvalue\\nreads\\t1\\n' > \"$outdir/NanoStats.txt\""
+    ),
+    file.path(fake_bin, "NanoPlot")
+  )
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "input=\"$1\"",
+      "outdir=''",
+      "filename='multiqc_report.html'",
+      "while [[ $# -gt 0 ]]; do",
+      "  case \"$1\" in",
+      "    --outdir|-o) outdir=\"$2\"; shift 2 ;;",
+      "    --filename) filename=\"$2\"; shift 2 ;;",
+      "    *) shift ;;",
+      "  esac",
+      "done",
+      "mkdir -p \"$outdir/multiqc_data\"",
+      "find \"$input\" -type f -name '*_NanoStats.txt' -exec basename {} \\; | sort > \"$outdir/multiqc_input_files.txt\"",
+      "printf '<html></html>\\n' > \"$outdir/$filename\""
+    ),
+    file.path(fake_bin, "multiqc")
+  )
+  Sys.chmod(file.path(fake_bin, c("seqkit", "NanoPlot", "multiqc")), mode = "0755")
+
+  old_path <- Sys.getenv("PATH")
+  on.exit(Sys.setenv(PATH = old_path), add = TRUE)
+  Sys.setenv(PATH = paste(fake_bin, old_path, sep = .Platform$path.sep))
+
+  make_ont_fastq_delivery(
+    input = fastq_dir,
+    output = output_dir,
+    project = "PROJECT001",
+    script = system.file("scripts", "make_ont_fastq_delivery.sh", package = "ONTools"),
+    echo = FALSE,
+    stdout = FALSE,
+    stderr = FALSE
+  )
+
+  multiqc_inputs <- readLines(file.path(
+    output_dir,
+    "PROJECT001_delivery",
+    "02_qc_report",
+    "multiqc_input_files.txt"
+  ))
+
+  expect_equal(multiqc_inputs, c("barcode01_NanoStats.txt", "barcode02_NanoStats.txt"))
+  expect_false(dir.exists(file.path(
+    output_dir,
+    "PROJECT001_delivery",
+    "02_qc_report",
+    "nanoplot_for_multiqc"
+  )))
+})
