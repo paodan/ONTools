@@ -324,6 +324,29 @@ Notes:
   MD5 checksums can be used to verify file integrity after transfer.
 EOF
 
+cat > "$DELIVERY_DIR/README.zh-CN.txt" <<EOF
+项目：${PROJECT_ID}
+交付包生成时间：$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+本交付包包含已拆分样本的 Oxford Nanopore FASTQ 文件和交付级质量控制结果。
+
+目录内容：
+  00_sample_sheet/  样本表或 barcode/样本对应信息（如提供）。
+  01_fastq/         已拆分样本的 FASTQ 文件。文件仅复制到交付目录，未进行过滤、重命名或序列内容修改。
+  02_qc_report/     FASTQ 基础统计和质量控制报告。
+  03_md5/           交付 FASTQ 文件的 MD5 校验值。
+
+质控内容：
+  fastq_stats.tsv       由 seqkit stats 生成的 FASTQ 统计表，包括 reads 数量、总碱基数、reads 长度和质量值等信息。
+  nanoplot/             每个样本的 NanoPlot 报告（如果启用了 NanoPlot）。
+  multiqc_report.html   汇总的 MultiQC 报告（如果启用了 MultiQC）。NanoPlot 统计文件会先按样本名重命名，再用于 MultiQC 汇总。
+  multiqc_data/         MultiQC 报告使用的结果表格（如果启用了 MultiQC）。
+
+说明：
+  本交付包未进行下游比对、物种分类、共识序列生成或生物学解释。
+  MD5 校验值可用于数据传输后的文件完整性验证。
+EOF
+
 log "Writing MD5 checksums."
 md5_write "$DELIVERY_DIR/01_fastq" "$DELIVERY_DIR/03_md5/md5.txt"
 

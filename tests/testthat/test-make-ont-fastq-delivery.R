@@ -213,9 +213,17 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
     ),
     check.names = FALSE
   )
+  readme_zh <- readLines(file.path(
+    output_dir,
+    "PROJECT001_delivery",
+    "README.zh-CN.txt"
+  ))
 
   expect_equal(multiqc_inputs, c("barcode01_NanoStats.txt", "barcode02_NanoStats.txt"))
   expect_equal(fastq_stats$file, c("01_fastq/barcode01.fastq", "01_fastq/barcode02.fastq"))
+  expect_true(any(grepl("项目：PROJECT001", readme_zh, fixed = TRUE)))
+  expect_true(any(grepl("01_fastq/", readme_zh, fixed = TRUE)))
+  expect_true(any(grepl("MD5 校验值", readme_zh, fixed = TRUE)))
   expect_equal(
     readLines(file.path(
       output_dir,
