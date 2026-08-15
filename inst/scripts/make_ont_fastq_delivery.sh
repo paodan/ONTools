@@ -100,6 +100,7 @@ PRESERVED_NANOPLOT_DIR=""
 cleanup() {
   [[ -n "${FASTQ_LIST:-}" ]] && rm -f "$FASTQ_LIST"
   [[ -n "${PRESERVED_NANOPLOT_DIR:-}" ]] && rm -rf "$PRESERVED_NANOPLOT_DIR"
+  return 0
 }
 trap cleanup EXIT
 
