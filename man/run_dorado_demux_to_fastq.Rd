@@ -10,6 +10,7 @@ run_dorado_demux_to_fastq(
   model = "sup",
   demux_out = NULL,
   fastq_out = "fastq_pass_trim",
+  barcode_both_ends = TRUE,
   command = "run_dorado_demux_to_fastq",
   dry_run = FALSE,
   echo = TRUE,
@@ -30,6 +31,10 @@ shell script uses its default: \verb{demux_out_<kit_name>}.}
 
 \item{fastq_out}{FASTQ output directory name created inside each
 Dorado-generated run directory.}
+
+\item{barcode_both_ends}{Logical. If \code{TRUE}, the wrapped shell script passes
+\code{--barcode-both-ends} to \code{dorado demux}. If \code{FALSE}, the shell script omits
+that dorado option.}
 
 \item{command}{Shell command or executable path for \code{run_dorado_demux_to_fastq}.}
 

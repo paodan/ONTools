@@ -16,6 +16,9 @@
 #'   shell script uses its default: `demux_out_<kit_name>`.
 #' @param fastq_out FASTQ output directory name created inside each
 #'   Dorado-generated run directory.
+#' @param barcode_both_ends Logical. If `TRUE`, the wrapped shell script passes
+#'   `--barcode-both-ends` to `dorado demux`. If `FALSE`, the shell script omits
+#'   that dorado option.
 #' @param command Shell command or executable path for `run_dorado_demux_to_fastq`.
 #' @param dry_run Logical. If `TRUE`, return the command without running it.
 #' @param echo Logical. If `TRUE`, print the command before execution.
@@ -50,6 +53,7 @@ run_dorado_demux_to_fastq <- function(proj,
                                       model = "sup",
                                       demux_out = NULL,
                                       fastq_out = "fastq_pass_trim",
+                                      barcode_both_ends = TRUE,
                                       command = "run_dorado_demux_to_fastq",
                                       dry_run = FALSE,
                                       echo = TRUE,
@@ -60,6 +64,7 @@ run_dorado_demux_to_fastq <- function(proj,
   check_scalar_character(kit_name, "kit_name")
   check_scalar_character(model, "model")
   check_scalar_character(fastq_out, "fastq_out")
+  check_logical_scalar(barcode_both_ends, "barcode_both_ends")
   check_scalar_character(command, "command")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
@@ -94,6 +99,10 @@ run_dorado_demux_to_fastq <- function(proj,
     "--model", model,
     "--fastq-out", fastq_out
   )
+
+  if (isTRUE(barcode_both_ends)) {
+    args <- c(args, "--barcode-both-ends")
+  }
 
   if (!is.null(demux_out)) {
     args <- c(args, "--demux-out", demux_out)

@@ -38,6 +38,10 @@ Options:
       FASTQ output directory name created inside each Dorado run directory.
       Default: fastq_pass_trim
 
+  --barcode-both-ends
+      Require barcodes to be detected at both read ends during dorado demux.
+      Default: disabled; dorado uses its default single-ended barcode behavior.
+
   --wf-out-dir STR
       wf-amplicon output directory inside each Dorado run directory.
       Default: results/wf_amplicon_denovo
@@ -143,6 +147,7 @@ run_dorado_amplicon_pipeline_end2end() {
     local MODEL="sup"
     local OUT=""
     local FASTQ_OUT="fastq_pass_trim"
+    local BARCODE_BOTH_ENDS=0
 
     local WF_OUT_DIR="results/wf_amplicon_denovo"
     local MIN_READ_LENGTH="1300"
@@ -176,6 +181,10 @@ run_dorado_amplicon_pipeline_end2end() {
             --fastq-out)
                 FASTQ_OUT="$2"
                 shift 2
+                ;;
+            --barcode-both-ends)
+                BARCODE_BOTH_ENDS=1
+                shift
                 ;;
             --wf-out-dir)
                 WF_OUT_DIR="$2"
@@ -259,12 +268,17 @@ run_dorado_amplicon_pipeline_end2end() {
     echo "Detected basecaller config: $BASECALLER_CFG"
 
     echo "Demux: $CALLS_BAM -> $DEMUX_DIR"
-    dorado demux \
-        --kit-name "$KIT_NAME" \
-        --output-dir "$DEMUX_DIR" \
-        --emit-summary \
-        --barcode-both-ends \
-        "$CALLS_BAM"
+    local demux_args=(
+        --kit-name "$KIT_NAME"
+        --output-dir "$DEMUX_DIR"
+        --emit-summary
+    )
+    if [[ "$BARCODE_BOTH_ENDS" -eq 1 ]]; then
+        demux_args+=(--barcode-both-ends)
+    fi
+    demux_args+=("$CALLS_BAM")
+
+    dorado demux "${demux_args[@]}"
 
     echo "Converting BAM files to FASTQ.GZ and running wf-amplicon"
 

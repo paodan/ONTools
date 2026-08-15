@@ -40,6 +40,10 @@ Options:
       FASTQ output directory name created inside each Dorado run directory.
       Default: fastq_pass_trim
 
+  --barcode-both-ends
+      Require barcodes to be detected at both read ends during dorado demux.
+      Default: disabled; dorado uses its default single-ended barcode behavior.
+
   -h, --help
       Show this help message.
 
@@ -77,6 +81,7 @@ run_dorado_demux_to_fastq() {
     local MODEL="sup"
     local OUT=""
     local FASTQ_OUT="fastq_pass_trim"
+    local BARCODE_BOTH_ENDS=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -103,6 +108,10 @@ run_dorado_demux_to_fastq() {
             --fastq-out)
                 FASTQ_OUT="$2"
                 shift 2
+                ;;
+            --barcode-both-ends)
+                BARCODE_BOTH_ENDS=1
+                shift
                 ;;
             *)
                 echo "Error: unknown argument: $1" >&2
@@ -151,12 +160,17 @@ run_dorado_demux_to_fastq() {
     dorado basecaller "$MODEL" "$POD5_DIR/" > "$CALLS_BAM"
 
     echo "Demux: $CALLS_BAM -> $DEMUX_DIR"
-    dorado demux \
-        --kit-name "$KIT_NAME" \
-        --output-dir "$DEMUX_DIR" \
-        --emit-summary \
-        --barcode-both-ends \
-        "$CALLS_BAM"
+    local demux_args=(
+        --kit-name "$KIT_NAME"
+        --output-dir "$DEMUX_DIR"
+        --emit-summary
+    )
+    if [[ "$BARCODE_BOTH_ENDS" -eq 1 ]]; then
+        demux_args+=(--barcode-both-ends)
+    fi
+    demux_args+=("$CALLS_BAM")
+
+    dorado demux "${demux_args[@]}"
 
     echo "Converting BAM files to FASTQ.GZ"
 
