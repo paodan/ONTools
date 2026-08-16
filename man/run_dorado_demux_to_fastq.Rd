@@ -33,7 +33,7 @@ shell script uses its default: \verb{demux_out_<kit_name>}.}
 Dorado-generated run directory.}
 
 \item{barcode_both_ends}{Logical. If \code{TRUE}, the wrapped shell script passes
-\code{--barcode-both-ends} to \code{dorado demux}. If \code{FALSE}, the shell script omits
+\code{--barcode-both-ends} to \verb{dorado demux}. If \code{FALSE}, the shell script omits
 that dorado option.}
 
 \item{command}{Shell command or executable path for \code{run_dorado_demux_to_fastq}.}
