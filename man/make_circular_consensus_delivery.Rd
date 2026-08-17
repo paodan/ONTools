@@ -13,6 +13,10 @@ make_circular_consensus_delivery(
   bam = NULL,
   bai = NULL,
   depth = NULL,
+  variants_vcf = NULL,
+  variants_vcf_index = NULL,
+  variants_af = NULL,
+  variants_af_filtered = NULL,
   assembly_info = NULL,
   flye_log = NULL,
   notes = NULL,
@@ -47,6 +51,18 @@ into \verb{00_metadata/}.}
 \item{bai}{Optional BAM index file to copy into \verb{02_evidence/}.}
 
 \item{depth}{Optional depth file to copy into \verb{02_evidence/}.}
+
+\item{variants_vcf}{Optional variant VCF file, usually \code{variants.vcf.gz},
+to copy into \verb{03_qc/}.}
+
+\item{variants_vcf_index}{Optional variant VCF index file, usually
+\code{variants.vcf.gz.csi}, to copy into \verb{03_qc/}.}
+
+\item{variants_af}{Optional variant allele-frequency table to copy into
+\verb{03_qc/}.}
+
+\item{variants_af_filtered}{Optional filtered variant allele-frequency table,
+for example \code{variants_gt0.05.af.tsv}, to copy into \verb{03_qc/}.}
 
 \item{assembly_info}{Optional Flye \code{assembly_info.txt} file to copy into
 \verb{02_evidence/}.}

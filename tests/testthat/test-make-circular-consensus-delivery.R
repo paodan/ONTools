@@ -5,6 +5,10 @@ test_that("make_circular_consensus_delivery builds the default command", {
   bam <- tempfile(fileext = ".bam")
   bai <- tempfile(fileext = ".bam.bai")
   depth <- tempfile(fileext = ".depth.txt")
+  variants_vcf <- tempfile(fileext = ".vcf.gz")
+  variants_vcf_index <- tempfile(fileext = ".vcf.gz.csi")
+  variants_af <- tempfile(fileext = ".af.tsv")
+  variants_af_filtered <- tempfile(fileext = ".gt0.05.af.tsv")
   assembly_info <- tempfile("assembly_info-")
   flye_log <- tempfile("flye-", fileext = ".log")
   notes <- tempfile("notes-", fileext = ".txt")
@@ -15,6 +19,10 @@ test_that("make_circular_consensus_delivery builds the default command", {
   writeLines("bam", bam)
   writeLines("bai", bai)
   writeLines("depth", depth)
+  writeLines("vcf", variants_vcf)
+  writeLines("vcf index", variants_vcf_index)
+  writeLines("CHROM\tPOS\tREF\tALT\tQUAL\tDP\tAD\tALT_DEPTH\tALT_AF", variants_af)
+  writeLines("CHROM\tPOS\tREF\tALT\tQUAL\tDP\tAD\tALT_DEPTH\tALT_AF", variants_af_filtered)
   writeLines("assembly", assembly_info)
   writeLines("flye log", flye_log)
   writeLines("notes", notes)
@@ -28,6 +36,10 @@ test_that("make_circular_consensus_delivery builds the default command", {
     bam = bam,
     bai = bai,
     depth = depth,
+    variants_vcf = variants_vcf,
+    variants_vcf_index = variants_vcf_index,
+    variants_af = variants_af,
+    variants_af_filtered = variants_af_filtered,
     assembly_info = assembly_info,
     flye_log = flye_log,
     notes = notes,
@@ -54,6 +66,14 @@ test_that("make_circular_consensus_delivery builds the default command", {
   expect_true(any(res$args == normalizePath(bai)))
   expect_true(any(res$args == "--depth"))
   expect_true(any(res$args == normalizePath(depth)))
+  expect_true(any(res$args == "--variants-vcf"))
+  expect_true(any(res$args == normalizePath(variants_vcf)))
+  expect_true(any(res$args == "--variants-vcf-index"))
+  expect_true(any(res$args == normalizePath(variants_vcf_index)))
+  expect_true(any(res$args == "--variants-af"))
+  expect_true(any(res$args == normalizePath(variants_af)))
+  expect_true(any(res$args == "--variants-af-filtered"))
+  expect_true(any(res$args == normalizePath(variants_af_filtered)))
   expect_true(any(res$args == "--assembly-info"))
   expect_true(any(res$args == normalizePath(assembly_info)))
   expect_true(any(res$args == "--flye-log"))
@@ -118,12 +138,22 @@ test_that("make_circular_consensus_delivery builds a delivery package", {
   fake_bin <- tempfile("consensus-delivery-bin-")
   sample_sheet <- tempfile(fileext = ".csv")
   notes <- tempfile(fileext = ".txt")
+  variants_af <- tempfile(fileext = ".af.tsv")
+  variants_af_filtered <- tempfile(fileext = ".gt0.05.af.tsv")
 
   dir.create(output_dir)
   dir.create(fake_bin)
   writeLines(c(">consensus1", "ACGTACGT"), consensus)
   writeLines("sample,barcode\nsampleA,barcode01", sample_sheet)
   writeLines("A short project note.", notes)
+  writeLines(
+    "CHROM\tPOS\tREF\tALT\tQUAL\tDP\tAD\tALT_DEPTH\tALT_AF",
+    variants_af
+  )
+  writeLines(
+    "CHROM\tPOS\tREF\tALT\tQUAL\tDP\tAD\tALT_DEPTH\tALT_AF",
+    variants_af_filtered
+  )
 
   writeLines(
     c(
@@ -150,6 +180,8 @@ test_that("make_circular_consensus_delivery builds a delivery package", {
     project = "PROJECT001",
     sequence_type = "virus",
     sample_sheet = sample_sheet,
+    variants_af = variants_af,
+    variants_af_filtered = variants_af_filtered,
     notes = notes,
     script = system.file(
       "scripts",
@@ -172,6 +204,8 @@ test_that("make_circular_consensus_delivery builds a delivery package", {
   expect_true(file.exists(file.path(delivery_dir, "00_metadata", basename(sample_sheet))))
   expect_true(file.exists(file.path(delivery_dir, "00_metadata", basename(notes))))
   expect_true(file.exists(file.path(delivery_dir, "03_qc", "consensus_stats.tsv")))
+  expect_true(file.exists(file.path(delivery_dir, "03_qc", "variants.af.tsv")))
+  expect_true(file.exists(file.path(delivery_dir, "03_qc", "variants_gt0.05.af.tsv")))
   expect_true(file.exists(file.path(delivery_dir, "04_md5", "md5.txt")))
 
   manifest <- utils::read.delim(file.path(delivery_dir, "manifest.tsv"))
@@ -179,6 +213,8 @@ test_that("make_circular_consensus_delivery builds a delivery package", {
 
   expect_true("consensus_fasta" %in% manifest$label)
   expect_true("consensus_stats" %in% manifest$label)
+  expect_true("variants_af" %in% manifest$label)
+  expect_true("variants_af_filtered" %in% manifest$label)
   expect_true(any(grepl("项目：PROJECT001", readme_zh, fixed = TRUE)))
   expect_true(any(grepl("序列类型：virus", readme_zh, fixed = TRUE)))
 })

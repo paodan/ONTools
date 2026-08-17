@@ -23,6 +23,14 @@
 #' @param bam Optional final alignment BAM file to copy into `02_evidence/`.
 #' @param bai Optional BAM index file to copy into `02_evidence/`.
 #' @param depth Optional depth file to copy into `02_evidence/`.
+#' @param variants_vcf Optional variant VCF file, usually `variants.vcf.gz`,
+#'   to copy into `03_qc/`.
+#' @param variants_vcf_index Optional variant VCF index file, usually
+#'   `variants.vcf.gz.csi`, to copy into `03_qc/`.
+#' @param variants_af Optional variant allele-frequency table to copy into
+#'   `03_qc/`.
+#' @param variants_af_filtered Optional filtered variant allele-frequency table,
+#'   for example `variants_gt0.05.af.tsv`, to copy into `03_qc/`.
 #' @param assembly_info Optional Flye `assembly_info.txt` file to copy into
 #'   `02_evidence/`.
 #' @param flye_log Optional Flye log file to copy into `02_evidence/`.
@@ -89,6 +97,10 @@ make_circular_consensus_delivery <- function(consensus,
                                              bam = NULL,
                                              bai = NULL,
                                              depth = NULL,
+                                             variants_vcf = NULL,
+                                             variants_vcf_index = NULL,
+                                             variants_af = NULL,
+                                             variants_af_filtered = NULL,
                                              assembly_info = NULL,
                                              flye_log = NULL,
                                              notes = NULL,
@@ -116,6 +128,10 @@ make_circular_consensus_delivery <- function(consensus,
     bam = bam,
     bai = bai,
     depth = depth,
+    variants_vcf = variants_vcf,
+    variants_vcf_index = variants_vcf_index,
+    variants_af = variants_af,
+    variants_af_filtered = variants_af_filtered,
     assembly_info = assembly_info,
     flye_log = flye_log,
     notes = notes
@@ -129,7 +145,9 @@ make_circular_consensus_delivery <- function(consensus,
     normalizePath(path, mustWork = TRUE)
   })
   names(optional_files) <- c(
-    "sample_sheet", "bam", "bai", "depth", "assembly_info", "flye_log", "notes"
+    "sample_sheet", "bam", "bai", "depth",
+    "variants_vcf", "variants_vcf_index", "variants_af", "variants_af_filtered",
+    "assembly_info", "flye_log", "notes"
   )
 
   if (is.null(script)) {
@@ -160,6 +178,10 @@ make_circular_consensus_delivery <- function(consensus,
     bam = "--bam",
     bai = "--bai",
     depth = "--depth",
+    variants_vcf = "--variants-vcf",
+    variants_vcf_index = "--variants-vcf-index",
+    variants_af = "--variants-af",
+    variants_af_filtered = "--variants-af-filtered",
     assembly_info = "--assembly-info",
     flye_log = "--flye-log",
     notes = "--notes"
@@ -187,6 +209,10 @@ make_circular_consensus_delivery <- function(consensus,
     bam = optional_files$bam,
     bai = optional_files$bai,
     depth = optional_files$depth,
+    variants_vcf = optional_files$variants_vcf,
+    variants_vcf_index = optional_files$variants_vcf_index,
+    variants_af = optional_files$variants_af,
+    variants_af_filtered = optional_files$variants_af_filtered,
     assembly_info = optional_files$assembly_info,
     flye_log = optional_files$flye_log,
     notes = optional_files$notes
