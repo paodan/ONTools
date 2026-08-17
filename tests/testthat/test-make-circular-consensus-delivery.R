@@ -208,9 +208,11 @@ test_that("make_circular_consensus_delivery builds a delivery package", {
   expect_true(file.exists(file.path(delivery_dir, "03_qc", "variants_gt0.05.af.tsv")))
   expect_true(file.exists(file.path(delivery_dir, "04_md5", "md5.txt")))
 
+  stats <- utils::read.delim(file.path(delivery_dir, "03_qc", "consensus_stats.tsv"))
   manifest <- utils::read.delim(file.path(delivery_dir, "manifest.tsv"))
   readme_zh <- readLines(file.path(delivery_dir, "README.zh-CN.txt"))
 
+  expect_equal(stats$file, "01_consensus/consensus.fasta")
   expect_true("consensus_fasta" %in% manifest$label)
   expect_true("consensus_stats" %in% manifest$label)
   expect_true("variants_af" %in% manifest$label)
