@@ -15,6 +15,7 @@ RoxygenNote: 7.3.3
 Imports:
     BiocGenerics,
     Biostrings,
+    DECIPHER,
     ggplot2,
     pwalign,
     rlang,
