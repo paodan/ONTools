@@ -9,7 +9,7 @@ move_fastq_to_folders(
   sample_info,
   project_col = NULL,
   amplicon_size_col = "Expected_Amplicon_Size_bp",
-  barcode_col = "barcode",
+  barcode_col = "Barcode_ID",
   overwrite = FALSE,
   dry_run = FALSE
 )
@@ -26,7 +26,7 @@ When \code{NULL}, output groups are based only on \code{amplicon_size_col}.}
 \item{amplicon_size_col}{Column in \code{sample_info} identifying expected amplicon
 size or length group.}
 
-\item{barcode_col}{Column in \code{sample_info} identifying barcode folder names.}
+\item{barcode_col}{Column in \code{sample_info} identifying barcode folder names. Default \code{Barcode_ID}.}
 
 \item{overwrite}{Logical. If \code{FALSE}, stop when a destination barcode folder
 already exists.}

@@ -12,7 +12,7 @@
 #'   When `NULL`, output groups are based only on `amplicon_size_col`.
 #' @param amplicon_size_col Column in `sample_info` identifying expected amplicon
 #'   size or length group.
-#' @param barcode_col Column in `sample_info` identifying barcode folder names.
+#' @param barcode_col Column in `sample_info` identifying barcode folder names. Default `Barcode_ID`.
 #' @param overwrite Logical. If `FALSE`, stop when a destination barcode folder
 #'   already exists.
 #' @param dry_run Logical. If `TRUE`, return the move plan without moving files.
@@ -43,7 +43,7 @@ move_fastq_to_folders <- function(fastq_dir,
                                   sample_info,
                                   project_col = NULL,
                                   amplicon_size_col = "Expected_Amplicon_Size_bp",
-                                  barcode_col = "barcode",
+                                  barcode_col = "Barcode_ID",
                                   overwrite = FALSE,
                                   dry_run = FALSE) {
   check_dir_arg(fastq_dir, "fastq_dir")
@@ -70,7 +70,11 @@ move_fastq_to_folders <- function(fastq_dir,
     )
   }
 
-  barcodes <- as.character(sample_info[[barcode_col]])
+  if (barcode_co == "Barcode_ID"){
+    barcodes <- paste0("barcode", gsub(".+-([0-9]+$)","\\1", sample_info[[barcode_col]]))
+  } else {
+    barcodes <- as.character(sample_info[[barcode_col]])
+  }
   amplicon_sizes <- as.character(sample_info[[amplicon_size_col]])
   projects <- if (is.null(project_col)) {
     rep(NA_character_, nrow(sample_info))
