@@ -70,7 +70,7 @@ move_fastq_to_folders <- function(fastq_dir,
     )
   }
 
-  if (barcode_co == "Barcode_ID"){
+  if (barcode_col == "Barcode_ID"){
     barcodes <- paste0("barcode", gsub(".+-([0-9]+$)","\\1", sample_info[[barcode_col]]))
   } else {
     barcodes <- as.character(sample_info[[barcode_col]])
