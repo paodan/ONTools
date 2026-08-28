@@ -3,6 +3,7 @@
 export(align_sanger_with_full_reference)
 export(collect_amplicon_results)
 export(compare_consensus)
+export(dehost_fastq)
 export(export_sanger_alignment_pdf)
 export(get_primers)
 export(igv_snapshot)
