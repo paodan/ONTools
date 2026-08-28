@@ -10,7 +10,10 @@
 #' filtering thresholds should be run separately on the generated FASTQ folders.
 #'
 #' @param proj Project directory containing a `pod5/` subdirectory.
-#' @param kit_name Dorado barcode kit name passed to `--kit-name`.
+#' @param kit_name Dorado barcode kit name passed to `--kit-name`. Use
+#'   `"YS-NB576"` for the ONTools built-in 576-sample custom barcode set; the
+#'   shell script maps this alias to Dorado `--barcode-arrangement` and
+#'   `--barcode-sequences` arguments.
 #' @param model Dorado basecalling model or model alias passed to `--model`.
 #' @param demux_out Demux output directory name under `proj`. If `NULL`, the
 #'   shell script uses its default: `demux_out_<kit_name>`.

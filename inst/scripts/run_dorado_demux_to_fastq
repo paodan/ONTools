@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
+BARCODE_CONFIG_DIR="$PACKAGE_DIR/docs/barcode_configs"
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -25,7 +29,9 @@ Required:
 
 Options:
   --kit-name STR
-      Dorado barcode kit name.
+      Dorado barcode kit name. Use YS-NB576 for the built-in 576-sample
+      custom barcode set, which is passed to dorado demux with
+      --barcode-arrangement and --barcode-sequences.
       Default: EXP-NBD196
 
   --model STR
@@ -161,10 +167,29 @@ run_dorado_demux_to_fastq() {
 
     echo "Demux: $CALLS_BAM -> $DEMUX_DIR"
     local demux_args=(
-        --kit-name "$KIT_NAME"
         --output-dir "$DEMUX_DIR"
         --emit-summary
     )
+    if [[ "$KIT_NAME" == "YS-NB576" ]]; then
+        local BARCODE_ARRANGEMENT="$BARCODE_CONFIG_DIR/yisheng_576.toml"
+        local BARCODE_SEQUENCES="$BARCODE_CONFIG_DIR/yisheng_576.fasta"
+
+        if [[ ! -f "$BARCODE_ARRANGEMENT" ]]; then
+            echo "Error: barcode arrangement file not found for YS-NB576: $BARCODE_ARRANGEMENT" >&2
+            return 1
+        fi
+        if [[ ! -f "$BARCODE_SEQUENCES" ]]; then
+            echo "Error: barcode sequences file not found for YS-NB576: $BARCODE_SEQUENCES" >&2
+            return 1
+        fi
+
+        demux_args+=(
+            --barcode-arrangement "$BARCODE_ARRANGEMENT"
+            --barcode-sequences "$BARCODE_SEQUENCES"
+        )
+    else
+        demux_args+=(--kit-name "$KIT_NAME")
+    fi
     if [[ "$BARCODE_BOTH_ENDS" -eq 1 ]]; then
         demux_args+=(--barcode-both-ends)
     fi
