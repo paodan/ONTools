@@ -1,5 +1,5 @@
 [arrangement]
-name = "yisheng_576"
+name = "YS-NB576"
 first_index = 1
 last_index = 576
 kit = "YS_NB"
@@ -9,4 +9,3 @@ mask2_front = "ATTGCTAAGGTTAA"
 mask2_rear = "CAGCACC"
 barcode1_pattern = "YS_NB-%03i"
 barcode2_pattern = "YS_NB-%03i"
-

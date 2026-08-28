@@ -184,6 +184,7 @@ run_dorado_demux_to_fastq() {
         fi
 
         demux_args+=(
+            --kit-name "$KIT_NAME"
             --barcode-arrangement "$BARCODE_ARRANGEMENT"
             --barcode-sequences "$BARCODE_SEQUENCES"
         )

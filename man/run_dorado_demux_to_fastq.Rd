@@ -24,8 +24,8 @@ run_dorado_demux_to_fastq(
 
 \item{kit_name}{Dorado barcode kit name passed to \code{--kit-name}. Use
 \code{"YS-NB576"} for the ONTools built-in 576-sample custom barcode set; the
-shell script maps this alias to Dorado \code{--barcode-arrangement} and
-\code{--barcode-sequences} arguments.}
+shell script adds Dorado \code{--barcode-arrangement} and
+\code{--barcode-sequences} arguments for this kit.}
 
 \item{model}{Dorado basecalling model or model alias passed to \code{--model}.}
 
