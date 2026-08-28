@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
-BARCODE_CONFIG_DIR="$PACKAGE_DIR/docs/barcode_configs"
+BARCODE_CONFIG_DIR="${ONTOOLS_BARCODE_CONFIG_DIR:-$PACKAGE_DIR/docs/barcode_configs}"
 
 usage() {
     cat <<'EOF'
@@ -49,6 +49,11 @@ Options:
   --barcode-both-ends
       Require barcodes to be detected at both read ends during dorado demux.
       Default: disabled; dorado uses its default single-ended barcode behavior.
+
+Environment:
+  ONTOOLS_BARCODE_CONFIG_DIR
+      Optional directory containing yisheng_576.toml and yisheng_576.fasta.
+      This overrides the package-relative default docs/barcode_configs path.
 
   -h, --help
       Show this help message.

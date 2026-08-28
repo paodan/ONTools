@@ -11,7 +11,7 @@ run_dorado_demux_to_fastq(
   demux_out = NULL,
   fastq_out = "fastq_pass_trim",
   barcode_both_ends = TRUE,
-  command = "run_dorado_demux_to_fastq",
+  command = NULL,
   dry_run = FALSE,
   echo = TRUE,
   wait = TRUE,
@@ -39,7 +39,8 @@ Dorado-generated run directory.}
 \code{--barcode-both-ends} to \verb{dorado demux}. If \code{FALSE}, the shell script omits
 that dorado option.}
 
-\item{command}{Shell command or executable path for \code{run_dorado_demux_to_fastq}.}
+\item{command}{Shell command or executable path for \code{run_dorado_demux_to_fastq}.
+If \code{NULL}, the script bundled with ONTools is used.}
 
 \item{dry_run}{Logical. If \code{TRUE}, return the command without running it.}
 

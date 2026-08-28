@@ -8,6 +8,7 @@ test_that("run_dorado_demux_to_fastq exposes barcode-both-ends control", {
     echo = FALSE
   )
   expect_true("--barcode-both-ends" %in% default_cmd$args)
+  expect_match(default_cmd$command, "run_dorado_demux_to_fastq$")
 
   relaxed_cmd <- run_dorado_demux_to_fastq(
     proj = proj,

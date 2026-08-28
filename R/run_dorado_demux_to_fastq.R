@@ -23,6 +23,7 @@
 #'   `--barcode-both-ends` to `dorado demux`. If `FALSE`, the shell script omits
 #'   that dorado option.
 #' @param command Shell command or executable path for `run_dorado_demux_to_fastq`.
+#'   If `NULL`, the script bundled with ONTools is used.
 #' @param dry_run Logical. If `TRUE`, return the command without running it.
 #' @param echo Logical. If `TRUE`, print the command before execution.
 #' @param wait Logical. Passed to [system2()]. Use `FALSE` to launch the command
@@ -57,7 +58,7 @@ run_dorado_demux_to_fastq <- function(proj,
                                       demux_out = NULL,
                                       fastq_out = "fastq_pass_trim",
                                       barcode_both_ends = TRUE,
-                                      command = "run_dorado_demux_to_fastq",
+                                      command = NULL,
                                       dry_run = FALSE,
                                       echo = TRUE,
                                       wait = TRUE,
@@ -68,10 +69,20 @@ run_dorado_demux_to_fastq <- function(proj,
   check_scalar_character(model, "model")
   check_scalar_character(fastq_out, "fastq_out")
   check_logical_scalar(barcode_both_ends, "barcode_both_ends")
-  check_scalar_character(command, "command")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   check_logical_scalar(wait, "wait")
+
+  if (is.null(command)) {
+    command <- system.file(
+      "scripts",
+      "run_dorado_demux_to_fastq",
+      package = "ONTools",
+      mustWork = TRUE
+    )
+  } else {
+    check_scalar_character(command, "command")
+  }
 
   if (!is.null(demux_out)) {
     check_scalar_character(demux_out, "demux_out")
