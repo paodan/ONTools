@@ -21,6 +21,7 @@ igv_snapshot(
   index = NULL,
   auto_index_fasta = TRUE,
   extra_commands = NULL,
+  snapshot_delay = 1,
   use_xvfb = FALSE,
   dry_run = FALSE,
   quiet = TRUE,
@@ -71,6 +72,11 @@ index with \code{\link[Rsamtools:scanFa]{Rsamtools::indexFa()}} before writing t
 
 \item{extra_commands}{Character vector of additional IGV batch commands added
 after \code{load} and before \code{goto}.}
+
+\item{snapshot_delay}{Optional wait time in seconds inserted before the final
+\code{snapshot} command. This gives IGV time to finish loading tracks and
+applying the final \code{goto} region before exporting the image. Use \code{0} to skip
+the wait.}
 
 \item{use_xvfb}{Logical. If \code{TRUE}, run IGV through \code{xvfb-run -a}, useful on
 headless Linux servers.}

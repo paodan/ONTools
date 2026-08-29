@@ -31,6 +31,10 @@
 #'   index with [Rsamtools::indexFa()] before writing the IGV batch script.
 #' @param extra_commands Character vector of additional IGV batch commands added
 #'   after `load` and before `goto`.
+#' @param snapshot_delay Optional wait time in seconds inserted before the final
+#'   `snapshot` command. This gives IGV time to finish loading tracks and
+#'   applying the final `goto` region before exporting the image. Use `0` to skip
+#'   the wait.
 #' @param use_xvfb Logical. If `TRUE`, run IGV through `xvfb-run -a`, useful on
 #'   headless Linux servers.
 #' @param dry_run Logical. If `TRUE`, write and return the batch script and
@@ -97,6 +101,7 @@ igv_snapshot <- function(genome_fasta,
                          index = NULL,
                          auto_index_fasta = TRUE,
                          extra_commands = NULL,
+                         snapshot_delay = 1,
                          use_xvfb = FALSE,
                          dry_run = FALSE,
                          quiet = TRUE,
@@ -171,6 +176,8 @@ igv_snapshot <- function(genome_fasta,
     stop("`extra_commands` must be a character vector or `NULL`.",
          call. = FALSE)
   }
+
+  snapshot_delay <- validate_nonnegative_number(snapshot_delay, "snapshot_delay")
 
   genome_fasta <- normalizePath(genome_fasta, mustWork = TRUE)
   bam <- normalizePath(bam, mustWork = TRUE)
@@ -250,6 +257,10 @@ igv_snapshot <- function(genome_fasta,
       paste("sort", sort)
     },
     display,
+    paste("goto", locus),
+    if (snapshot_delay > 0) {
+      paste("sleep", snapshot_delay)
+    },
     paste("snapshot", snapshot_name),
     "exit"
   )
