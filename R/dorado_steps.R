@@ -7,6 +7,7 @@
 #' @param model Dorado basecalling model or model alias.
 #' @param output_bam Output BAM file. If `NULL`, writes
 #'   `proj/bam/calls_<model>.bam`.
+#' @param overwrite Logical. If `FALSE`, stop when `output_bam` already exists.
 #' @param dorado Command name or executable path for `dorado`.
 #' @param conda_env Optional conda environment name. If supplied, Dorado is run
 #'   with `conda run -n <conda_env>`.
@@ -22,6 +23,7 @@
 dorado_basecall <- function(proj,
                             model = "sup",
                             output_bam = NULL,
+                            overwrite = TRUE,
                             dorado = "dorado",
                             conda_env = NULL,
                             conda = "conda",
@@ -32,6 +34,7 @@ dorado_basecall <- function(proj,
   check_scalar_character(model, "model")
   check_scalar_character(dorado, "dorado")
   check_scalar_character(conda, "conda")
+  check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
@@ -49,6 +52,10 @@ dorado_basecall <- function(proj,
   }
   dir.create(dirname(output_bam), recursive = TRUE, showWarnings = FALSE)
   output_bam <- normalizePath(output_bam, mustWork = FALSE)
+  if (file.exists(output_bam) && !isTRUE(overwrite)) {
+    stop("`output_bam` already exists and `overwrite` is FALSE: ", output_bam,
+         call. = FALSE)
+  }
 
   args <- c("basecaller", model, paste0(pod5_dir, .Platform$file.sep))
   call <- dehost_fastq_external_call(dorado, args, conda_env, conda)
@@ -76,7 +83,13 @@ dorado_basecall <- function(proj,
 
   status <- system2(call$command, args = call$args, stdout = output_bam, stderr = stderr)
   if (!identical(status, 0L)) {
+    unlink(output_bam)
     stop("dorado basecaller failed with exit status: ", status, call. = FALSE)
+  }
+  if (!file.exists(output_bam) || file.info(output_bam)$size == 0) {
+    unlink(output_bam)
+    stop("dorado basecaller did not create a non-empty BAM: ", output_bam,
+         call. = FALSE)
   }
 
   invisible(list(
@@ -100,6 +113,9 @@ dorado_basecall <- function(proj,
 #'   built-in 576-sample custom barcode set.
 #' @param barcode_both_ends Logical. If `TRUE`, pass `--barcode-both-ends`.
 #' @param emit_summary Logical. If `TRUE`, pass `--emit-summary`.
+#' @param threads Optional thread count passed to `dorado demux --threads`.
+#' @param require_bam_pass Logical. If `TRUE`, stop when no demultiplexed BAM
+#'   files are found under `demux_dir` after Dorado finishes.
 #' @param barcode_config_dir Optional directory containing custom barcode
 #'   configuration files. If `NULL`, uses `ONTOOLS_BARCODE_CONFIG_DIR` or the
 #'   package bundled `docs/barcode_configs` directory.
@@ -115,6 +131,8 @@ dorado_demux_bam <- function(calls_bam,
                              kit_name = "EXP-NBD196",
                              barcode_both_ends = TRUE,
                              emit_summary = TRUE,
+                             threads = NULL,
+                             require_bam_pass = TRUE,
                              barcode_config_dir = NULL,
                              dorado = "dorado",
                              conda_env = NULL,
@@ -129,10 +147,12 @@ dorado_demux_bam <- function(calls_bam,
   check_scalar_character(conda, "conda")
   check_logical_scalar(barcode_both_ends, "barcode_both_ends")
   check_logical_scalar(emit_summary, "emit_summary")
+  check_logical_scalar(require_bam_pass, "require_bam_pass")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
   if (!is.null(barcode_config_dir)) check_dir_arg(barcode_config_dir, "barcode_config_dir")
+  threads <- validate_optional_positive_integer(threads, "threads")
 
   calls_bam <- normalizePath(calls_bam, mustWork = TRUE)
   dir.create(demux_dir, recursive = TRUE, showWarnings = FALSE)
@@ -140,6 +160,7 @@ dorado_demux_bam <- function(calls_bam,
 
   args <- c("demux", "--output-dir", demux_dir)
   if (isTRUE(emit_summary)) args <- c(args, "--emit-summary")
+  if (!is.null(threads)) args <- c(args, "--threads", as.character(threads))
 
   custom_paths <- dorado_custom_barcode_paths(kit_name, barcode_config_dir)
   if (is.null(custom_paths)) {
@@ -186,6 +207,10 @@ dorado_demux_bam <- function(calls_bam,
   if (!identical(status, 0L)) {
     stop("dorado demux failed with exit status: ", status, call. = FALSE)
   }
+  if (isTRUE(require_bam_pass) && !dorado_demux_has_bam_pass(demux_dir)) {
+    stop("dorado demux finished but no BAM files were found under bam_pass/ in: ",
+         demux_dir, call. = FALSE)
+  }
 
   invisible(list(
     status = status,
@@ -194,6 +219,18 @@ dorado_demux_bam <- function(calls_bam,
     command_string = command_string,
     paths = paths,
     conda_env = conda_env
+  ))
+}
+
+dorado_demux_has_bam_pass <- function(demux_dir) {
+  all_dirs <- list.dirs(demux_dir, recursive = TRUE, full.names = TRUE)
+  bam_pass_dirs <- all_dirs[basename(all_dirs) == "bam_pass"]
+  any(vapply(
+    bam_pass_dirs,
+    function(path) {
+      length(list.files(path, pattern = "[.]bam$", recursive = TRUE)) > 0L
+    },
+    logical(1)
   ))
 }
 
@@ -211,6 +248,8 @@ dorado_demux_bam <- function(calls_bam,
 #'   exists.
 #' @param include_unclassified Logical. If `FALSE`, skip `unclassified/` BAM
 #'   folders.
+#' @param allow_empty Logical. If `FALSE`, stop when a converted FASTQ.GZ has no
+#'   FASTQ records.
 #' @param samtools,gzip Command names or executable paths for `samtools` and
 #'   `gzip`.
 #' @inheritParams dorado_basecall
@@ -224,6 +263,7 @@ dorado_bam_to_fastq <- function(demux_dir,
                                 fastq_out = "fastq_pass_trim",
                                 overwrite = TRUE,
                                 include_unclassified = TRUE,
+                                allow_empty = FALSE,
                                 samtools = "samtools",
                                 gzip = "gzip",
                                 conda_env = NULL,
@@ -238,6 +278,7 @@ dorado_bam_to_fastq <- function(demux_dir,
   check_scalar_character(conda, "conda")
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(include_unclassified, "include_unclassified")
+  check_logical_scalar(allow_empty, "allow_empty")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
@@ -304,14 +345,33 @@ dorado_bam_to_fastq <- function(demux_dir,
 
   for (i in seq_len(nrow(conversions))) {
     dir.create(conversions$out_dir[[i]], recursive = TRUE, showWarnings = FALSE)
+    conversion_script <- tempfile(fileext = ".sh")
+    writeLines(
+      c(
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        commands[[i]]
+      ),
+      conversion_script
+    )
+    on.exit(unlink(conversion_script), add = TRUE)
+
     status <- system2(
       "bash",
-      args = c("-c", commands[[i]]),
+      args = conversion_script,
       stderr = stderr
     )
     if (!identical(status, 0L)) {
+      unlink(conversions$output_fastq[[i]])
       stop("BAM to FASTQ conversion failed with exit status: ", status,
            " for ", conversions$barcode[[i]], call. = FALSE)
+    }
+    if (!isTRUE(allow_empty) &&
+        !dorado_fastq_gz_has_record(conversions$output_fastq[[i]])) {
+      unlink(conversions$output_fastq[[i]])
+      stop("Converted FASTQ.GZ is empty or invalid for ",
+           conversions$barcode[[i]], ": ", conversions$output_fastq[[i]],
+           call. = FALSE)
     }
   }
 
@@ -322,6 +382,20 @@ dorado_bam_to_fastq <- function(demux_dir,
     paths = paths,
     conda_env = conda_env
   ))
+}
+
+dorado_fastq_gz_has_record <- function(path) {
+  if (!file.exists(path) || file.info(path)$size == 0) {
+    return(FALSE)
+  }
+
+  con <- gzfile(path, open = "rt")
+  on.exit(close(con), add = TRUE)
+  first <- tryCatch(
+    readLines(con, n = 1L, warn = FALSE),
+    error = function(e) character()
+  )
+  length(first) > 0L && startsWith(first[[1L]], "@")
 }
 
 dorado_custom_barcode_paths <- function(kit_name, barcode_config_dir = NULL) {
@@ -434,11 +508,16 @@ dorado_bam_to_fastq_command <- function(bam_files,
   } else {
     paste(shQuote(conda), "run", "-n", shQuote(conda_env), shQuote(samtools))
   }
-  paste(
+  fastq_commands <- paste(
     samtools_cmd,
     "fastq -n -T '*'",
-    paste(shQuote(bam_files), collapse = " "),
-    "|",
+    shQuote(bam_files)
+  )
+  paste(
+    "set -o pipefail;",
+    "{",
+    paste(fastq_commands, collapse = "; "),
+    "; } |",
     shQuote(gzip),
     "-c >",
     shQuote(output_fastq)

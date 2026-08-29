@@ -9,6 +9,7 @@ dorado_bam_to_fastq(
   fastq_out = "fastq_pass_trim",
   overwrite = TRUE,
   include_unclassified = TRUE,
+  allow_empty = FALSE,
   samtools = "samtools",
   gzip = "gzip",
   conda_env = NULL,
@@ -30,6 +31,9 @@ exists.}
 
 \item{include_unclassified}{Logical. If \code{FALSE}, skip \code{unclassified/} BAM
 folders.}
+
+\item{allow_empty}{Logical. If \code{FALSE}, stop when a converted FASTQ.GZ has no
+FASTQ records.}
 
 \item{samtools, gzip}{Command names or executable paths for \code{samtools} and
 \code{gzip}.}

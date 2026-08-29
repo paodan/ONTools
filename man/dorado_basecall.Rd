@@ -8,6 +8,7 @@ dorado_basecall(
   proj,
   model = "sup",
   output_bam = NULL,
+  overwrite = TRUE,
   dorado = "dorado",
   conda_env = NULL,
   conda = "conda",
@@ -23,6 +24,8 @@ dorado_basecall(
 
 \item{output_bam}{Output BAM file. If \code{NULL}, writes
 \code{proj/bam/calls_<model>.bam}.}
+
+\item{overwrite}{Logical. If \code{FALSE}, stop when \code{output_bam} already exists.}
 
 \item{dorado}{Command name or executable path for \code{dorado}.}
 

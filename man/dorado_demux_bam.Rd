@@ -10,6 +10,8 @@ dorado_demux_bam(
   kit_name = "EXP-NBD196",
   barcode_both_ends = TRUE,
   emit_summary = TRUE,
+  threads = NULL,
+  require_bam_pass = TRUE,
   barcode_config_dir = NULL,
   dorado = "dorado",
   conda_env = NULL,
@@ -30,6 +32,11 @@ built-in 576-sample custom barcode set.}
 \item{barcode_both_ends}{Logical. If \code{TRUE}, pass \code{--barcode-both-ends}.}
 
 \item{emit_summary}{Logical. If \code{TRUE}, pass \code{--emit-summary}.}
+
+\item{threads}{Optional thread count passed to \code{dorado demux --threads}.}
+
+\item{require_bam_pass}{Logical. If \code{TRUE}, stop when no demultiplexed BAM
+files are found under \code{demux_dir} after Dorado finishes.}
 
 \item{barcode_config_dir}{Optional directory containing custom barcode
 configuration files. If \code{NULL}, uses \code{ONTOOLS_BARCODE_CONFIG_DIR} or the
