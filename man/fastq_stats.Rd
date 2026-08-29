@@ -21,7 +21,7 @@ fastq_stats(
 \item{fastq}{Character vector of input FASTQ or FASTQ.GZ files.}
 
 \item{min_lengths}{Optional positive integer vector. For each value, run
-\verb{seqkit seq -m <min_length> <fastq> | seqkit stats -a}.}
+\verb{seqkit seq -m <min_length> <fastq> | seqkit stats -a -T}.}
 
 \item{include_original}{Logical. If \code{TRUE}, also run \code{seqkit stats -a} on the
 unfiltered \code{fastq} files.}
@@ -74,7 +74,7 @@ Q20/Q30 quality, when reported by \code{seqkit stats -a}.}
 Other columns may be present depending on the installed \code{seqkit} version.
 }
 \description{
-\code{fastq_stats()} wraps \code{seqkit stats -a}. It can summarize one or more FASTQ
+\code{fastq_stats()} wraps \code{seqkit stats -a -T}. It can summarize one or more FASTQ
 files directly and optionally summarize temporary \code{seqkit seq -m} filtered
 views without writing filtered FASTQ files.
 }

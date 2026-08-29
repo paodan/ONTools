@@ -1,12 +1,12 @@
 #' Summarize FASTQ files with optional length-filtered views
 #'
-#' `fastq_stats()` wraps `seqkit stats -a`. It can summarize one or more FASTQ
+#' `fastq_stats()` wraps `seqkit stats -a -T`. It can summarize one or more FASTQ
 #' files directly and optionally summarize temporary `seqkit seq -m` filtered
 #' views without writing filtered FASTQ files.
 #'
 #' @param fastq Character vector of input FASTQ or FASTQ.GZ files.
 #' @param min_lengths Optional positive integer vector. For each value, run
-#'   `seqkit seq -m <min_length> <fastq> | seqkit stats -a`.
+#'   `seqkit seq -m <min_length> <fastq> | seqkit stats -a -T`.
 #' @param include_original Logical. If `TRUE`, also run `seqkit stats -a` on the
 #'   unfiltered `fastq` files.
 #' @param output_tsv Optional output TSV file for the combined stats table.
@@ -109,7 +109,7 @@ fastq_stats <- function(fastq,
 
   direct_call <- dehost_fastq_external_call(
     command = seqkit,
-    args = c("stats", "-a", fastq),
+    args = c("stats", "-a", "-T", fastq),
     conda_env = conda_env,
     conda = conda
   )
@@ -123,7 +123,7 @@ fastq_stats <- function(fastq,
   }
   stats_stdin_call <- dehost_fastq_external_call(
     command = seqkit,
-    args = c("stats", "-a"),
+    args = c("stats", "-a", "-T"),
     conda_env = conda_env,
     conda = conda
   )
@@ -230,7 +230,7 @@ fastq_stats <- function(fastq,
     }
   }
 
-  stats <- do.call(rbind, stats_tables)
+  stats <- rbind_fastq_stats_tables(stats_tables)
   stats <- normalize_fastq_stats_table(stats)
   rownames(stats) <- NULL
 
@@ -285,13 +285,16 @@ run_fastq_stats_shell_command <- function(command_string,
 
 parse_fastq_stats_output <- function(stdout, stat_type, source_fastq, min_length) {
   if (length(stdout) == 0L) {
-    table <- data.frame(stringsAsFactors = FALSE)
+    table <- data.frame(file = NA_character_, stringsAsFactors = FALSE)
   } else {
     table <- utils::read.delim(
       text = paste(stdout, collapse = "\n"),
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
+    if (nrow(table) == 0L) {
+      table <- data.frame(file = NA_character_, stringsAsFactors = FALSE)
+    }
   }
 
   cbind(
@@ -301,6 +304,23 @@ parse_fastq_stats_output <- function(stdout, stat_type, source_fastq, min_length
     table,
     stringsAsFactors = FALSE
   )
+}
+
+rbind_fastq_stats_tables <- function(tables) {
+  if (length(tables) == 0L) {
+    return(data.frame(stringsAsFactors = FALSE))
+  }
+
+  all_names <- unique(unlist(lapply(tables, names), use.names = FALSE))
+  tables <- lapply(tables, function(table) {
+    missing_names <- setdiff(all_names, names(table))
+    for (name in missing_names) {
+      table[[name]] <- NA
+    }
+    table[all_names]
+  })
+
+  do.call(rbind, tables)
 }
 
 normalize_fastq_stats_table <- function(stats) {

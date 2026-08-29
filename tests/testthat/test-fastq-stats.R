@@ -13,9 +13,9 @@ test_that("fastq_stats builds direct and length-filtered commands", {
 
   expect_equal(res$status, NA_integer_)
   expect_equal(length(res$commands), 5L)
-  expect_match(res$commands[[1L]], "'seqkit' 'stats' '-a'", fixed = TRUE)
+  expect_match(res$commands[[1L]], "'seqkit' 'stats' '-a' '-T'", fixed = TRUE)
   expect_true(any(grepl("'seqkit' 'seq' '-m' '1000'", res$commands, fixed = TRUE)))
-  expect_true(any(grepl("| 'seqkit' 'stats' '-a'", res$commands, fixed = TRUE)))
+  expect_true(any(grepl("| 'seqkit' 'stats' '-a' '-T'", res$commands, fixed = TRUE)))
   expect_equal(res$command_meta$stat_type, c("original", rep("min_length", 4)))
 })
 
@@ -33,7 +33,7 @@ test_that("fastq_stats dry-run supports conda_env", {
 
   expect_equal(res$conda_env, "ont-tools")
   expect_match(res$commands[[1L]], "'conda' 'run' '-n' 'ont-tools' 'seqkit'", fixed = TRUE)
-  expect_match(res$commands[[2L]], "| 'conda' 'run' '-n' 'ont-tools' 'seqkit' 'stats' '-a'", fixed = TRUE)
+  expect_match(res$commands[[2L]], "| 'conda' 'run' '-n' 'ont-tools' 'seqkit' 'stats' '-a' '-T'", fixed = TRUE)
 })
 
 test_that("fastq_stats parses seqkit stats output", {
@@ -53,12 +53,13 @@ test_that("fastq_stats parses seqkit stats output", {
       "case \"$cmd\" in",
       "  stats)",
       "    printf 'file\\tformat\\ttype\\tnum_seqs\\tsum_len\\tavg_len\\tQ20(%%)\\n'",
-      "    if [[ \"$#\" -eq 1 && \"$1\" == '-a' ]]; then",
+      "    if [[ \"$#\" -eq 2 && \"$1\" == '-a' && \"$2\" == '-T' ]]; then",
       "      cat >/dev/null",
       "      printf 'stdin\\tFASTQ\\tDNA\\t1\\t4\\t4.0\\t100.00\\n'",
       "    else",
       "      for arg in \"$@\"; do",
       "        [[ \"$arg\" == '-a' ]] && continue",
+      "        [[ \"$arg\" == '-T' ]] && continue",
       "        printf '%s\\tFASTQ\\tDNA\\t1,234\\t4,936\\t4.0\\t100.00\\n' \"$arg\"",
       "      done",
       "    fi",
