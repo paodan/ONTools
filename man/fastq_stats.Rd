@@ -52,10 +52,9 @@ input FASTQ. \code{"min_length"} means statistics after temporary
 \verb{seqkit seq -m <min_length>} filtering.}
 \item{min_length}{Minimum read length used for a filtered summary. \code{NA} for
 unfiltered original summaries.}
-\item{source_fastq}{Original FASTQ file used to generate the row. For
-filtered summaries this is the file piped through \code{seqkit seq}.}
 \item{file}{File label reported by \code{seqkit stats}. For piped filtered
-summaries this is usually \code{"stdin"}.}
+summaries, ONTools replaces the temporary file label with the original
+FASTQ path.}
 \item{format}{Detected file format, for example \code{"FASTQ"}.}
 \item{type}{Detected sequence alphabet, for example \code{"DNA"}, \code{"RNA"}, or
 \code{"Protein"}.}

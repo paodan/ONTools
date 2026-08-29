@@ -97,7 +97,8 @@ test_that("fastq_stats parses seqkit stats output", {
   expect_equal(res$stats$sum_len[[1L]], 4936L)
   expect_equal(res$stats$avg_len[[1L]], 4)
   expect_equal(res$stats$q20pct[[1L]], 100)
-  expect_equal(res$stats$source_fastq[[1L]], normalizePath(fastq))
+  expect_false("source_fastq" %in% names(res$stats))
+  expect_equal(res$stats$file[[2L]], normalizePath(fastq))
   expect_true(file.exists(output_tsv))
 })
 

@@ -28,10 +28,9 @@
 #'     `seqkit seq -m <min_length>` filtering.}
 #'   \item{min_length}{Minimum read length used for a filtered summary. `NA` for
 #'     unfiltered original summaries.}
-#'   \item{source_fastq}{Original FASTQ file used to generate the row. For
-#'     filtered summaries this is the file piped through `seqkit seq`.}
 #'   \item{file}{File label reported by `seqkit stats`. For piped filtered
-#'     summaries this is usually `"stdin"`.}
+#'     summaries, ONTools replaces the temporary file label with the original
+#'     FASTQ path.}
 #'   \item{format}{Detected file format, for example `"FASTQ"`.}
 #'   \item{type}{Detected sequence alphabet, for example `"DNA"`, `"RNA"`, or
 #'     `"Protein"`.}
@@ -210,7 +209,6 @@ fastq_stats <- function(fastq,
       args = direct_call$args,
       stderr = stderr,
       stat_type = "original",
-      source_fastq = NA_character_,
       min_length = NA_integer_
     )
   }
@@ -227,7 +225,7 @@ fastq_stats <- function(fastq,
           stats_args = stats_stdin_call$args,
           stderr = stderr,
           stat_type = "min_length",
-          source_fastq = path,
+          file_label = path,
           min_length = min_length
         )
       }
@@ -262,7 +260,6 @@ run_fastq_stats_command <- function(command,
                                     args,
                                     stderr,
                                     stat_type,
-                                    source_fastq,
                                     min_length) {
   stdout <- system2(command, args = args, stdout = TRUE, stderr = stderr)
   status <- attr(stdout, "status")
@@ -270,13 +267,13 @@ run_fastq_stats_command <- function(command,
     stop("seqkit stats failed with exit status: ", status, call. = FALSE)
   }
 
-  parse_fastq_stats_output(stdout, stat_type, source_fastq, min_length)
+  parse_fastq_stats_output(stdout, stat_type, file_label = NULL, min_length)
 }
 
 run_fastq_stats_shell_command <- function(command_string,
                                           stderr,
                                           stat_type,
-                                          source_fastq,
+                                          file_label,
                                           min_length) {
   stdout <- system2("sh", args = c("-c", command_string), stdout = TRUE, stderr = stderr)
   status <- attr(stdout, "status")
@@ -284,7 +281,7 @@ run_fastq_stats_shell_command <- function(command_string,
     stop("seqkit stats pipeline failed with exit status: ", status, call. = FALSE)
   }
 
-  parse_fastq_stats_output(stdout, stat_type, source_fastq, min_length)
+  parse_fastq_stats_output(stdout, stat_type, file_label, min_length)
 }
 
 run_fastq_stats_filtered_command <- function(seq_command,
@@ -293,7 +290,7 @@ run_fastq_stats_filtered_command <- function(seq_command,
                                              stats_args,
                                              stderr,
                                              stat_type,
-                                             source_fastq,
+                                             file_label,
                                              min_length) {
   filtered_fastq <- tempfile("fastq_stats_filtered_", fileext = ".fastq")
   on.exit(unlink(filtered_fastq), add = TRUE)
@@ -319,10 +316,10 @@ run_fastq_stats_filtered_command <- function(seq_command,
     stop("seqkit stats failed with exit status: ", status, call. = FALSE)
   }
 
-  parse_fastq_stats_output(stdout, stat_type, source_fastq, min_length)
+  parse_fastq_stats_output(stdout, stat_type, file_label, min_length)
 }
 
-parse_fastq_stats_output <- function(stdout, stat_type, source_fastq, min_length) {
+parse_fastq_stats_output <- function(stdout, stat_type, file_label, min_length) {
   if (length(stdout) == 0L) {
     table <- data.frame(file = NA_character_, stringsAsFactors = FALSE)
   } else {
@@ -335,14 +332,13 @@ parse_fastq_stats_output <- function(stdout, stat_type, source_fastq, min_length
       table <- data.frame(file = NA_character_, stringsAsFactors = FALSE)
     }
   }
-  if (identical(stat_type, "min_length") && "file" %in% names(table)) {
-    table$file <- source_fastq
+  if (!is.null(file_label) && "file" %in% names(table)) {
+    table$file <- file_label
   }
 
   cbind(
     stat_type = stat_type,
     min_length = min_length,
-    source_fastq = source_fastq,
     table,
     stringsAsFactors = FALSE
   )
@@ -373,13 +369,8 @@ normalize_fastq_stats_table <- function(stats) {
     stats$min_length <- suppressWarnings(as.integer(stats$min_length))
   }
 
-  if ("source_fastq" %in% names(stats) && "file" %in% names(stats)) {
-    missing_source <- is.na(stats$source_fastq) | !nzchar(stats$source_fastq)
-    stats$source_fastq[missing_source] <- stats$file[missing_source]
-  }
-
   character_cols <- intersect(
-    c("stat_type", "source_fastq", "file", "format", "type"),
+    c("stat_type", "file", "format", "type"),
     names(stats)
   )
   numeric_candidates <- setdiff(names(stats), character_cols)
