@@ -40,6 +40,7 @@ test_that("map_reads_to_assembly supports conda_env and depth options", {
     depth_all_positions = TRUE,
     min_mapping_quality = 20,
     min_base_quality = 10,
+    depth_exclude_flags = "0x900",
     plot_depth = FALSE,
     conda_env = "ont-tools",
     dry_run = TRUE,
@@ -52,6 +53,7 @@ test_that("map_reads_to_assembly supports conda_env and depth options", {
   expect_match(res$commands$samtools_depth, "'-a'", fixed = TRUE)
   expect_match(res$commands$samtools_depth, "'-Q' '20'", fixed = TRUE)
   expect_match(res$commands$samtools_depth, "'-q' '10'", fixed = TRUE)
+  expect_match(res$commands$samtools_depth, "'-G' '0x900'", fixed = TRUE)
   expect_null(res$paths$depth_plot)
   expect_null(res$commands$plot_depth)
 })
@@ -175,6 +177,11 @@ test_that("map_reads_to_assembly validates arguments", {
     map_reads_to_assembly(assembly, reads, bam, plot_width = 0,
                           dry_run = TRUE, echo = FALSE),
     "plot_width"
+  )
+  expect_error(
+    map_reads_to_assembly(assembly, reads, bam, depth_exclude_flags = "",
+                          dry_run = TRUE, echo = FALSE),
+    "depth_exclude_flags"
   )
   expect_error(
     map_reads_to_assembly("missing.fasta", reads, bam,

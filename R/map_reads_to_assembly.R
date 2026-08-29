@@ -25,6 +25,10 @@
 #'   `samtools depth -Q`.
 #' @param min_base_quality Optional minimum base quality passed to
 #'   `samtools depth -q`.
+#' @param depth_exclude_flags Optional SAM flag mask passed to
+#'   `samtools depth -G` to exclude alignments with any of these flags. For
+#'   example, `"0x900"` excludes secondary (`0x100`) and supplementary (`0x800`)
+#'   alignments from depth calculation.
 #' @param plot_depth Logical. If `TRUE`, read the depth table and save a depth
 #'   plot with ggplot2.
 #' @param plot_width,plot_height Width and height in inches passed to
@@ -64,6 +68,7 @@ map_reads_to_assembly <- function(assembly,
                                   depth_all_references = FALSE,
                                   min_mapping_quality = NULL,
                                   min_base_quality = NULL,
+                                  depth_exclude_flags = NULL,
                                   plot_depth = TRUE,
                                   plot_width = 8,
                                   plot_height = 5,
@@ -97,6 +102,9 @@ map_reads_to_assembly <- function(assembly,
   }
   if (!is.null(conda_env)) {
     check_scalar_character(conda_env, "conda_env")
+  }
+  if (!is.null(depth_exclude_flags)) {
+    check_scalar_character(depth_exclude_flags, "depth_exclude_flags")
   }
 
   threads <- validate_positive_integer(threads, "threads")
@@ -159,7 +167,8 @@ map_reads_to_assembly <- function(assembly,
     depth_all_positions = depth_all_positions,
     depth_all_references = depth_all_references,
     min_mapping_quality = min_mapping_quality,
-    min_base_quality = min_base_quality
+    min_base_quality = min_base_quality,
+    depth_exclude_flags = depth_exclude_flags
   )
 
   minimap2_call <- dehost_fastq_external_call(
@@ -298,7 +307,8 @@ build_samtools_depth_args <- function(bam,
                                       depth_all_positions,
                                       depth_all_references,
                                       min_mapping_quality,
-                                      min_base_quality) {
+                                      min_base_quality,
+                                      depth_exclude_flags) {
   args <- "depth"
   if (isTRUE(depth_all_references)) {
     args <- c(args, "-aa")
@@ -310,6 +320,9 @@ build_samtools_depth_args <- function(bam,
   }
   if (!is.null(min_base_quality)) {
     args <- c(args, "-q", as.character(min_base_quality))
+  }
+  if (!is.null(depth_exclude_flags)) {
+    args <- c(args, "-G", depth_exclude_flags)
   }
 
   c(args, bam)

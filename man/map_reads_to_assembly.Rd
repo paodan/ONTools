@@ -17,6 +17,7 @@ map_reads_to_assembly(
   depth_all_references = FALSE,
   min_mapping_quality = NULL,
   min_base_quality = NULL,
+  depth_exclude_flags = NULL,
   plot_depth = TRUE,
   plot_width = 8,
   plot_height = 5,
@@ -63,6 +64,11 @@ every position in every reference sequence is reported. This overrides
 
 \item{min_base_quality}{Optional minimum base quality passed to
 \code{samtools depth -q}.}
+
+\item{depth_exclude_flags}{Optional SAM flag mask passed to
+\code{samtools depth -G} to exclude alignments with any of these flags. For
+example, \code{"0x900"} excludes secondary (\code{0x100}) and supplementary (\code{0x800})
+alignments from depth calculation.}
 
 \item{plot_depth}{Logical. If \code{TRUE}, read the depth table and save a depth
 plot with ggplot2.}
