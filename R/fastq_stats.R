@@ -219,8 +219,12 @@ fastq_stats <- function(fastq,
     for (path in fastq) {
       for (min_length in min_lengths) {
         command_i <- command_i + 1L
-        stats_tables[[length(stats_tables) + 1L]] <- run_fastq_stats_shell_command(
-          command_string = commands[[command_i]],
+        seq_call <- seq_call_template(path, min_length)
+        stats_tables[[length(stats_tables) + 1L]] <- run_fastq_stats_filtered_command(
+          seq_command = seq_call$command,
+          seq_args = seq_call$args,
+          stats_command = stats_stdin_call$command,
+          stats_args = stats_stdin_call$args,
           stderr = stderr,
           stat_type = "min_length",
           source_fastq = path,
@@ -283,6 +287,41 @@ run_fastq_stats_shell_command <- function(command_string,
   parse_fastq_stats_output(stdout, stat_type, source_fastq, min_length)
 }
 
+run_fastq_stats_filtered_command <- function(seq_command,
+                                             seq_args,
+                                             stats_command,
+                                             stats_args,
+                                             stderr,
+                                             stat_type,
+                                             source_fastq,
+                                             min_length) {
+  filtered_fastq <- tempfile("fastq_stats_filtered_", fileext = ".fastq")
+  on.exit(unlink(filtered_fastq), add = TRUE)
+
+  seq_status <- system2(
+    seq_command,
+    args = seq_args,
+    stdout = filtered_fastq,
+    stderr = stderr
+  )
+  if (!identical(seq_status, 0L)) {
+    stop("seqkit seq failed with exit status: ", seq_status, call. = FALSE)
+  }
+
+  stdout <- system2(
+    stats_command,
+    args = c(stats_args, filtered_fastq),
+    stdout = TRUE,
+    stderr = stderr
+  )
+  status <- attr(stdout, "status")
+  if (!is.null(status) && !identical(status, 0L)) {
+    stop("seqkit stats failed with exit status: ", status, call. = FALSE)
+  }
+
+  parse_fastq_stats_output(stdout, stat_type, source_fastq, min_length)
+}
+
 parse_fastq_stats_output <- function(stdout, stat_type, source_fastq, min_length) {
   if (length(stdout) == 0L) {
     table <- data.frame(file = NA_character_, stringsAsFactors = FALSE)
@@ -295,6 +334,9 @@ parse_fastq_stats_output <- function(stdout, stat_type, source_fastq, min_length
     if (nrow(table) == 0L) {
       table <- data.frame(file = NA_character_, stringsAsFactors = FALSE)
     }
+  }
+  if (identical(stat_type, "min_length") && "file" %in% names(table)) {
+    table$file <- source_fastq
   }
 
   cbind(
