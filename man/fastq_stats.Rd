@@ -43,7 +43,35 @@ commands are run with \verb{conda run -n <conda_env>}.}
 }
 \value{
 Invisibly returns a list with \code{status}, \code{stats}, \code{commands}, and
-\code{paths}.
+\code{paths}. \code{stats} is a data frame with normalized column names and common
+numeric columns converted from \code{seqkit}'s display format. The \code{stats} data
+frame contains:
+\describe{
+\item{stat_type}{Summary type. \code{"original"} means direct statistics on an
+input FASTQ. \code{"min_length"} means statistics after temporary
+\verb{seqkit seq -m <min_length>} filtering.}
+\item{min_length}{Minimum read length used for a filtered summary. \code{NA} for
+unfiltered original summaries.}
+\item{source_fastq}{Original FASTQ file used to generate the row. For
+filtered summaries this is the file piped through \code{seqkit seq}.}
+\item{file}{File label reported by \code{seqkit stats}. For piped filtered
+summaries this is usually \code{"stdin"}.}
+\item{format}{Detected file format, for example \code{"FASTQ"}.}
+\item{type}{Detected sequence alphabet, for example \code{"DNA"}, \code{"RNA"}, or
+\code{"Protein"}.}
+\item{num_seqs}{Number of sequences / reads.}
+\item{sum_len}{Total number of bases across all reads.}
+\item{min_len}{Shortest read length.}
+\item{avg_len}{Mean read length.}
+\item{max_len}{Longest read length.}
+\item{q1, q2, q3}{First quartile, median, and third quartile of read
+lengths, when reported by \code{seqkit}.}
+\item{sum_gap}{Total number of gap characters, when reported.}
+\item{n50, q20pct, q30pct}{N50 read length and percentages of bases with
+Q20/Q30 quality, when reported by \code{seqkit stats -a}.}
+\item{avg_qual}{Average base quality, when reported.}
+}
+Other columns may be present depending on the installed \code{seqkit} version.
 }
 \description{
 \code{fastq_stats()} wraps \code{seqkit stats -a}. It can summarize one or more FASTQ

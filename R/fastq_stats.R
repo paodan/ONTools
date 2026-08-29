@@ -19,7 +19,35 @@
 #' @param stderr Passed to [system2()]. Defaults stream errors to the R console.
 #'
 #' @return Invisibly returns a list with `status`, `stats`, `commands`, and
-#'   `paths`.
+#'   `paths`. `stats` is a data frame with normalized column names and common
+#'   numeric columns converted from `seqkit`'s display format. The `stats` data
+#'   frame contains:
+#' \describe{
+#'   \item{stat_type}{Summary type. `"original"` means direct statistics on an
+#'     input FASTQ. `"min_length"` means statistics after temporary
+#'     `seqkit seq -m <min_length>` filtering.}
+#'   \item{min_length}{Minimum read length used for a filtered summary. `NA` for
+#'     unfiltered original summaries.}
+#'   \item{source_fastq}{Original FASTQ file used to generate the row. For
+#'     filtered summaries this is the file piped through `seqkit seq`.}
+#'   \item{file}{File label reported by `seqkit stats`. For piped filtered
+#'     summaries this is usually `"stdin"`.}
+#'   \item{format}{Detected file format, for example `"FASTQ"`.}
+#'   \item{type}{Detected sequence alphabet, for example `"DNA"`, `"RNA"`, or
+#'     `"Protein"`.}
+#'   \item{num_seqs}{Number of sequences / reads.}
+#'   \item{sum_len}{Total number of bases across all reads.}
+#'   \item{min_len}{Shortest read length.}
+#'   \item{avg_len}{Mean read length.}
+#'   \item{max_len}{Longest read length.}
+#'   \item{q1, q2, q3}{First quartile, median, and third quartile of read
+#'     lengths, when reported by `seqkit`.}
+#'   \item{sum_gap}{Total number of gap characters, when reported.}
+#'   \item{n50, q20pct, q30pct}{N50 read length and percentages of bases with
+#'     Q20/Q30 quality, when reported by `seqkit stats -a`.}
+#'   \item{avg_qual}{Average base quality, when reported.}
+#' }
+#' Other columns may be present depending on the installed `seqkit` version.
 #'
 #' @examples
 #' reads <- tempfile(fileext = ".fastq.gz")
@@ -203,6 +231,7 @@ fastq_stats <- function(fastq,
   }
 
   stats <- do.call(rbind, stats_tables)
+  stats <- normalize_fastq_stats_table(stats)
   rownames(stats) <- NULL
 
   if (!is.null(output_tsv)) {
@@ -272,4 +301,58 @@ parse_fastq_stats_output <- function(stdout, stat_type, source_fastq, min_length
     table,
     stringsAsFactors = FALSE
   )
+}
+
+normalize_fastq_stats_table <- function(stats) {
+  stats <- as.data.frame(stats, stringsAsFactors = FALSE, check.names = FALSE)
+  names(stats) <- normalize_fastq_stats_names(names(stats))
+
+  if ("min_length" %in% names(stats)) {
+    stats$min_length <- suppressWarnings(as.integer(stats$min_length))
+  }
+
+  if ("source_fastq" %in% names(stats) && "file" %in% names(stats)) {
+    missing_source <- is.na(stats$source_fastq) | !nzchar(stats$source_fastq)
+    stats$source_fastq[missing_source] <- stats$file[missing_source]
+  }
+
+  character_cols <- intersect(
+    c("stat_type", "source_fastq", "file", "format", "type"),
+    names(stats)
+  )
+  numeric_candidates <- setdiff(names(stats), character_cols)
+  for (col in numeric_candidates) {
+    stats[[col]] <- convert_fastq_stats_column(stats[[col]])
+  }
+
+  stats
+}
+
+normalize_fastq_stats_names <- function(x) {
+  x <- tolower(x)
+  x <- gsub("%", "pct", x, fixed = TRUE)
+  x <- gsub("[()]+", "", x)
+  x <- gsub("[^a-z0-9]+", "_", x)
+  x <- gsub("^_+|_+$", "", x)
+  make.unique(x, sep = "_")
+}
+
+convert_fastq_stats_column <- function(x) {
+  if (is.numeric(x) || is.integer(x)) {
+    return(x)
+  }
+
+  x_chr <- as.character(x)
+  x_clean <- gsub(",", "", x_chr, fixed = TRUE)
+  is_number <- grepl("^-?[0-9]+([.][0-9]+)?$", x_clean) | is.na(x_clean)
+  if (!all(is_number)) {
+    return(x)
+  }
+
+  x_num <- suppressWarnings(as.numeric(x_clean))
+  if (all(is.na(x_num) | x_num == as.integer(x_num))) {
+    return(as.integer(x_num))
+  }
+
+  x_num
 }

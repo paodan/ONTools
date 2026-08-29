@@ -52,14 +52,14 @@ test_that("fastq_stats parses seqkit stats output", {
       "shift",
       "case \"$cmd\" in",
       "  stats)",
-      "    printf 'file\\tformat\\ttype\\tnum_seqs\\tsum_len\\n'",
+      "    printf 'file\\tformat\\ttype\\tnum_seqs\\tsum_len\\tavg_len\\tQ20(%%)\\n'",
       "    if [[ \"$#\" -eq 1 && \"$1\" == '-a' ]]; then",
       "      cat >/dev/null",
-      "      printf 'stdin\\tFASTQ\\tDNA\\t1\\t4\\n'",
+      "      printf 'stdin\\tFASTQ\\tDNA\\t1\\t4\\t4.0\\t100.00\\n'",
       "    else",
       "      for arg in \"$@\"; do",
       "        [[ \"$arg\" == '-a' ]] && continue",
-      "        printf '%s\\tFASTQ\\tDNA\\t1\\t4\\n' \"$arg\"",
+      "        printf '%s\\tFASTQ\\tDNA\\t1,234\\t4,936\\t4.0\\t100.00\\n' \"$arg\"",
       "      done",
       "    fi",
       "    ;;",
@@ -88,9 +88,15 @@ test_that("fastq_stats parses seqkit stats output", {
   )
 
   expect_equal(res$status, 0L)
+  expect_s3_class(res$stats, "data.frame")
   expect_equal(nrow(res$stats), 3L)
   expect_equal(res$stats$stat_type, c("original", "min_length", "min_length"))
   expect_equal(res$stats$min_length, c(NA_integer_, 1000L, 3000L))
+  expect_equal(res$stats$num_seqs[[1L]], 1234L)
+  expect_equal(res$stats$sum_len[[1L]], 4936L)
+  expect_equal(res$stats$avg_len[[1L]], 4)
+  expect_equal(res$stats$q20pct[[1L]], 100)
+  expect_equal(res$stats$source_fastq[[1L]], normalizePath(fastq))
   expect_true(file.exists(output_tsv))
 })
 
