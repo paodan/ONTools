@@ -23,6 +23,9 @@
 #'   statistics.
 #' @param move_fastq_step Logical. Move barcode FASTQ folders into sample-info
 #'   groups before running amplicon analysis.
+#' @param move_fastq_mode FASTQ grouping mode used when `move_fastq_step` is
+#'   `TRUE`. See **FASTQ grouping and reruns** for the detailed behavior of
+#'   `"move"`, `"reuse"`, and `"auto"`.
 #' @param run_amplicon_step Logical. Run [run_wf_amplicon()] for each group.
 #' @param trim_consensus_step Logical. Trim consensus FASTA files when primer
 #'   columns are present and non-empty.
@@ -54,6 +57,43 @@
 #'   (`g2`), Dorado/basecalling status (`stat`), FASTQ move plans, amplicon
 #'   workflow results, trim summaries, IGV results, delivery copy summaries, and
 #'   important output paths.
+#'
+#' @details
+#' ## FASTQ grouping and reruns
+#'
+#' `make_consensus_delivery()` expects each amplicon group to be available under
+#' `fastq_pass_trim/<group>/barcode*` before `wf-amplicon` is run. When
+#' `move_fastq_step = TRUE`, `move_fastq_mode` controls how that grouped FASTQ
+#' directory is prepared:
+#'
+#' - `"move"` keeps the original behavior. Barcode folders are moved from
+#'   `fastq_pass_trim/barcode*` into `fastq_pass_trim/<group>/barcode*` by
+#'   [move_fastq_to_folders()]. With `overwrite_fastq = FALSE`, an existing
+#'   destination barcode folder stops the function, which protects previous
+#'   results from accidental replacement. This is best for a first run after a
+#'   fresh demultiplexing step.
+#' - `"reuse"` never moves barcode folders. It checks whether every barcode
+#'   listed in the sample information table already exists in
+#'   `fastq_pass_trim/<group>/barcode*`. If any expected barcode folder is
+#'   missing, the function stops, except during `dry_run = TRUE`, where the
+#'   missing paths are returned in the move plan with
+#'   `status = "missing_destination"`. This is best when you deliberately want
+#'   to rerun only downstream analysis from a previously grouped FASTQ folder.
+#' - `"auto"` first performs the same destination check as `"reuse"`. If all
+#'   expected grouped barcode folders are already present, they are reused and
+#'   the move plan reports `status = "reused"`. If the grouped folder is not
+#'   complete, the function falls back to `"move"` and attempts to move barcode
+#'   folders from the ungrouped FASTQ directory. This is the recommended mode for
+#'   routine reruns because it handles both fresh and already-grouped projects.
+#'
+#' If barcode folders were already moved in a previous run, rerun with either
+#' `move_fastq_mode = "auto"` or `move_fastq_mode = "reuse"`. Keeping the
+#' default `"move"` mode in that situation can fail because the source
+#' `fastq_pass_trim/barcode*` folders are no longer present and the destination
+#' `fastq_pass_trim/<group>/barcode*` folders already exist.
+#'
+#' Setting `move_fastq_step = FALSE` skips this preparation entirely and assumes
+#' the grouped FASTQ directory already exists.
 #'
 #' @examples
 #' proj <- tempfile("ont-project-")
@@ -91,6 +131,7 @@ make_consensus_delivery <- function(path_proj,
                                     run_basecalling_demux_step = TRUE,
                                     run_QC_step = TRUE,
                                     move_fastq_step = TRUE,
+                                    move_fastq_mode = c("move", "reuse", "auto"),
                                     run_amplicon_step = TRUE,
                                     trim_consensus_step = TRUE,
                                     run_filtered_QC_step = TRUE,
@@ -138,6 +179,7 @@ make_consensus_delivery <- function(path_proj,
   check_logical_scalar(run_basecalling_demux_step, "run_basecalling_demux_step")
   check_logical_scalar(run_QC_step, "run_QC_step")
   check_logical_scalar(move_fastq_step, "move_fastq_step")
+  move_fastq_mode <- match.arg(move_fastq_mode)
   check_logical_scalar(run_amplicon_step, "run_amplicon_step")
   check_logical_scalar(trim_consensus_step, "trim_consensus_step")
   check_logical_scalar(run_filtered_QC_step, "run_filtered_QC_step")
@@ -326,8 +368,28 @@ make_consensus_delivery <- function(path_proj,
         stop("No FASTQ output directory was found for moving barcode folders.",
              call. = FALSE)
       }
-      message("Step 3: Move fastq files to a folder")
-      if (isTRUE(dry_run) && !dir.exists(fastq_root)) {
+      message("Step 3: Prepare fastq files in group folder")
+      reuse_plan <- make_fastq_reuse_plan(
+        fastq_dir = fastq_root,
+        group = folder,
+        sample_info = sample_info,
+        barcode_col = sample_barcode_col
+      )
+      can_reuse_fastq <- all(reuse_plan$destination_exists)
+
+      if (identical(move_fastq_mode, "reuse")) {
+        if (!can_reuse_fastq && !isTRUE(dry_run)) {
+          stop(
+            "Grouped FASTQ folder is incomplete for `", folder, "`. Missing: ",
+            paste(reuse_plan$destination[!reuse_plan$destination_exists], collapse = ", "),
+            call. = FALSE
+          )
+        }
+        move_plans[[folder]] <- reuse_plan
+      } else if (identical(move_fastq_mode, "auto") && can_reuse_fastq) {
+        message("Step 3: Reusing existing grouped FASTQ folder for ", folder)
+        move_plans[[folder]] <- reuse_plan
+      } else if (isTRUE(dry_run) && !dir.exists(fastq_root)) {
         move_plans[[folder]] <- make_fastq_move_plan_without_source_dir(
           fastq_dir = fastq_root,
           sample_info = sample_info,
@@ -667,4 +729,35 @@ make_fastq_move_plan_without_source_dir <- function(fastq_dir,
     status = "dry_run",
     stringsAsFactors = FALSE
   )
+}
+
+make_fastq_reuse_plan <- function(fastq_dir,
+                                  group,
+                                  sample_info,
+                                  barcode_col) {
+  barcodes <- delivery_barcode_names(sample_info, barcode_col)
+  destination <- file.path(fastq_dir, group, barcodes)
+  destination_exists <- dir.exists(destination)
+
+  data.frame(
+    barcode = barcodes,
+    project = NA_character_,
+    amplicon_size = NA_character_,
+    group = group,
+    source = NA_character_,
+    destination = destination,
+    source_exists = NA,
+    destination_exists = destination_exists,
+    moved = FALSE,
+    status = ifelse(destination_exists, "reused", "missing_destination"),
+    stringsAsFactors = FALSE
+  )
+}
+
+delivery_barcode_names <- function(sample_info, barcode_col) {
+  if (barcode_col == "Barcode_ID") {
+    return(paste0("barcode", sub(".+-([0-9]+$)", "\\1", sample_info[[barcode_col]])))
+  }
+
+  as.character(sample_info[[barcode_col]])
 }

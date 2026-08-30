@@ -16,6 +16,7 @@ make_consensus_delivery(
   run_basecalling_demux_step = TRUE,
   run_QC_step = TRUE,
   move_fastq_step = TRUE,
+  move_fastq_mode = c("move", "reuse", "auto"),
   run_amplicon_step = TRUE,
   trim_consensus_step = TRUE,
   run_filtered_QC_step = TRUE,
@@ -75,6 +76,10 @@ statistics.}
 \item{move_fastq_step}{Logical. Move barcode FASTQ folders into sample-info
 groups before running amplicon analysis.}
 
+\item{move_fastq_mode}{FASTQ grouping mode used when \code{move_fastq_step} is
+\code{TRUE}. See \strong{FASTQ grouping and reruns} for the detailed behavior of
+\code{"move"}, \code{"reuse"}, and \code{"auto"}.}
+
 \item{run_amplicon_step}{Logical. Run \code{\link[=run_wf_amplicon]{run_wf_amplicon()}} for each group.}
 
 \item{trim_consensus_step}{Logical. Trim consensus FASTA files when primer
@@ -130,6 +135,45 @@ workflow: optional Dorado basecalling and demultiplexing, run-level QC,
 grouping demultiplexed barcode FASTQ folders by sample information, running
 \code{wf-amplicon}, optional primer-boundary trimming, filtered-read QC, optional
 IGV snapshots, and final result collection.
+}
+\details{
+\subsection{FASTQ grouping and reruns}{
+
+\code{make_consensus_delivery()} expects each amplicon group to be available under
+\verb{fastq_pass_trim/<group>/barcode*} before \code{wf-amplicon} is run. When
+\code{move_fastq_step = TRUE}, \code{move_fastq_mode} controls how that grouped FASTQ
+directory is prepared:
+\itemize{
+\item \code{"move"} keeps the original behavior. Barcode folders are moved from
+\verb{fastq_pass_trim/barcode*} into \verb{fastq_pass_trim/<group>/barcode*} by
+\code{\link[=move_fastq_to_folders]{move_fastq_to_folders()}}. With \code{overwrite_fastq = FALSE}, an existing
+destination barcode folder stops the function, which protects previous
+results from accidental replacement. This is best for a first run after a
+fresh demultiplexing step.
+\item \code{"reuse"} never moves barcode folders. It checks whether every barcode
+listed in the sample information table already exists in
+\verb{fastq_pass_trim/<group>/barcode*}. If any expected barcode folder is
+missing, the function stops, except during \code{dry_run = TRUE}, where the
+missing paths are returned in the move plan with
+\code{status = "missing_destination"}. This is best when you deliberately want
+to rerun only downstream analysis from a previously grouped FASTQ folder.
+\item \code{"auto"} first performs the same destination check as \code{"reuse"}. If all
+expected grouped barcode folders are already present, they are reused and
+the move plan reports \code{status = "reused"}. If the grouped folder is not
+complete, the function falls back to \code{"move"} and attempts to move barcode
+folders from the ungrouped FASTQ directory. This is the recommended mode for
+routine reruns because it handles both fresh and already-grouped projects.
+}
+
+If barcode folders were already moved in a previous run, rerun with either
+\code{move_fastq_mode = "auto"} or \code{move_fastq_mode = "reuse"}. Keeping the
+default \code{"move"} mode in that situation can fail because the source
+\verb{fastq_pass_trim/barcode*} folders are no longer present and the destination
+\verb{fastq_pass_trim/<group>/barcode*} folders already exist.
+
+Setting \code{move_fastq_step = FALSE} skips this preparation entirely and assumes
+the grouped FASTQ directory already exists.
+}
 }
 \examples{
 proj <- tempfile("ont-project-")
