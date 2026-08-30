@@ -75,7 +75,9 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_false(file.exists(file.path(output_dir, "params.json")))
   expect_false(file.exists(file.path(output_dir, "versions.txt")))
   expect_true(file.exists(file.path(output_dir, "README.txt")))
+  expect_true(file.exists(file.path(output_dir, "README.zh-CN.txt")))
   expect_true(any(copied$label == "README"))
+  expect_true(any(copied$label == "README_zh_CN"))
 
   readme <- readLines(file.path(output_dir, "README.txt"))
   expect_true(any(grepl("Recommended file", readme)))
@@ -86,6 +88,14 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_true(any(grepl("Distribution_seqLength", readme)))
   expect_false(any(grepl("Workflow reports", readme)))
   expect_false(any(grepl("params.json", readme)))
+
+  readme_zh <- readLines(file.path(output_dir, "README.zh-CN.txt"))
+  expect_true(any(grepl("推荐使用的文件", readme_zh)))
+  expect_true(any(grepl("all-consensus-seqs_trimmed.fasta", readme_zh)))
+  expect_true(any(grepl("sample_map.tsv", readme_zh)))
+  expect_true(any(grepl("barcode57", readme_zh)))
+  expect_true(any(grepl("读长分布图", readme_zh)))
+  expect_true(any(grepl("Distribution_seqLength", readme_zh)))
 })
 
 test_that("collect_amplicon_results reports missing optional files", {
@@ -105,6 +115,24 @@ test_that("collect_amplicon_results reports missing optional files", {
   expect_false(copied$exists[copied$label == "untrimmed_consensus"])
   expect_true(copied$exists[copied$label == "trimmed_consensus"])
   expect_true(file.exists(file.path(output_dir, "README.txt")))
+  expect_true(file.exists(file.path(output_dir, "README.zh-CN.txt")))
+})
+
+test_that("collect_amplicon_results can skip the Chinese README", {
+  result_dir <- tempfile("amplicon-result-")
+  output_dir <- tempfile("amplicon-final-")
+  dir.create(result_dir)
+
+  copied <- collect_amplicon_results(
+    result_dir = result_dir,
+    output_dir = output_dir,
+    chinese_readme_name = NULL
+  )
+
+  expect_true(file.exists(file.path(output_dir, "README.txt")))
+  expect_false(file.exists(file.path(output_dir, "README.zh-CN.txt")))
+  expect_true(any(copied$label == "README"))
+  expect_false(any(copied$label == "README_zh_CN"))
 })
 
 test_that("collect_amplicon_results validates inputs", {

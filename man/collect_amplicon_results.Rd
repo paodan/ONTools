@@ -16,6 +16,7 @@ collect_amplicon_results(
   sample_length_plot_pattern = "^Distribution_seqLength__.*\\\\.png$",
   include_execution = FALSE,
   readme_name = "README.txt",
+  chinese_readme_name = "README.zh-CN.txt",
   overwrite = TRUE
 )
 }
@@ -50,6 +51,9 @@ per-barcode read-length distribution image files inside each
 when present.}
 
 \item{readme_name}{README filename written into \code{output_dir}.}
+
+\item{chinese_readme_name}{Chinese README filename written into \code{output_dir}.
+Set to \code{NULL} to skip writing the Chinese README.}
 
 \item{overwrite}{Logical. If \code{TRUE}, replace existing files in \code{output_dir}.}
 }
