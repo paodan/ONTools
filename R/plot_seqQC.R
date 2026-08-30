@@ -10,6 +10,9 @@
 #'   `"pdf"`, `"png"`, `"svg"`, `"jpg"`, and `"jpeg"`. Use `NULL` to return
 #'   plots without writing files.
 #' @param unclassified Label used for unclassified reads.
+#' @param plot_unclassified Logical. If `FALSE`, remove reads whose sample label
+#'   equals `unclassified` before plotting and do not include an unclassified
+#'   panel or bar.
 #' @param barcodes Integer barcode numbers to include and order. Use `NULL` to
 #'   use sample labels as they appear in the sequencing summary file.
 #' @param barcode_digits Minimum number of digits used for barcode labels.
@@ -83,6 +86,7 @@ plot_seqQC <- function(filePath,
                        runName = NULL,
                        device = "pdf",
                        unclassified = "unclassified",
+                       plot_unclassified = TRUE,
                        barcodes = 1:96,
                        barcode_digits = 2,
                        out_dir = "figs",
@@ -113,6 +117,7 @@ plot_seqQC <- function(filePath,
   if (!is.null(device)) {
     device <- match.arg(device, c("pdf", "png", "svg", "jpg", "jpeg"))
   }
+  check_logical_scalar(plot_unclassified, "plot_unclassified")
 
   if (is.null(runName)) {
     runName <- tools::file_path_sans_ext(basename(filePath))
@@ -193,6 +198,9 @@ plot_seqQC <- function(filePath,
   seq_summary[[sample_col]] <- as.character(seq_summary[[sample_col]])
   seq_summary[[length_col]] <- suppressWarnings(as.numeric(seq_summary[[length_col]]))
   seq_summary <- seq_summary[!is.na(seq_summary[[sample_col]]), , drop = FALSE]
+  if (!isTRUE(plot_unclassified)) {
+    seq_summary <- seq_summary[seq_summary[[sample_col]] != unclassified, , drop = FALSE]
+  }
   n_reads_raw <- nrow(seq_summary)
 
   keep_reads <- !is.na(seq_summary[[length_col]])
@@ -208,6 +216,7 @@ plot_seqQC <- function(filePath,
   sample_levels <- seqqc_sample_levels(
     labels = seq_summary[[sample_col]],
     unclassified = unclassified,
+    plot_unclassified = plot_unclassified,
     barcodes = barcodes,
     barcode_digits = barcode_digits
   )
@@ -319,7 +328,11 @@ plot_seqQC <- function(filePath,
   invisible(list(
     numRead = g1,
     lenRead = g2,
-    recovery = recoveryRate(read_counts, unclassified = unclassified),
+    recovery = if (isTRUE(plot_unclassified)) {
+      recoveryRate(read_counts, unclassified = unclassified)
+    } else {
+      NA_real_
+    },
     read_counts = read_counts,
     n_reads_raw = n_reads_raw,
     n_reads_filtered = n_reads_filtered,
@@ -488,6 +501,7 @@ seqqc_filter_filename_suffix <- function(min_read_length, max_read_length) {
 
 seqqc_sample_levels <- function(labels,
                                 unclassified,
+                                plot_unclassified,
                                 barcodes,
                                 barcode_digits) {
   if (is.null(barcodes)) {
@@ -500,10 +514,12 @@ seqqc_sample_levels <- function(labels,
   }
 
   width <- max(barcode_digits, nchar(as.character(max(barcodes))))
-  c(
-    paste0("barcode", stringr::str_pad(barcodes, width = width, pad = "0")),
-    unclassified
-  )
+  levels <- paste0("barcode", stringr::str_pad(barcodes, width = width, pad = "0"))
+  if (isTRUE(plot_unclassified)) {
+    levels <- c(levels, unclassified)
+  }
+
+  levels
 }
 
 seqqc_read_count_data <- function(read_counts, unclassified) {
@@ -511,7 +527,7 @@ seqqc_read_count_data <- function(read_counts, unclassified) {
   num_reads$type <- "Freq"
 
   log_reads <- read_counts
-  log_reads$Freq <- ifelse(log_reads$Freq > 0, log10(log_reads$Freq), NA_real_)
+  log_reads$Freq <- ifelse(log_reads$Freq > 0, log10(log_reads$Freq), 0)
   log_reads$type <- "Log10Freq"
 
   recovered_reads <- read_counts

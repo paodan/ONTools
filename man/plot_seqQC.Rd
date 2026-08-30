@@ -9,6 +9,7 @@ plot_seqQC(
   runName = NULL,
   device = "pdf",
   unclassified = "unclassified",
+  plot_unclassified = TRUE,
   barcodes = 1:96,
   barcode_digits = 2,
   out_dir = "figs",
@@ -41,6 +42,10 @@ basename without extension is used.}
 plots without writing files.}
 
 \item{unclassified}{Label used for unclassified reads.}
+
+\item{plot_unclassified}{Logical. If \code{FALSE}, remove reads whose sample label
+equals \code{unclassified} before plotting and do not include an unclassified
+panel or bar.}
 
 \item{barcodes}{Integer barcode numbers to include and order. Use \code{NULL} to
 use sample labels as they appear in the sequencing summary file.}

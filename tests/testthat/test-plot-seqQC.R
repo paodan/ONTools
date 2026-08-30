@@ -198,6 +198,61 @@ test_that("plot_seqQC can save per-sample read-length plots into fastq_pass_trim
   expect_true(grepl(file.path(fastq_pass_trim_dir, "barcode02"), qc$sample_len_files[["barcode02"]], fixed = TRUE))
 })
 
+test_that("plot_seqQC can omit unclassified reads and panels", {
+  summary_file <- tempfile(fileext = ".txt")
+  out_dir <- tempfile("plots-")
+
+  write.table(
+    data.frame(
+      alias = c("barcode01", "barcode01", "barcode02", "unclassified"),
+      sequence_length_template = c(1000, 1200, 1500, 800)
+    ),
+    summary_file,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+
+  qc <- plot_seqQC(
+    summary_file,
+    runName = "run-no-unclassified",
+    device = "png",
+    out_dir = out_dir,
+    barcodes = 1:2,
+    plot_unclassified = FALSE
+  )
+
+  expect_equal(qc$read_counts$sample, c("barcode01", "barcode02"))
+  expect_false("unclassified" %in% names(qc$sample_len_files))
+  expect_true(is.na(qc$recovery))
+})
+
+test_that("plot_seqQC omits unclassified when barcodes is NULL", {
+  summary_file <- tempfile(fileext = ".txt")
+
+  write.table(
+    data.frame(
+      alias = c("barcode006", "barcode097", "unclassified"),
+      sequence_length_template = c(1000, 1200, 800)
+    ),
+    summary_file,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+
+  qc <- plot_seqQC(
+    summary_file,
+    runName = "run-no-unclassified-auto",
+    device = NULL,
+    barcodes = NULL,
+    plot_unclassified = FALSE
+  )
+
+  expect_equal(qc$read_counts$sample, c("barcode006", "barcode097"))
+  expect_false(any(qc$lenRead$data$sample == "unclassified"))
+})
+
 test_that("plot_seqQC validates length filters", {
   summary_file <- tempfile(fileext = ".txt")
   write.table(
