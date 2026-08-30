@@ -95,13 +95,16 @@ read_split_sample_info <- function(sampleInfo, sheet, skip) {
     if (is.null(skip)) {
       preview <- suppressMessages(readxl::read_excel(path = sampleInfo, sheet = sheet))
       marker <- which(preview[[1]] == "[data]")
-      skip <- if (length(marker) > 0L) marker[[1L]] else 0
+      skip <- if (length(marker) > 0L) marker[[1L]] + 1L else 0
     }
-    return(as.data.frame(readxl::read_excel(
+    sample_info <- suppressMessages(readxl::read_excel(
       path = sampleInfo,
       sheet = sheet,
       skip = skip
-    )))
+    ))
+    sample_info <- as.data.frame(sample_info)
+    names(sample_info) <- trimws(names(sample_info))
+    return(sample_info)
   }
 
   if (is.null(skip)) {
