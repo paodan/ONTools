@@ -50,9 +50,10 @@
 #'   read-length plot (`lenRead`), demultiplexing recovery percentage
 #'   (`recovery`), per-sample read counts (`read_counts`), total reads before
 #'   filtering (`n_reads_raw`), total reads after filtering (`n_reads_filtered`),
-#'   filters applied (`filters`), combined read-length plot size
-#'   (`len_read_size`), paths for combined plots (`files`), and paths for
-#'   per-sample read-length plots (`sample_len_files`).
+#'   reads removed because their sample labels were not present in the requested
+#'   barcode levels (`n_reads_unmatched_sample`), filters applied (`filters`),
+#'   combined read-length plot size (`len_read_size`), paths for combined plots
+#'   (`files`), and paths for per-sample read-length plots (`sample_len_files`).
 #'
 #' @examples
 #' summary_file <- tempfile(fileext = ".txt")
@@ -221,6 +222,8 @@ plot_seqQC <- function(filePath,
     barcode_digits = barcode_digits
   )
   seq_summary$sample <- factor(seq_summary[[sample_col]], levels = sample_levels)
+  n_reads_unmatched_sample <- sum(is.na(seq_summary$sample))
+  seq_summary <- seq_summary[!is.na(seq_summary$sample), , drop = FALSE]
 
   read_counts <- data.frame(
     sample = names(table(seq_summary$sample)),
@@ -336,6 +339,7 @@ plot_seqQC <- function(filePath,
     read_counts = read_counts,
     n_reads_raw = n_reads_raw,
     n_reads_filtered = n_reads_filtered,
+    n_reads_unmatched_sample = n_reads_unmatched_sample,
     filters = list(
       min_read_length = min_read_length,
       max_read_length = max_read_length

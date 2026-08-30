@@ -100,9 +100,10 @@ Invisibly returns a list with the read-count plot (\code{numRead}), the
 read-length plot (\code{lenRead}), demultiplexing recovery percentage
 (\code{recovery}), per-sample read counts (\code{read_counts}), total reads before
 filtering (\code{n_reads_raw}), total reads after filtering (\code{n_reads_filtered}),
-filters applied (\code{filters}), combined read-length plot size
-(\code{len_read_size}), paths for combined plots (\code{files}), and paths for
-per-sample read-length plots (\code{sample_len_files}).
+reads removed because their sample labels were not present in the requested
+barcode levels (\code{n_reads_unmatched_sample}), filters applied (\code{filters}),
+combined read-length plot size (\code{len_read_size}), paths for combined plots
+(\code{files}), and paths for per-sample read-length plots (\code{sample_len_files}).
 }
 \description{
 \code{plot_seqQC()} reads a MinKNOW or dorado \code{sequencing_summary*.txt} file and

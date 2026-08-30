@@ -20,6 +20,7 @@ test_that("plot_seqQC returns plots and recovery without writing files", {
   expect_equal(qc$sample_len_files, character())
   expect_equal(qc$n_reads_raw, 4L)
   expect_equal(qc$n_reads_filtered, 4L)
+  expect_equal(qc$n_reads_unmatched_sample, 0L)
   expect_equal(qc$len_read_size$width, 6)
   expect_equal(qc$len_read_size$height, 2)
   expect_null(qc$filters$min_read_length)
@@ -251,6 +252,33 @@ test_that("plot_seqQC omits unclassified when barcodes is NULL", {
 
   expect_equal(qc$read_counts$sample, c("barcode006", "barcode097"))
   expect_false(any(qc$lenRead$data$sample == "unclassified"))
+})
+
+test_that("plot_seqQC tracks sample labels outside requested barcodes", {
+  summary_file <- tempfile(fileext = ".txt")
+
+  write.table(
+    data.frame(
+      alias = c("barcode001", "barcode097", "barcode097"),
+      sequence_length_template = c(1000, 1200, 1300)
+    ),
+    summary_file,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+
+  qc <- plot_seqQC(
+    summary_file,
+    runName = "run-unmatched",
+    device = NULL,
+    barcodes = 1:96,
+    barcode_digits = 3
+  )
+
+  expect_equal(qc$n_reads_unmatched_sample, 2L)
+  expect_false(any(is.na(qc$lenRead$data$sample)))
+  expect_equal(qc$read_counts$Freq[qc$read_counts$sample == "barcode001"], 1L)
 })
 
 test_that("plot_seqQC validates length filters", {
