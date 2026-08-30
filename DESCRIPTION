@@ -18,11 +18,11 @@ Imports:
     DECIPHER,
     ggplot2,
     pwalign,
+    readxl,
     rlang,
     Rsamtools,
     stringr
 Suggests:
     pagedown,
-    readxl,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
