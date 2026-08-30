@@ -57,6 +57,7 @@ move_fastq_to_folders <- function(fastq_dir,
 
   fastq_dir <- normalizePath(fastq_dir, mustWork = TRUE)
   sample_info <- read_sample_info_table(sample_info)
+  barcode_col <- resolve_barcode_col(sample_info, barcode_col)
   required_cols <- c(barcode_col, amplicon_size_col)
   if (!is.null(project_col)) {
     required_cols <- c(required_cols, project_col)
@@ -188,4 +189,14 @@ safe_path_component <- function(x) {
   x <- gsub("_+", "_", x)
   x <- gsub("^_|_$", "", x)
   x
+}
+
+resolve_barcode_col <- function(sample_info, barcode_col) {
+  if (barcode_col == "Barcode_ID" &&
+      !"Barcode_ID" %in% names(sample_info) &&
+      "barcode" %in% names(sample_info)) {
+    return("barcode")
+  }
+
+  barcode_col
 }

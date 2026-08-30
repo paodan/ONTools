@@ -69,6 +69,7 @@ a FASTQ file with those reads removed.
 ref <- tempfile(fileext = ".fasta")
 reads <- tempfile(fileext = ".fastq.gz")
 writeLines(c(">ecoli", "ACGTACGT"), ref)
+writeLines(c("@read1", "ACGTACGT", "+", "FFFFFFFF"), reads)
 res <- dehost_fastq(ref, reads, dry_run = TRUE)
 res$commands$minimap2
 
