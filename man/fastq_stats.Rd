@@ -23,7 +23,7 @@ fastq_stats(
 \item{min_lengths}{Optional positive integer vector. For each value, run
 \verb{seqkit seq -m <min_length> <fastq> | seqkit stats -a -T}.}
 
-\item{include_original}{Logical. If \code{TRUE}, also run \code{seqkit stats -a} on the
+\item{include_original}{Logical. If \code{TRUE}, also run \verb{seqkit stats -a} on the
 unfiltered \code{fastq} files.}
 
 \item{output_tsv}{Optional output TSV file for the combined stats table.}
@@ -52,7 +52,7 @@ input FASTQ. \code{"min_length"} means statistics after temporary
 \verb{seqkit seq -m <min_length>} filtering.}
 \item{min_length}{Minimum read length used for a filtered summary. \code{NA} for
 unfiltered original summaries.}
-\item{file}{File label reported by \code{seqkit stats}. For piped filtered
+\item{file}{File label reported by \verb{seqkit stats}. For piped filtered
 summaries, ONTools replaces the temporary file label with the original
 FASTQ path.}
 \item{format}{Detected file format, for example \code{"FASTQ"}.}
@@ -67,14 +67,14 @@ FASTQ path.}
 lengths, when reported by \code{seqkit}.}
 \item{sum_gap}{Total number of gap characters, when reported.}
 \item{n50, q20pct, q30pct}{N50 read length and percentages of bases with
-Q20/Q30 quality, when reported by \code{seqkit stats -a}.}
+Q20/Q30 quality, when reported by \verb{seqkit stats -a}.}
 \item{avg_qual}{Average base quality, when reported.}
 }
 Other columns may be present depending on the installed \code{seqkit} version.
 }
 \description{
-\code{fastq_stats()} wraps \code{seqkit stats -a -T}. It can summarize one or more FASTQ
-files directly and optionally summarize temporary \code{seqkit seq -m} filtered
+\code{fastq_stats()} wraps \verb{seqkit stats -a -T}. It can summarize one or more FASTQ
+files directly and optionally summarize temporary \verb{seqkit seq -m} filtered
 views without writing filtered FASTQ files.
 }
 \examples{

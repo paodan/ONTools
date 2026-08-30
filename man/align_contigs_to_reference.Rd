@@ -33,7 +33,7 @@ similar assemblies, \code{"asm10"} for moderately diverged assemblies, or
 \code{"asm20"} for more diverged assemblies.}
 
 \item{threads}{Positive integer thread count passed to both \code{minimap2 -t}
-and \code{samtools sort -@}.}
+and \verb{samtools sort -@}.}
 
 \item{secondary}{Logical. If \code{FALSE}, pass \code{--secondary=no} to minimap2.}
 
@@ -56,8 +56,8 @@ Invisibly returns a list with \code{status}, \code{commands}, \code{paths},
 }
 \description{
 \code{align_contigs_to_reference()} maps assembled contigs to a reference genome
-or plasmid with \code{minimap2}, sorts the alignment with \code{samtools sort}, and
-creates a BAM index with \code{samtools index}.
+or plasmid with \code{minimap2}, sorts the alignment with \verb{samtools sort}, and
+creates a BAM index with \verb{samtools index}.
 }
 \examples{
 ref <- tempfile(fileext = ".fasta")

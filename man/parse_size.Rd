@@ -7,16 +7,16 @@
 \usage{
 parse_size(
   x,
-  units = c(bp = 1, b = 1, k = 1000, kb = 1000, kbp = 1000, Kbp = 1000, m =
-    1e+06, mb = 1e+06, Mb = 1e+06, mbp = 1e+06, Mbp = 1e+06, g = 1e+09, gb =
-    1e+09, Gb = 1e+09, gbp = 1e+09, Gbp = 1e+09)
+  units = c(bp = 1, b = 1, k = 1000, kb = 1000, kbp = 1000, Kbp = 1000, m = 1e+06, mb =
+    1e+06, Mb = 1e+06, mbp = 1e+06, Mbp = 1e+06, g = 1e+09, gb = 1e+09, Gb = 1e+09, gbp =
+    1e+09, Gbp = 1e+09)
 )
 
 parseSize(
   x,
-  units = c(bp = 1, b = 1, k = 1000, kb = 1000, kbp = 1000, Kbp = 1000, m =
-    1e+06, mb = 1e+06, Mb = 1e+06, mbp = 1e+06, Mbp = 1e+06, g = 1e+09, gb =
-    1e+09, Gb = 1e+09, gbp = 1e+09, Gbp = 1e+09)
+  units = c(bp = 1, b = 1, k = 1000, kb = 1000, kbp = 1000, Kbp = 1000, m = 1e+06, mb =
+    1e+06, Mb = 1e+06, mbp = 1e+06, Mbp = 1e+06, g = 1e+09, gb = 1e+09, Gb = 1e+09, gbp =
+    1e+09, Gbp = 1e+09)
 )
 }
 \arguments{

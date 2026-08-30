@@ -56,10 +56,10 @@ filter_fastq_by_length(
 \item{output_fastq}{Output FASTQ or FASTQ.GZ file.}
 
 \item{min_length, max_length}{Minimum and maximum read length passed to
-\code{seqkit seq -m/-M}. Use \code{NULL} for no limit.}
+\verb{seqkit seq -m/-M}. Use \code{NULL} for no limit.}
 
 \item{min_quality, max_quality}{Minimum and maximum average quality passed to
-\code{seqkit seq -Q/-R}. Use \code{NULL} for no limit.}
+\verb{seqkit seq -Q/-R}. Use \code{NULL} for no limit.}
 
 \item{reverse, complement}{Logical. Pass \code{--reverse} or \code{--complement}.}
 
@@ -84,7 +84,7 @@ qualities with \code{--only-id}, \code{--name}, \code{--seq}, or \code{--qual}.}
 
 \item{compress_level}{Optional compression level passed to \code{--compress-level}.}
 
-\item{extra_args}{Optional character vector of additional raw \code{seqkit seq}
+\item{extra_args}{Optional character vector of additional raw \verb{seqkit seq}
 arguments appended before the input FASTQ.}
 
 \item{seqkit}{Command name or executable path for \code{seqkit}.}
@@ -106,7 +106,7 @@ Invisibly returns a list with \code{status}, \code{command}, \code{args},
 \code{command_string}, and \code{paths}.
 }
 \description{
-\code{filter_fastq()} wraps \code{seqkit seq} to filter reads by length or average
+\code{filter_fastq()} wraps \verb{seqkit seq} to filter reads by length or average
 quality and optionally apply common sequence transformations.
 }
 \examples{

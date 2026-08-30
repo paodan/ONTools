@@ -18,12 +18,12 @@ dorado_basecall(
 )
 }
 \arguments{
-\item{proj}{Project directory containing a \code{pod5/} subdirectory.}
+\item{proj}{Project directory containing a \verb{pod5/} subdirectory.}
 
 \item{model}{Dorado basecalling model or model alias.}
 
 \item{output_bam}{Output BAM file. If \code{NULL}, writes
-\code{proj/bam/calls_<model>.bam}.}
+\verb{proj/bam/calls_<model>.bam}.}
 
 \item{overwrite}{Logical. If \code{FALSE}, stop when \code{output_bam} already exists.}
 
@@ -45,6 +45,6 @@ Invisibly returns a list with \code{status}, \code{command}, \code{args},
 \code{command_string}, \code{paths}, and \code{conda_env}.
 }
 \description{
-\code{dorado_basecall()} runs \code{dorado basecaller} on a project \code{pod5/} directory
+\code{dorado_basecall()} runs \verb{dorado basecaller} on a project \verb{pod5/} directory
 and writes a BAM file.
 }

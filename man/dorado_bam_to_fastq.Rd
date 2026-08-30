@@ -21,15 +21,15 @@ dorado_bam_to_fastq(
 }
 \arguments{
 \item{demux_dir}{Dorado demultiplexing output directory containing one or
-more \code{bam_pass/} directories.}
+more \verb{bam_pass/} directories.}
 
-\item{fastq_out}{FASTQ output directory name created next to each \code{bam_pass/}
+\item{fastq_out}{FASTQ output directory name created next to each \verb{bam_pass/}
 directory.}
 
 \item{overwrite}{Logical. If \code{FALSE}, stop when an output FASTQ already
 exists.}
 
-\item{include_unclassified}{Logical. If \code{FALSE}, skip \code{unclassified/} BAM
+\item{include_unclassified}{Logical. If \code{FALSE}, skip \verb{unclassified/} BAM
 folders.}
 
 \item{allow_empty}{Logical. If \code{FALSE}, stop when a converted FASTQ.GZ has no
@@ -38,14 +38,14 @@ FASTQ records.}
 \item{samtools, gzip}{Command names or executable paths for \code{samtools} and
 \code{gzip}.}
 
-\item{conda_env}{Optional conda environment name. If supplied, samtools is run
+\item{conda_env}{Optional conda environment name. If supplied, Dorado is run
 with \verb{conda run -n <conda_env>}.}
 
 \item{conda}{Conda executable name or path used when \code{conda_env} is supplied.}
 
-\item{dry_run}{Logical. If \code{TRUE}, return planned commands without running.}
+\item{dry_run}{Logical. If \code{TRUE}, return planned command without running.}
 
-\item{echo}{Logical. If \code{TRUE}, print planned commands before execution.}
+\item{echo}{Logical. If \code{TRUE}, print planned command before execution.}
 
 \item{stderr}{Passed to \code{\link[=system2]{system2()}}. Defaults stream errors to the R console.}
 }
@@ -55,7 +55,7 @@ Invisibly returns a list with \code{status}, \code{commands}, \code{conversions}
 directories, output FASTQ paths, and the number of BAM files converted.
 }
 \description{
-\code{dorado_bam_to_fastq()} searches for Dorado \code{bam_pass/} directories under a
+\code{dorado_bam_to_fastq()} searches for Dorado \verb{bam_pass/} directories under a
 demultiplexing output directory and converts each barcode BAM folder to a
 matching \code{fastq.gz} file.
 }

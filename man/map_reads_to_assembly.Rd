@@ -48,25 +48,25 @@ writes \verb{<depth_file>.png}.}
 matches Nanopore reads.}
 
 \item{threads}{Positive integer thread count passed to \code{minimap2 -t} and
-\code{samtools sort -@}.}
+\verb{samtools sort -@}.}
 
 \item{secondary}{Logical. If \code{FALSE}, pass \code{--secondary=no} to minimap2.}
 
-\item{depth_all_positions}{Logical. If \code{TRUE}, pass \code{samtools depth -a} so
+\item{depth_all_positions}{Logical. If \code{TRUE}, pass \verb{samtools depth -a} so
 zero-depth positions are also reported.}
 
-\item{depth_all_references}{Logical. If \code{TRUE}, pass \code{samtools depth -aa} so
+\item{depth_all_references}{Logical. If \code{TRUE}, pass \verb{samtools depth -aa} so
 every position in every reference sequence is reported. This overrides
 \code{depth_all_positions}.}
 
 \item{min_mapping_quality}{Optional minimum mapping quality passed to
-\code{samtools depth -Q}.}
+\verb{samtools depth -Q}.}
 
 \item{min_base_quality}{Optional minimum base quality passed to
-\code{samtools depth -q}.}
+\verb{samtools depth -q}.}
 
 \item{depth_exclude_flags}{Optional SAM flag mask passed to
-\code{samtools depth -G} to exclude alignments with any of these flags. For
+\verb{samtools depth -G} to exclude alignments with any of these flags. For
 example, \code{"0x900"} excludes secondary (\code{0x100}) and supplementary (\code{0x800})
 alignments from depth calculation.}
 
@@ -99,7 +99,7 @@ Invisibly returns a list with \code{status}, \code{commands}, \code{paths}, \cod
 \description{
 \code{map_reads_to_assembly()} maps Nanopore reads back to assembled contigs with
 \code{minimap2}, sorts and indexes the BAM with \code{samtools}, writes per-base depth
-with \code{samtools depth}, and optionally saves a depth plot.
+with \verb{samtools depth}, and optionally saves a depth plot.
 }
 \examples{
 assembly <- tempfile(fileext = ".fasta")
