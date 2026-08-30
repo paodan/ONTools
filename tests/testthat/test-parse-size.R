@@ -10,10 +10,24 @@ test_that("parse_size parses base-pair size strings", {
 
 test_that("parseSize remains available as a compatibility alias", {
   expect_equal(parseSize(c("180kbp", "2Mbp")), c(180000, 2e6))
+  expect_equal(parseSize(c("180kbp", "bad"), na_on_error = TRUE), c(180000, NA))
 })
 
 test_that("parse_size supports custom units", {
   expect_equal(parse_size("3foo", units = c(bp = 1, foo = 7)), 21)
+})
+
+test_that("parse_size can replace invalid sizes with NA", {
+  expect_equal(
+    parse_size(c("180k", "abc", "10tb", NA_character_, "2Mbp"),
+               na_on_error = TRUE),
+    c(180000, NA, NA, NA, 2e6)
+  )
+  expect_equal(
+    parse_size(c("3foo", "4bar"), units = c(bp = 1, foo = 7),
+               na_on_error = TRUE),
+    c(21, NA)
+  )
 })
 
 test_that("parse_size validates inputs", {
@@ -22,4 +36,5 @@ test_that("parse_size validates inputs", {
   expect_error(parse_size("10tb"), "Unknown size unit")
   expect_error(parse_size("10kb", units = c(kb = NA_real_)), "`units`")
   expect_error(parse_size("10kb", units = c(1000)), "`units`")
+  expect_error(parse_size("10kb", na_on_error = NA), "`na_on_error`")
 })

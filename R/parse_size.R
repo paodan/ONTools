@@ -6,11 +6,15 @@
 #' @param x Character vector of size strings.
 #' @param units Named numeric vector defining unit multipliers. An empty unit is
 #'   treated as `"bp"`.
+#' @param na_on_error Logical. If `TRUE`, invalid size strings or unknown units
+#'   are returned as `NA_real_` instead of throwing an error. Input type errors
+#'   and invalid `units` still throw errors.
 #'
 #' @return A numeric vector with parsed sizes in base pairs.
 #'
 #' @examples
 #' parse_size(c("180k", "2.5Mbp", "1000 bp"))
+#' parse_size(c("180k", "bad", "10tb"), na_on_error = TRUE)
 #'
 #' @export
 parse_size <- function(x,
@@ -31,7 +35,8 @@ parse_size <- function(x,
                          Gb = 1e9,
                          gbp = 1e9,
                          Gbp = 1e9
-                       )) {
+                       ),
+                       na_on_error = FALSE) {
   if (!is.character(x)) {
     stop("`x` must be a character vector.", call. = FALSE)
   }
@@ -40,30 +45,43 @@ parse_size <- function(x,
     stop("`units` must be a named numeric vector with finite values.",
          call. = FALSE)
   }
+  if (!is.logical(na_on_error) || length(na_on_error) != 1L ||
+      is.na(na_on_error)) {
+    stop("`na_on_error` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
 
   compact <- gsub("[[:space:]]+", "", x)
   pattern <- "^([+-]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)(?:[eE][+-]?[0-9]+)?)([[:alpha:]]*)$"
   matched <- !is.na(compact) & grepl(pattern, compact, perl = TRUE)
   if (any(!matched)) {
-    stop("Invalid size string: ", x[which(!matched)[1L]], call. = FALSE)
+    if (!isTRUE(na_on_error)) {
+      stop("Invalid size string: ", x[which(!matched)[1L]], call. = FALSE)
+    }
   }
 
-  value <- as.numeric(sub(pattern, "\\1", compact, perl = TRUE))
-  unit <- sub(pattern, "\\2", compact, perl = TRUE)
+  value <- rep(NA_real_, length(x))
+  unit <- rep(NA_character_, length(x))
+  value[matched] <- as.numeric(sub(pattern, "\\1", compact[matched], perl = TRUE))
+  unit[matched] <- sub(pattern, "\\2", compact[matched], perl = TRUE)
   unit[unit == ""] <- "bp"
 
-  unknown <- !unit %in% names(units)
+  unknown <- matched & !unit %in% names(units)
   if (any(unknown)) {
-    stop(
-      "Unknown size unit `",
-      unit[which(unknown)[1L]],
-      "`. Supported units: ",
-      paste(names(units), collapse = ", "),
-      call. = FALSE
-    )
+    if (!isTRUE(na_on_error)) {
+      stop(
+        "Unknown size unit `",
+        unit[which(unknown)[1L]],
+        "`. Supported units: ",
+        paste(names(units), collapse = ", "),
+        call. = FALSE
+      )
+    }
   }
 
-  unname(value * units[unit])
+  parsed <- rep(NA_real_, length(x))
+  valid <- matched & !unknown
+  parsed[valid] <- value[valid] * units[unit[valid]]
+  unname(parsed)
 }
 
 #' @rdname parse_size
@@ -86,6 +104,7 @@ parseSize <- function(x,
                         Gb = 1e9,
                         gbp = 1e9,
                         Gbp = 1e9
-                      )) {
-  parse_size(x, units = units)
+                      ),
+                      na_on_error = FALSE) {
+  parse_size(x, units = units, na_on_error = na_on_error)
 }

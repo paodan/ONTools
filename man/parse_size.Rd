@@ -9,14 +9,16 @@ parse_size(
   x,
   units = c(bp = 1, b = 1, k = 1000, kb = 1000, kbp = 1000, Kbp = 1000, m = 1e+06, mb =
     1e+06, Mb = 1e+06, mbp = 1e+06, Mbp = 1e+06, g = 1e+09, gb = 1e+09, Gb = 1e+09, gbp =
-    1e+09, Gbp = 1e+09)
+    1e+09, Gbp = 1e+09),
+  na_on_error = FALSE
 )
 
 parseSize(
   x,
   units = c(bp = 1, b = 1, k = 1000, kb = 1000, kbp = 1000, Kbp = 1000, m = 1e+06, mb =
     1e+06, Mb = 1e+06, mbp = 1e+06, Mbp = 1e+06, g = 1e+09, gb = 1e+09, Gb = 1e+09, gbp =
-    1e+09, Gbp = 1e+09)
+    1e+09, Gbp = 1e+09),
+  na_on_error = FALSE
 )
 }
 \arguments{
@@ -24,6 +26,10 @@ parseSize(
 
 \item{units}{Named numeric vector defining unit multipliers. An empty unit is
 treated as \code{"bp"}.}
+
+\item{na_on_error}{Logical. If \code{TRUE}, invalid size strings or unknown units
+are returned as \code{NA_real_} instead of throwing an error. Input type errors
+and invalid \code{units} still throw errors.}
 }
 \value{
 A numeric vector with parsed sizes in base pairs.
@@ -34,5 +40,6 @@ or \code{"1000 bp"} to numeric base-pair counts.
 }
 \examples{
 parse_size(c("180k", "2.5Mbp", "1000 bp"))
+parse_size(c("180k", "bad", "10tb"), na_on_error = TRUE)
 
 }
