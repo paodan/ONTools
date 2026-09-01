@@ -564,9 +564,11 @@ make_consensus_delivery <- function(path_proj,
           stringsAsFactors = FALSE
         )
       } else {
+        output_dir = file.path(path_delivery, folder, "consensus_results")
+        dir.create(output_dir, showWarnings = F, recursive = T)
         delivery[[folder]] <- collect_amplicon_results(
           result_dir = workflow[[folder]]$paths$out_dir,
-          output_dir = file.path(path_delivery, folder),
+          output_dir = output_dir,
           sample_map = sample_info_file,
           fastq_pass_trim_dir = workflow[[folder]]$paths$fastq,
           include_execution = include_execution,

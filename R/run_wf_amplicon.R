@@ -152,7 +152,7 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
     args <- c(args, "-resume")
   }
 
-  command_string <- make_wf_amplicon_command_string(
+  command_string <- make_wf_command_string(
     nextflow = nextflow,
     args = args,
     extra_args = extra_args
@@ -229,7 +229,7 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
   ))
 }
 
-make_wf_amplicon_command_string <- function(nextflow, args, extra_args) {
+make_wf_command_string <- function(nextflow, args, extra_args) {
   command <- paste(c(shQuote(nextflow), shQuote(args)), collapse = " ")
   if (!is.null(extra_args)) {
     command <- paste(command, extra_args)
