@@ -586,8 +586,26 @@ make_consensus_delivery <- function(path_proj,
       igv_results[[folder]] <- NULL
     }
 
+    if (isTRUE(make_ab1)) {
+      message("Step 8: Generate synthetic AB1 files")
+      ab1_results[[folder]] <- generate_amplicon_ab1_files(
+        result_dir = workflow[[folder]]$paths$out_dir,
+        consensus_file = consensus_file,
+        barcode_pattern = barcode_pattern,
+        ab1_name_template = ab1_name_template,
+        samtools = ab1_samtools,
+        overwrite = overwrite_delivery,
+        dry_run = dry_run,
+        echo = echo,
+        stderr = stderr
+      )
+    } else {
+      message("Step 8: Generate synthetic AB1 files (skipped)")
+      ab1_results[[folder]] <- NULL
+    }
+
     if (isTRUE(collect_results_step)) {
-      message("Step 8: Deliver the results")
+      message("Step 9: Deliver the results")
       output_dir <- file.path(path_delivery, folder, "consensus_results")
       if (isTRUE(dry_run)) {
         delivery[[folder]] <- data.frame(
@@ -614,30 +632,19 @@ make_consensus_delivery <- function(path_proj,
           include_execution = include_execution,
           include_ab1 = make_ab1,
           ab1_name_template = ab1_name_template,
-          ab1_samtools = ab1_samtools,
-          ab1_echo = echo,
-          ab1_stderr = stderr,
           readme_name = readme_name,
           chinese_readme_name = chinese_readme_name,
           overwrite = overwrite_delivery
         )
-        ab1_results[[folder]] <- delivery[[folder]][
-          grepl("_synthetic_ab1$", delivery[[folder]]$label),
-          ,
-          drop = FALSE
-        ]
         utils::write.csv(
           delivery[[folder]],
           file = file.path(path_work, paste0("delivery_stats_", folder, ".csv")),
           row.names = FALSE
         )
       }
-
-      if (isTRUE(dry_run) || !isTRUE(make_ab1)) ab1_results[[folder]] <- NULL
     } else {
-      message("Step 8: Deliver the results (skipped)")
+      message("Step 9: Deliver the results (skipped)")
       delivery[[folder]] <- NULL
-      ab1_results[[folder]] <- NULL
     }
   }
 
@@ -658,6 +665,128 @@ make_consensus_delivery <- function(path_proj,
     fig_path = fig_path,
     stat_path = stat_path
   ))
+}
+
+generate_amplicon_ab1_files <- function(result_dir,
+                                        consensus_file,
+                                        barcode_pattern,
+                                        ab1_name_template,
+                                        samtools,
+                                        overwrite,
+                                        dry_run,
+                                        echo,
+                                        stderr) {
+  if (!grepl("[{]barcode[}]", ab1_name_template)) {
+    stop("`ab1_name_template` must contain `{barcode}`.", call. = FALSE)
+  }
+
+  consensus <- file.path(result_dir, consensus_file)
+  barcode_dirs <- if (dir.exists(result_dir)) {
+    list.dirs(result_dir, recursive = FALSE, full.names = TRUE)
+  } else {
+    character()
+  }
+  barcode_dirs <- barcode_dirs[grepl(barcode_pattern, basename(barcode_dirs))]
+  barcode_dirs <- sort(barcode_dirs)
+
+  rows <- data.frame(
+    barcode = character(),
+    consensus = character(),
+    bam = character(),
+    bai = character(),
+    ab1 = character(),
+    consensus_exists = logical(),
+    bam_exists = logical(),
+    bai_exists = logical(),
+    generated = logical(),
+    status = character(),
+    stringsAsFactors = FALSE
+  )
+
+  if (!isTRUE(dry_run)) {
+    check_file_arg(consensus, "consensus")
+  }
+
+  for (barcode_dir in barcode_dirs) {
+    barcode <- basename(barcode_dir)
+    bam <- file.path(
+      barcode_dir,
+      "alignments",
+      paste0(barcode, ".aligned.sorted.bam")
+    )
+    bai <- delivery_standard_bam_index_path(bam)
+    ab1 <- file.path(
+      barcode_dir,
+      sub("[{]barcode[}]", barcode, ab1_name_template)
+    )
+
+    consensus_exists <- file.exists(consensus)
+    bam_exists <- file.exists(bam)
+    bai_exists <- !is.na(bai)
+
+    if (isTRUE(dry_run)) {
+      rows <- rbind(rows, data.frame(
+        barcode = barcode,
+        consensus = consensus,
+        bam = bam,
+        bai = if (is.na(bai)) paste0(bam, ".bai") else bai,
+        ab1 = ab1,
+        consensus_exists = consensus_exists,
+        bam_exists = bam_exists,
+        bai_exists = bai_exists,
+        generated = FALSE,
+        status = "dry_run",
+        stringsAsFactors = FALSE
+      ))
+      next
+    }
+
+    if (!bam_exists) {
+      stop("BAM file not found for `", barcode, "`: ", bam, call. = FALSE)
+    }
+    if (!bai_exists) {
+      stop("BAM index not found for `", barcode, "`: ", paste0(bam, ".bai"),
+           call. = FALSE)
+    }
+
+    synthetic_ab1_from_bam(
+      consensus = consensus,
+      bam = bam,
+      output_ab1 = ab1,
+      reference_name = barcode,
+      sample = barcode,
+      samtools = samtools,
+      overwrite = overwrite,
+      echo = echo,
+      stderr = stderr
+    )
+
+    rows <- rbind(rows, data.frame(
+      barcode = barcode,
+      consensus = consensus,
+      bam = bam,
+      bai = bai,
+      ab1 = normalizePath(ab1, mustWork = TRUE),
+      consensus_exists = consensus_exists,
+      bam_exists = bam_exists,
+      bai_exists = bai_exists,
+      generated = TRUE,
+      status = "generated",
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  rows
+}
+
+delivery_standard_bam_index_path <- function(bam) {
+  candidates <- c(
+    paste0(bam, ".bai"),
+    sub("\\.bam$", ".bai", bam, ignore.case = TRUE)
+  )
+  candidates <- candidates[file.exists(candidates)]
+  if (length(candidates) == 0L) return(NA_character_)
+  candidates[[1]]
 }
 
 validate_sample_info_file_list <- function(path_sampleInfo_file_list) {

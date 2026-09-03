@@ -101,35 +101,17 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
 })
 
 test_that("collect_amplicon_results can mention synthetic AB1 files in README", {
-  skip_if(Sys.which("samtools") == "", "samtools is not installed")
-
   result_dir <- tempfile("amplicon-result-")
   output_dir <- tempfile("amplicon-final-")
   dir.create(file.path(result_dir, "barcode57", "alignments"), recursive = TRUE)
-  sequence <- "ACGTACGTACGT"
-  consensus <- file.path(result_dir, "all-consensus-seqs.fasta")
-  sam <- file.path(result_dir, "reads.sam")
-  bam <- file.path(result_dir, "barcode57", "alignments", "barcode57.aligned.sorted.bam")
-  writeLines(c(">barcode57", sequence), consensus)
-  writeLines(
-    c(
-      "@HD\tVN:1.6\tSO:coordinate",
-      paste0("@SQ\tSN:barcode57\tLN:", nchar(sequence)),
-      paste0("read1\t0\tbarcode57\t1\t60\t12M\t*\t0\t0\t", sequence, "\tIIIIIIIIIIII")
-    ),
-    sam
-  )
-  system2("samtools", c("faidx", consensus))
-  system2("samtools", c("view", "-bS", sam), stdout = bam)
-  system2("samtools", c("index", bam))
+  writeLines(">barcode57\nACGT", file.path(result_dir, "all-consensus-seqs.fasta"))
+  writeLines("ab1", file.path(result_dir, "barcode57", "barcode57.synthetic.ab1"))
 
   copied <- collect_amplicon_results(
     result_dir = result_dir,
     output_dir = output_dir,
     include_ab1 = TRUE,
-    ab1_name_template = "{barcode}.synthetic.ab1",
-    ab1_echo = FALSE,
-    ab1_stderr = FALSE
+    ab1_name_template = "{barcode}.synthetic.ab1"
   )
 
   readme <- readLines(file.path(output_dir, "README.txt"))
@@ -140,7 +122,7 @@ test_that("collect_amplicon_results can mention synthetic AB1 files in README", 
   expect_true(any(grepl("barcode*/<barcode>.synthetic.ab1", readme_zh, fixed = TRUE)))
   expect_true(any(grepl("模拟 Sanger AB1 峰图文件", readme_zh, fixed = TRUE)))
   expect_true(file.exists(file.path(output_dir, "barcode57", "barcode57.synthetic.ab1")))
-  expect_true(any(copied$label == "barcode57_synthetic_ab1"))
+  expect_true(any(copied$label == "barcode57"))
 })
 
 test_that("collect_amplicon_results reports missing optional files", {

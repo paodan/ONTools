@@ -84,6 +84,7 @@ test_that("make_consensus_delivery can reconstruct skipped demux paths", {
     run_filtered_QC_step = FALSE,
     run_igv_step = FALSE,
     collect_results_step = FALSE,
+    make_ab1 = FALSE,
     dry_run = TRUE,
     echo = FALSE
   )
@@ -143,6 +144,7 @@ test_that("make_consensus_delivery auto mode reuses grouped FASTQ folders", {
     run_filtered_QC_step = FALSE,
     run_igv_step = FALSE,
     collect_results_step = FALSE,
+    make_ab1 = FALSE,
     echo = FALSE
   )
 
@@ -286,10 +288,10 @@ test_that("make_consensus_delivery writes AB1 files to delivered barcode folders
   source_ab1 <- file.path(result_dir, "barcode001", "barcode001.trace.ab1")
 
   expect_true(file.exists(delivered_ab1))
-  expect_false(file.exists(source_ab1))
-  expect_equal(res$ab1$PROJECT001_1600$label, "barcode001_synthetic_ab1")
-  expect_equal(res$ab1$PROJECT001_1600$destination, normalizePath(delivered_ab1))
-  expect_true(res$ab1$PROJECT001_1600$copied)
+  expect_true(file.exists(source_ab1))
+  expect_equal(res$ab1$PROJECT001_1600$status, "generated")
+  expect_equal(res$ab1$PROJECT001_1600$barcode, "barcode001")
+  expect_equal(res$ab1$PROJECT001_1600$ab1, normalizePath(source_ab1))
   expect_true(any(grepl(
     "barcode*/<barcode>.trace.ab1",
     readLines(file.path(
