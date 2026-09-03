@@ -36,9 +36,10 @@ test_that("make_ont_fastq_delivery builds the default command", {
   expect_false(any(res$args == "--no-reuse-nanoplot"))
   expect_true(any(res$args == "--skip-nanoplot"))
   expect_true(any(res$args == "--skip-multiqc"))
+  expect_false(any(res$args == "--skip-archive"))
   expect_match(res$command_string, "make_ont_fastq_delivery.sh", fixed = TRUE)
-  expect_equal(res$paths$delivery_dir, file.path(normalizePath(output_dir), "PROJECT001_delivery"))
-  expect_equal(res$paths$archive, file.path(normalizePath(output_dir), "PROJECT001_delivery.tar.gz"))
+  expect_equal(res$paths$delivery_dir, file.path(normalizePath(output_dir), "raw"))
+  expect_equal(res$paths$archive, file.path(normalizePath(output_dir), "raw.tar.gz"))
 })
 
 test_that("make_ont_fastq_delivery validates arguments", {
@@ -84,6 +85,17 @@ test_that("make_ont_fastq_delivery validates arguments", {
       input = fastq_dir,
       output = output_dir,
       project = "PROJECT001",
+      make_archive = "no",
+      dry_run = TRUE,
+      echo = FALSE
+    ),
+    "make_archive"
+  )
+  expect_error(
+    make_ont_fastq_delivery(
+      input = fastq_dir,
+      output = output_dir,
+      project = "PROJECT001",
       overwrite = "yes",
       dry_run = TRUE,
       echo = FALSE
@@ -110,18 +122,18 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
   dir.create(fastq_dir)
   dir.create(output_dir)
   dir.create(fake_bin)
-  dir.create(file.path(output_dir, "PROJECT001_delivery"))
+  dir.create(file.path(output_dir, "raw"))
   dir.create(
-    file.path(output_dir, "PROJECT001_delivery", "02_qc_report", "nanoplot", "barcode01"),
+    file.path(output_dir, "raw", "02_qc_report", "nanoplot", "barcode01"),
     recursive = TRUE
   )
-  writeLines("stale", file.path(output_dir, "PROJECT001_delivery", "stale.txt"))
-  writeLines("stale", file.path(output_dir, "PROJECT001_delivery.tar.gz"))
+  writeLines("stale", file.path(output_dir, "raw", "stale.txt"))
+  writeLines("stale", file.path(output_dir, "raw.tar.gz"))
   writeLines(
     c("metric\tvalue", "reused\t1"),
     file.path(
       output_dir,
-      "PROJECT001_delivery",
+      "raw",
       "02_qc_report",
       "nanoplot",
       "barcode01",
@@ -200,14 +212,14 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
 
   multiqc_inputs <- readLines(file.path(
     output_dir,
-    "PROJECT001_delivery",
+    "raw",
     "02_qc_report",
     "multiqc_input_files.txt"
   ))
   fastq_stats <- utils::read.delim(
     file.path(
       output_dir,
-      "PROJECT001_delivery",
+      "raw",
       "02_qc_report",
       "fastq_stats.tsv"
     ),
@@ -215,7 +227,7 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
   )
   readme_zh <- readLines(file.path(
     output_dir,
-    "PROJECT001_delivery",
+    "raw",
     "README.zh-CN.txt"
   ))
 
@@ -227,7 +239,7 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
   expect_equal(
     readLines(file.path(
       output_dir,
-      "PROJECT001_delivery",
+      "raw",
       "02_qc_report",
       "nanoplot",
       "barcode01",
@@ -235,19 +247,39 @@ test_that("make_ont_fastq_delivery gives MultiQC per-sample NanoStats names", {
     )),
     c("metric\tvalue", "reused\t1")
   )
-  expect_false(file.exists(file.path(output_dir, "PROJECT001_delivery", "stale.txt")))
+  expect_false(file.exists(file.path(output_dir, "raw", "stale.txt")))
   expect_false(file.exists(file.path(
     output_dir,
-    "PROJECT001_delivery",
+    "raw",
     "02_qc_report",
     "fastq_files.txt"
   )))
   expect_false(dir.exists(file.path(
     output_dir,
-    "PROJECT001_delivery",
+    "raw",
     "02_qc_report",
     "nanoplot_for_multiqc"
   )))
+})
+
+test_that("make_ont_fastq_delivery can skip archive creation", {
+  fastq_dir <- tempfile("ont-fastq-")
+  output_dir <- tempfile("ont-delivery-")
+  dir.create(fastq_dir)
+  dir.create(output_dir)
+  writeLines(c("@read1", "ACGT", "+", "!!!!"), file.path(fastq_dir, "barcode01.fastq"))
+
+  res <- make_ont_fastq_delivery(
+    input = fastq_dir,
+    output = output_dir,
+    project = "PROJECT001",
+    make_archive = FALSE,
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_true(any(res$args == "--skip-archive"))
+  expect_null(res$paths$archive)
 })
 
 test_that("make_ont_fastq_delivery can disable NanoPlot reuse", {

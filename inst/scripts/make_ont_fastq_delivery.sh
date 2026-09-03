@@ -13,14 +13,15 @@ Usage:
     [--overwrite] \
     [--no-reuse-nanoplot] \
     [--skip-nanoplot] \
-    [--skip-multiqc]
+    [--skip-multiqc] \
+    [--skip-archive]
 
 Description:
   Build a customer-deliverable package for demultiplexed ONT FASTQ files.
   The script does not filter, rename, or modify FASTQ contents.
 
 Outputs:
-  <output>/<project>_delivery/
+  <output>/raw/
     00_sample_sheet/
     01_fastq/
     02_qc_report/
@@ -31,7 +32,7 @@ Outputs:
     03_md5/
       md5.txt
     README.txt
-  <output>/<project>_delivery.tar.gz
+  <output>/raw.tar.gz, unless --skip-archive is supplied
 
 Required:
   seqkit
@@ -94,6 +95,7 @@ RUN_NANOPLOT=1
 RUN_MULTIQC=1
 OVERWRITE=0
 REUSE_NANOPLOT=1
+MAKE_ARCHIVE=1
 FASTQ_LIST=""
 PRESERVED_NANOPLOT_DIR=""
 
@@ -142,6 +144,10 @@ while [[ $# -gt 0 ]]; do
       RUN_MULTIQC=0
       shift
       ;;
+    --skip-archive)
+      MAKE_ARCHIVE=0
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -164,8 +170,10 @@ if [[ -n "$SAMPLE_SHEET" && ! -f "$SAMPLE_SHEET" ]]; then
 fi
 
 require_cmd seqkit
-require_cmd tar
 require_cmd gzip
+if [[ "$MAKE_ARCHIVE" -eq 1 ]]; then
+  require_cmd tar
+fi
 
 if [[ "$RUN_NANOPLOT" -eq 1 ]] && ! has_cmd NanoPlot; then
   die "NanoPlot not found. Install it or rerun with --skip-nanoplot."
@@ -182,7 +190,7 @@ mkdir -p "$OUTPUT_ROOT"
 DELIVERY_DIR="$OUTPUT_ROOT/raw"
 ARCHIVE="$OUTPUT_ROOT/raw.tar.gz"
 
-if [[ -e "$DELIVERY_DIR" || -e "$ARCHIVE" ]]; then
+if [[ -e "$DELIVERY_DIR" || ( "$MAKE_ARCHIVE" -eq 1 && -e "$ARCHIVE" ) ]]; then
   if [[ "$OVERWRITE" -eq 1 ]]; then
     if [[ "$RUN_NANOPLOT" -eq 1 && "$REUSE_NANOPLOT" -eq 1 && -d "$DELIVERY_DIR/02_qc_report/nanoplot" ]]; then
       PRESERVED_NANOPLOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/make_ont_fastq_delivery_nanoplot.XXXXXX")"
@@ -353,9 +361,15 @@ EOF
 log "Writing MD5 checksums."
 md5_write "$DELIVERY_DIR/01_fastq" "$DELIVERY_DIR/03_md5/md5.txt"
 
-log "Creating archive: $ARCHIVE"
-tar -czf "$ARCHIVE" -C "$OUTPUT_ROOT" "$(basename "$DELIVERY_DIR")"
+if [[ "$MAKE_ARCHIVE" -eq 1 ]]; then
+  log "Creating archive: $ARCHIVE"
+  tar -czf "$ARCHIVE" -C "$OUTPUT_ROOT" "$(basename "$DELIVERY_DIR")"
+else
+  log "Skipping archive creation because --skip-archive was supplied."
+fi
 
 log "Done."
 log "Delivery directory: $DELIVERY_DIR"
-log "Delivery archive: $ARCHIVE"
+if [[ "$MAKE_ARCHIVE" -eq 1 ]]; then
+  log "Delivery archive: $ARCHIVE"
+fi

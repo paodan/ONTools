@@ -1,3 +1,27 @@
+read_abif_test_tags <- function(path) {
+  con <- file(path, "rb")
+  on.exit(close(con), add = TRUE)
+  magic <- rawToChar(readBin(con, "raw", n = 4L))
+  expect_equal(magic, "ABIF")
+  readBin(con, "integer", n = 1L, size = 2L, endian = "big")
+  root <- readBin(con, "raw", n = 28L)
+  count <- read_uint32_test(root[13:16])
+  directory_offset <- read_uint32_test(root[21:24])
+  seek(con, directory_offset, origin = "start")
+  vapply(
+    seq_len(count),
+    function(i) {
+      entry <- readBin(con, "raw", n = 28L)
+      paste0(rawToChar(entry[1:4]), ":", read_uint32_test(entry[5:8]))
+    },
+    character(1)
+  )
+}
+
+read_uint32_test <- function(bytes) {
+  sum(as.integer(bytes) * c(16777216, 65536, 256, 1))
+}
+
 test_that("synthetic_ab1_from_bam validates arguments", {
   consensus <- tempfile(fileext = ".fasta")
   bam <- tempfile(fileext = ".bam")
@@ -82,27 +106,3 @@ test_that("synthetic_ab1_from_bam runs on a tiny BAM", {
   expect_false(file.exists(paste0(consensus, ".fai")))
   expect_true("PBAS:2" %in% read_abif_test_tags(ab1))
 })
-
-read_abif_test_tags <- function(path) {
-  con <- file(path, "rb")
-  on.exit(close(con), add = TRUE)
-  magic <- rawToChar(readBin(con, "raw", n = 4L))
-  expect_equal(magic, "ABIF")
-  readBin(con, "integer", n = 1L, size = 2L, endian = "big")
-  root <- readBin(con, "raw", n = 28L)
-  count <- read_uint32_test(root[13:16])
-  directory_offset <- read_uint32_test(root[21:24])
-  seek(con, directory_offset, origin = "start")
-  vapply(
-    seq_len(count),
-    function(i) {
-      entry <- readBin(con, "raw", n = 28L)
-      paste0(rawToChar(entry[1:4]), ":", read_uint32_test(entry[5:8]))
-    },
-    character(1)
-  )
-}
-
-read_uint32_test <- function(bytes) {
-  sum(as.integer(bytes) * c(16777216, 65536, 256, 1))
-}

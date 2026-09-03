@@ -13,6 +13,7 @@ make_ont_fastq_delivery(
   run_nanoplot = TRUE,
   run_multiqc = TRUE,
   reuse_nanoplot = TRUE,
+  make_archive = TRUE,
   overwrite = FALSE,
   script = NULL,
   bash = "bash",
@@ -50,6 +51,10 @@ A sample is reused when its NanoPlot output directory already contains a
 \verb{*NanoStats.txt} file. Set to \code{FALSE} to pass \code{--no-reuse-nanoplot} and
 force NanoPlot to run again for all samples.}
 
+\item{make_archive}{Logical. If \code{TRUE}, create \code{raw.tar.gz} after building
+the delivery directory. Set to \code{FALSE} to pass \code{--skip-archive} and leave
+only the \code{raw} directory.}
+
 \item{overwrite}{Logical. If \code{TRUE}, remove an existing
 \code{raw} directory or
 \code{raw.tar.gz} archive before rebuilding. Defaults to
@@ -79,7 +84,7 @@ Invisibly returns a list with \code{command}, \code{args}, \code{command_string}
 \code{make_ont_fastq_delivery()} is an R wrapper around the bundled
 \code{make_ont_fastq_delivery.sh} shell script. It copies demultiplexed ONT FASTQ
 files into a customer-facing delivery directory, generates delivery-level QC
-outputs, writes MD5 checksums, and creates a \code{.tar.gz} archive.
+outputs, writes MD5 checksums, and optionally creates a \code{.tar.gz} archive.
 }
 \details{
 The wrapped shell script does not filter, rename, or modify FASTQ contents.
@@ -127,6 +132,7 @@ res <- make_ont_fastq_delivery(
   project = "PROJECT001",
   run_nanoplot = FALSE,
   run_multiqc = FALSE,
+  make_archive = FALSE,
   dry_run = TRUE
 )
 res$command_string

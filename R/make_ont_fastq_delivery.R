@@ -3,7 +3,7 @@
 #' `make_ont_fastq_delivery()` is an R wrapper around the bundled
 #' `make_ont_fastq_delivery.sh` shell script. It copies demultiplexed ONT FASTQ
 #' files into a customer-facing delivery directory, generates delivery-level QC
-#' outputs, writes MD5 checksums, and creates a `.tar.gz` archive.
+#' outputs, writes MD5 checksums, and optionally creates a `.tar.gz` archive.
 #'
 #' The wrapped shell script does not filter, rename, or modify FASTQ contents.
 #'
@@ -25,6 +25,9 @@
 #'   A sample is reused when its NanoPlot output directory already contains a
 #'   `*NanoStats.txt` file. Set to `FALSE` to pass `--no-reuse-nanoplot` and
 #'   force NanoPlot to run again for all samples.
+#' @param make_archive Logical. If `TRUE`, create `raw.tar.gz` after building
+#'   the delivery directory. Set to `FALSE` to pass `--skip-archive` and leave
+#'   only the `raw` directory.
 #' @param overwrite Logical. If `TRUE`, remove an existing
 #'   `raw` directory or
 #'   `raw.tar.gz` archive before rebuilding. Defaults to
@@ -83,6 +86,7 @@
 #'   project = "PROJECT001",
 #'   run_nanoplot = FALSE,
 #'   run_multiqc = FALSE,
+#'   make_archive = FALSE,
 #'   dry_run = TRUE
 #' )
 #' res$command_string
@@ -96,6 +100,7 @@ make_ont_fastq_delivery <- function(input,
                                     run_nanoplot = TRUE,
                                     run_multiqc = TRUE,
                                     reuse_nanoplot = TRUE,
+                                    make_archive = TRUE,
                                     overwrite = FALSE,
                                     script = NULL,
                                     bash = "bash",
@@ -111,6 +116,7 @@ make_ont_fastq_delivery <- function(input,
   check_logical_scalar(run_nanoplot, "run_nanoplot")
   check_logical_scalar(run_multiqc, "run_multiqc")
   check_logical_scalar(reuse_nanoplot, "reuse_nanoplot")
+  check_logical_scalar(make_archive, "make_archive")
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
@@ -161,6 +167,9 @@ make_ont_fastq_delivery <- function(input,
   if (!isTRUE(run_multiqc)) {
     args <- c(args, "--skip-multiqc")
   }
+  if (!isTRUE(make_archive)) {
+    args <- c(args, "--skip-archive")
+  }
 
   execution_args <- c(script, args)
   command_string <- paste(c(shQuote(bash), shQuote(execution_args)), collapse = " ")
@@ -171,7 +180,7 @@ make_ont_fastq_delivery <- function(input,
     # delivery_dir = file.path(output, paste0(project, "_delivery")),
     # archive = file.path(output, paste0(project, "_delivery.tar.gz")),
     delivery_dir = file.path(output, "raw"),
-    archive = file.path(output, "raw.tar.gz"),
+    archive = if (isTRUE(make_archive)) file.path(output, "raw.tar.gz") else NULL,
     sample_sheet = sample_sheet
   )
 
