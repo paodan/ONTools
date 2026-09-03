@@ -14,7 +14,7 @@ run_wf_16s(
   nextflow = "nextflow",
   quiet = FALSE,
   extra_args = "--minimap2_by_reference",
-  syntax_parser = NULL,
+  syntax_parser = "v1",
   ansi_log = FALSE,
   nextflow_env = NULL,
   dry_run = FALSE,
@@ -46,8 +46,10 @@ output.}
 arguments. Use this for additional wf-16s parameters exactly as you would
 type them in the shell, the default is \code{"--minimap2_by_reference"}.}
 
-\item{syntax_parser}{Optional Nextflow syntax parser version passed as the
-\code{NXF_SYNTAX_PARSER} environment variable. Use \code{NULL} to leave it unchanged.}
+\item{syntax_parser}{Nextflow syntax parser version passed as the
+\code{NXF_SYNTAX_PARSER} environment variable. Defaults to \code{"v1"} because some
+EPI2ME workflows still use Groovy \code{import} declarations that are rejected
+by the newer parser. Use \code{NULL} to leave it unchanged.}
 
 \item{ansi_log}{Logical. Passed as the \code{NXF_ANSI_LOG} environment variable.
 Defaults to \code{FALSE} to avoid frequent dynamic Nextflow status updates in

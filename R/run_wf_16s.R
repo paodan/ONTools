@@ -17,8 +17,10 @@
 #' @param extra_args Optional raw command-line string appended after the standard
 #'   arguments. Use this for additional wf-16s parameters exactly as you would
 #'   type them in the shell, the default is `"--minimap2_by_reference"`.
-#' @param syntax_parser Optional Nextflow syntax parser version passed as the
-#'   `NXF_SYNTAX_PARSER` environment variable. Use `NULL` to leave it unchanged.
+#' @param syntax_parser Nextflow syntax parser version passed as the
+#'   `NXF_SYNTAX_PARSER` environment variable. Defaults to `"v1"` because some
+#'   EPI2ME workflows still use Groovy `import` declarations that are rejected
+#'   by the newer parser. Use `NULL` to leave it unchanged.
 #' @param ansi_log Logical. Passed as the `NXF_ANSI_LOG` environment variable.
 #'   Defaults to `FALSE` to avoid frequent dynamic Nextflow status updates in
 #'   the R console.
@@ -55,7 +57,7 @@ run_wf_16s <- function(fastq = "./fastq_pass_trim",
                        nextflow = "nextflow",
                        quiet = FALSE,
                        extra_args = "--minimap2_by_reference",
-                       syntax_parser = NULL,
+                       syntax_parser = "v1",
                        ansi_log = FALSE,
                        nextflow_env = NULL,
                        dry_run = FALSE,
