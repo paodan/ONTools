@@ -283,9 +283,9 @@ test_that("make_consensus_delivery writes AB1 files to delivered barcode folders
 
   expect_true(file.exists(delivered_ab1))
   expect_false(file.exists(source_ab1))
-  expect_equal(res$ab1$PROJECT001_1600$status, "generated")
-  expect_equal(res$ab1$PROJECT001_1600$barcode, "barcode001")
-  expect_equal(res$ab1$PROJECT001_1600$ab1, normalizePath(delivered_ab1))
+  expect_equal(res$ab1$PROJECT001_1600$label, "barcode001_synthetic_ab1")
+  expect_equal(res$ab1$PROJECT001_1600$destination, normalizePath(delivered_ab1))
+  expect_true(res$ab1$PROJECT001_1600$copied)
   expect_true(any(grepl(
     "barcode*/<barcode>.synthetic.ab1",
     readLines(file.path(

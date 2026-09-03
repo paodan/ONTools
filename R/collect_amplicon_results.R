@@ -24,10 +24,16 @@
 #'   `fastq_pass_trim/<barcode>` folder.
 #' @param include_execution Logical. If `TRUE`, copy the `execution` directory
 #'   when present.
-#' @param include_ab1 Logical. If `TRUE`, mention synthetic AB1 chromatogram
-#'   files in the generated README files.
+#' @param include_ab1 Logical. If `TRUE`, generate synthetic AB1 chromatogram
+#'   files in delivered `barcode*` directories and mention them in the
+#'   generated README files.
 #' @param ab1_name_template AB1 filename template used in README files. The
 #'   placeholder `{barcode}` is replaced with each barcode directory name.
+#' @param ab1_samtools Command name or full path used by
+#'   [synthetic_ab1_from_bam()] to launch `samtools`.
+#' @param ab1_echo Logical. If `TRUE`, print `samtools mpileup` commands used
+#'   for synthetic AB1 generation.
+#' @param ab1_stderr Passed to [synthetic_ab1_from_bam()] for AB1 generation.
 #' @param readme_name README filename written into `output_dir`.
 #' @param chinese_readme_name Chinese README filename written into `output_dir`.
 #'   Set to `NULL` to skip writing the Chinese README.
@@ -63,6 +69,9 @@ collect_amplicon_results <- function(result_dir,
                                      include_execution = FALSE,
                                      include_ab1 = FALSE,
                                      ab1_name_template = "{barcode}.synthetic.ab1",
+                                     ab1_samtools = "samtools",
+                                     ab1_echo = TRUE,
+                                     ab1_stderr = "",
                                      readme_name = "README.txt",
                                      chinese_readme_name = "README.zh-CN.txt",
                                      overwrite = TRUE) {
@@ -74,13 +83,18 @@ collect_amplicon_results <- function(result_dir,
   check_scalar_character(barcode_pattern, "barcode_pattern")
   check_scalar_character(sample_length_plot_pattern, "sample_length_plot_pattern")
   check_scalar_character(ab1_name_template, "ab1_name_template")
+  check_scalar_character(ab1_samtools, "ab1_samtools")
   check_scalar_character(readme_name, "readme_name")
   if (!is.null(chinese_readme_name)) {
     check_scalar_character(chinese_readme_name, "chinese_readme_name")
   }
   check_logical_scalar(include_execution, "include_execution")
   check_logical_scalar(include_ab1, "include_ab1")
+  check_logical_scalar(ab1_echo, "ab1_echo")
   check_logical_scalar(overwrite, "overwrite")
+  if (isTRUE(include_ab1) && !grepl("[{]barcode[}]", ab1_name_template)) {
+    stop("`ab1_name_template` must contain `{barcode}`.", call. = FALSE)
+  }
 
   result_dir <- normalizePath(result_dir, mustWork = TRUE)
   if (!is.null(sample_map)) {
@@ -159,6 +173,23 @@ collect_amplicon_results <- function(result_dir,
         overwrite = overwrite
       )
     )
+
+    if (isTRUE(include_ab1)) {
+      items <- rbind(
+        items,
+        collect_synthetic_ab1(
+          result_dir = result_dir,
+          output_dir = output_dir,
+          consensus_file = consensus_file,
+          barcode_name = barcode_name,
+          ab1_name_template = ab1_name_template,
+          samtools = ab1_samtools,
+          overwrite = overwrite,
+          echo = ab1_echo,
+          stderr = ab1_stderr
+        )
+      )
+    }
 
     if (!is.null(fastq_pass_trim_dir)) {
       plot_files <- find_sample_length_plots(
@@ -286,6 +317,75 @@ collect_item <- function(label, source, destination, type, overwrite) {
     copied = copied,
     stringsAsFactors = FALSE
   )
+}
+
+collect_synthetic_ab1 <- function(result_dir,
+                                  output_dir,
+                                  consensus_file,
+                                  barcode_name,
+                                  ab1_name_template,
+                                  samtools,
+                                  overwrite,
+                                  echo,
+                                  stderr) {
+  consensus <- file.path(result_dir, consensus_file)
+  bam <- file.path(
+    result_dir,
+    barcode_name,
+    "alignments",
+    paste0(barcode_name, ".aligned.sorted.bam")
+  )
+  bai <- collect_standard_bam_index_path(bam)
+  destination <- file.path(
+    output_dir,
+    barcode_name,
+    sub("[{]barcode[}]", barcode_name, ab1_name_template)
+  )
+
+  check_file_arg(consensus, "consensus")
+  if (!file.exists(bam)) {
+    stop("BAM file not found for `", barcode_name, "`: ", bam, call. = FALSE)
+  }
+  if (is.na(bai)) {
+    stop("BAM index not found for `", barcode_name, "`: ", paste0(bam, ".bai"),
+         call. = FALSE)
+  }
+  if (!dir.exists(dirname(destination))) {
+    stop("Delivered barcode directory not found for `", barcode_name, "`: ",
+         dirname(destination), call. = FALSE)
+  }
+
+  synthetic_ab1_from_bam(
+    consensus = consensus,
+    bam = bam,
+    output_ab1 = destination,
+    reference_name = barcode_name,
+    sample = barcode_name,
+    samtools = samtools,
+    overwrite = overwrite,
+    echo = echo,
+    stderr = stderr
+  )
+
+  data.frame(
+    label = paste0(barcode_name, "_synthetic_ab1"),
+    source = bam,
+    destination = normalizePath(destination, mustWork = TRUE),
+    type = "file",
+    exists = TRUE,
+    copied = TRUE,
+    stringsAsFactors = FALSE
+  )
+}
+
+collect_standard_bam_index_path <- function(bam) {
+  candidates <- c(
+    paste0(bam, ".bai"),
+    sub("\\.bam$", ".bai", bam, ignore.case = TRUE)
+  )
+  candidates <- candidates[file.exists(candidates)]
+  if (length(candidates) == 0L) return(NA_character_)
+  candidates[[1]]
 }
 
 find_sample_length_plots <- function(fastq_pass_trim_dir, barcode_name, pattern) {

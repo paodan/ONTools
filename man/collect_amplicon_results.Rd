@@ -17,6 +17,9 @@ collect_amplicon_results(
   include_execution = FALSE,
   include_ab1 = FALSE,
   ab1_name_template = "{barcode}.synthetic.ab1",
+  ab1_samtools = "samtools",
+  ab1_echo = TRUE,
+  ab1_stderr = "",
   readme_name = "README.txt",
   chinese_readme_name = "README.zh-CN.txt",
   overwrite = TRUE
@@ -52,11 +55,20 @@ per-barcode read-length distribution image files inside each
 \item{include_execution}{Logical. If \code{TRUE}, copy the \code{execution} directory
 when present.}
 
-\item{include_ab1}{Logical. If \code{TRUE}, mention synthetic AB1 chromatogram
-files in the generated README files.}
+\item{include_ab1}{Logical. If \code{TRUE}, generate synthetic AB1 chromatogram
+files in delivered \verb{barcode*} directories and mention them in the
+generated README files.}
 
 \item{ab1_name_template}{AB1 filename template used in README files. The
 placeholder \code{{barcode}} is replaced with each barcode directory name.}
+
+\item{ab1_samtools}{Command name or full path used by
+\code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}} to launch \code{samtools}.}
+
+\item{ab1_echo}{Logical. If \code{TRUE}, print \verb{samtools mpileup} commands used
+for synthetic AB1 generation.}
+
+\item{ab1_stderr}{Passed to \code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}} for AB1 generation.}
 
 \item{readme_name}{README filename written into \code{output_dir}.}
 
