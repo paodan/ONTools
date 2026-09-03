@@ -10,7 +10,7 @@
 #' @param input Directory containing demultiplexed FASTQ files. Files ending in
 #'   `.fastq`, `.fq`, `.fastq.gz`, or `.fq.gz` are collected recursively.
 #' @param output Output root directory. The shell script creates
-#'   `<output>/<project>_delivery/` and `<output>/<project>_delivery.tar.gz`.
+#'   `raw` and `raw.tar.gz`.
 #' @param project Project identifier used in the delivery directory and archive
 #'   names.
 #' @param sample_sheet Optional sample sheet or barcode/sample metadata file to
@@ -26,8 +26,8 @@
 #'   `*NanoStats.txt` file. Set to `FALSE` to pass `--no-reuse-nanoplot` and
 #'   force NanoPlot to run again for all samples.
 #' @param overwrite Logical. If `TRUE`, remove an existing
-#'   `<output>/<project>_delivery/` directory or
-#'   `<output>/<project>_delivery.tar.gz` archive before rebuilding. Defaults to
+#'   `raw` directory or
+#'   `raw.tar.gz` archive before rebuilding. Defaults to
 #'   `FALSE` to protect existing delivery packages.
 #' @param script Path to the shell script. Defaults to the script bundled with
 #'   ONTools.
@@ -168,8 +168,10 @@ make_ont_fastq_delivery <- function(input,
   paths <- list(
     input = input,
     output_root = output,
-    delivery_dir = file.path(output, paste0(project, "_delivery")),
-    archive = file.path(output, paste0(project, "_delivery.tar.gz")),
+    # delivery_dir = file.path(output, paste0(project, "_delivery")),
+    # archive = file.path(output, paste0(project, "_delivery.tar.gz")),
+    delivery_dir = file.path(output, "raw"),
+    archive = file.path(output, "raw.tar.gz"),
     sample_sheet = sample_sheet
   )
 

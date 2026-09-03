@@ -28,7 +28,7 @@ make_ont_fastq_delivery(
 \code{.fastq}, \code{.fq}, \code{.fastq.gz}, or \code{.fq.gz} are collected recursively.}
 
 \item{output}{Output root directory. The shell script creates
-\verb{<output>/<project>_delivery/} and \verb{<output>/<project>_delivery.tar.gz}.}
+\code{raw} and \code{raw.tar.gz}.}
 
 \item{project}{Project identifier used in the delivery directory and archive
 names.}
@@ -51,8 +51,8 @@ A sample is reused when its NanoPlot output directory already contains a
 force NanoPlot to run again for all samples.}
 
 \item{overwrite}{Logical. If \code{TRUE}, remove an existing
-\verb{<output>/<project>_delivery/} directory or
-\verb{<output>/<project>_delivery.tar.gz} archive before rebuilding. Defaults to
+\code{raw} directory or
+\code{raw.tar.gz} archive before rebuilding. Defaults to
 \code{FALSE} to protect existing delivery packages.}
 
 \item{script}{Path to the shell script. Defaults to the script bundled with

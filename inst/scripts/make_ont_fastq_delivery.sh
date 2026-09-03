@@ -177,8 +177,10 @@ fi
 
 mkdir -p "$OUTPUT_ROOT"
 
-DELIVERY_DIR="$OUTPUT_ROOT/${PROJECT_ID}_delivery"
-ARCHIVE="$OUTPUT_ROOT/${PROJECT_ID}_delivery.tar.gz"
+# DELIVERY_DIR="$OUTPUT_ROOT/${PROJECT_ID}_delivery"
+# ARCHIVE="$OUTPUT_ROOT/${PROJECT_ID}_delivery.tar.gz"
+DELIVERY_DIR="$OUTPUT_ROOT/raw"
+ARCHIVE="$OUTPUT_ROOT/raw.tar.gz"
 
 if [[ -e "$DELIVERY_DIR" || -e "$ARCHIVE" ]]; then
   if [[ "$OVERWRITE" -eq 1 ]]; then
