@@ -25,6 +25,13 @@ make_consensus_delivery(
   make_ab1 = TRUE,
   ab1_name_template = "{barcode}.synthetic.ab1",
   ab1_samtools = "samtools",
+  consensus_file = "all-consensus-seqs.fasta",
+  consensus_index_file = paste0(consensus_file, ".fai"),
+  trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
+  barcode_pattern = "^barcode[0-9]+$",
+  sample_length_plot_pattern = "^Distribution_seqLength__.*\\\\.png$",
+  readme_name = "README.txt",
+  chinese_readme_name = "README.zh-CN.txt",
   project_col = "Project_ID",
   amplicon_size_col = "Expected_Size_bp",
   barcode_col = "Barcode_ID",
@@ -104,6 +111,9 @@ replaced with each barcode directory name.}
 
 \item{ab1_samtools}{Command name or full path used by
 \code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}} to launch \code{samtools}.}
+
+\item{consensus_file, consensus_index_file, trimmed_consensus_file, barcode_pattern, sample_length_plot_pattern, readme_name, chinese_readme_name}{Parameters passed to \code{\link[=collect_amplicon_results]{collect_amplicon_results()}} to control which result
+files are collected and how delivery README files are written.}
 
 \item{project_col, amplicon_size_col, barcode_col}{Column names in each sample
 information file.}

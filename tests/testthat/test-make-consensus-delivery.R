@@ -237,7 +237,7 @@ test_that("make_consensus_delivery writes AB1 files to delivered barcode folders
   )
 
   sequence <- "ACGTACGTACGT"
-  consensus <- file.path(result_dir, "all-consensus-seqs.fasta")
+  consensus <- file.path(result_dir, "combined-consensus.fasta")
   sam <- file.path(result_dir, "reads.sam")
   bam <- file.path(result_dir, "barcode001", "alignments", "barcode001.aligned.sorted.bam")
   writeLines(c(">barcode001", sequence), consensus)
@@ -267,7 +267,11 @@ test_that("make_consensus_delivery writes AB1 files to delivered barcode folders
     run_filtered_QC_step = FALSE,
     run_igv_step = FALSE,
     collect_results_step = TRUE,
-    make_ab1 = TRUE,
+    consensus_file = "combined-consensus.fasta",
+    consensus_index_file = "combined-consensus.fasta.fai",
+    ab1_name_template = "{barcode}.trace.ab1",
+    readme_name = "README.custom.txt",
+    chinese_readme_name = NULL,
     echo = FALSE,
     stderr = FALSE
   )
@@ -277,9 +281,9 @@ test_that("make_consensus_delivery writes AB1 files to delivered barcode folders
     "PROJECT001_1600",
     "consensus_results",
     "barcode001",
-    "barcode001.synthetic.ab1"
+    "barcode001.trace.ab1"
   )
-  source_ab1 <- file.path(result_dir, "barcode001", "barcode001.synthetic.ab1")
+  source_ab1 <- file.path(result_dir, "barcode001", "barcode001.trace.ab1")
 
   expect_true(file.exists(delivered_ab1))
   expect_false(file.exists(source_ab1))
@@ -287,13 +291,19 @@ test_that("make_consensus_delivery writes AB1 files to delivered barcode folders
   expect_equal(res$ab1$PROJECT001_1600$destination, normalizePath(delivered_ab1))
   expect_true(res$ab1$PROJECT001_1600$copied)
   expect_true(any(grepl(
-    "barcode*/<barcode>.synthetic.ab1",
+    "barcode*/<barcode>.trace.ab1",
     readLines(file.path(
       delivery_dir,
       "PROJECT001_1600",
       "consensus_results",
-      "README.txt"
+      "README.custom.txt"
     )),
     fixed = TRUE
+  )))
+  expect_false(file.exists(file.path(
+    delivery_dir,
+    "PROJECT001_1600",
+    "consensus_results",
+    "README.zh-CN.txt"
   )))
 })

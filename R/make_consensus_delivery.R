@@ -40,6 +40,9 @@
 #'   replaced with each barcode directory name.
 #' @param ab1_samtools Command name or full path used by
 #'   [synthetic_ab1_from_bam()] to launch `samtools`.
+#' @param consensus_file,consensus_index_file,trimmed_consensus_file,barcode_pattern,sample_length_plot_pattern,readme_name,chinese_readme_name
+#'   Parameters passed to [collect_amplicon_results()] to control which result
+#'   files are collected and how delivery README files are written.
 #' @param project_col,amplicon_size_col,barcode_col Column names in each sample
 #'   information file.
 #' @param min_read_length_col,max_read_length_col Primer-independent read-length
@@ -146,6 +149,13 @@ make_consensus_delivery <- function(path_proj,
                                     make_ab1 = TRUE,
                                     ab1_name_template = "{barcode}.synthetic.ab1",
                                     ab1_samtools = "samtools",
+                                    consensus_file = "all-consensus-seqs.fasta",
+                                    consensus_index_file = paste0(consensus_file, ".fai"),
+                                    trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
+                                    barcode_pattern = "^barcode[0-9]+$",
+                                    sample_length_plot_pattern = "^Distribution_seqLength__.*\\.png$",
+                                    readme_name = "README.txt",
+                                    chinese_readme_name = "README.zh-CN.txt",
                                     project_col = "Project_ID",
                                     amplicon_size_col = "Expected_Size_bp",
                                     barcode_col = "Barcode_ID",
@@ -197,6 +207,15 @@ make_consensus_delivery <- function(path_proj,
   check_logical_scalar(make_ab1, "make_ab1")
   check_scalar_character(ab1_name_template, "ab1_name_template")
   check_scalar_character(ab1_samtools, "ab1_samtools")
+  check_scalar_character(consensus_file, "consensus_file")
+  check_scalar_character(consensus_index_file, "consensus_index_file")
+  check_scalar_character(trimmed_consensus_file, "trimmed_consensus_file")
+  check_scalar_character(barcode_pattern, "barcode_pattern")
+  check_scalar_character(sample_length_plot_pattern, "sample_length_plot_pattern")
+  check_scalar_character(readme_name, "readme_name")
+  if (!is.null(chinese_readme_name)) {
+    check_scalar_character(chinese_readme_name, "chinese_readme_name")
+  }
   if (isTRUE(make_ab1) && !grepl("[{]barcode[}]", ab1_name_template)) {
     stop("`ab1_name_template` must contain `{barcode}`.", call. = FALSE)
   }
@@ -466,8 +485,8 @@ make_consensus_delivery <- function(path_proj,
     if (isTRUE(trim_consensus_step)) {
       message("Step 5: Trim extra bases")
       if (has_primer_pair(sample_info_sub, f_primer_col, r_primer_col)) {
-        input_fasta <- file.path(workflow[[folder]]$paths$out_dir, "all-consensus-seqs.fasta")
-        output_fasta <- file.path(workflow[[folder]]$paths$out_dir, "all-consensus-seqs_trimmed.fasta")
+        input_fasta <- file.path(workflow[[folder]]$paths$out_dir, consensus_file)
+        output_fasta <- file.path(workflow[[folder]]$paths$out_dir, trimmed_consensus_file)
         if (isTRUE(dry_run)) {
           trim[[folder]] <- list(
             input_fasta = input_fasta,
@@ -547,8 +566,8 @@ make_consensus_delivery <- function(path_proj,
           full.names = FALSE
         )
         igv_results[[folder]] <- lapply(barcode_dirs, function(barcode_dir) {
-          igv_snapshot(
-            genome_fasta = file.path(workflow[[folder]]$paths$out_dir, "all-consensus-seqs.fasta"),
+            igv_snapshot(
+            genome_fasta = file.path(workflow[[folder]]$paths$out_dir, consensus_file),
             bam = file.path(
               workflow[[folder]]$paths$out_dir,
               barcode_dir,
@@ -586,13 +605,20 @@ make_consensus_delivery <- function(path_proj,
           result_dir = workflow[[folder]]$paths$out_dir,
           output_dir = output_dir,
           sample_map = sample_info_file,
+          consensus_file = consensus_file,
+          consensus_index_file = consensus_index_file,
+          trimmed_consensus_file = trimmed_consensus_file,
+          barcode_pattern = barcode_pattern,
           fastq_pass_trim_dir = workflow[[folder]]$paths$fastq,
+          sample_length_plot_pattern = sample_length_plot_pattern,
           include_execution = include_execution,
           include_ab1 = make_ab1,
           ab1_name_template = ab1_name_template,
           ab1_samtools = ab1_samtools,
           ab1_echo = echo,
           ab1_stderr = stderr,
+          readme_name = readme_name,
+          chinese_readme_name = chinese_readme_name,
           overwrite = overwrite_delivery
         )
         ab1_results[[folder]] <- delivery[[folder]][
