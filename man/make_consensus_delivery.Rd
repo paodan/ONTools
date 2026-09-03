@@ -22,6 +22,9 @@ make_consensus_delivery(
   run_filtered_QC_step = TRUE,
   run_igv_step = TRUE,
   collect_results_step = TRUE,
+  make_ab1 = TRUE,
+  ab1_name_template = "{barcode}.synthetic.ab1",
+  ab1_samtools = "samtools",
   project_col = "Project_ID",
   amplicon_size_col = "Expected_Size_bp",
   barcode_col = "Barcode_ID",
@@ -93,6 +96,15 @@ each group.}
 \item{collect_results_step}{Logical. Copy final deliverables with
 \code{\link[=collect_amplicon_results]{collect_amplicon_results()}}.}
 
+\item{make_ab1}{Logical. If \code{TRUE}, create synthetic AB1 chromatogram files
+in the delivered \verb{barcode*} directories after result collection.}
+
+\item{ab1_name_template}{Output AB1 filename template. \code{{barcode}} is
+replaced with each barcode directory name.}
+
+\item{ab1_samtools}{Command name or full path used by
+\code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}} to launch \code{samtools}.}
+
 \item{project_col, amplicon_size_col, barcode_col}{Column names in each sample
 information file.}
 
@@ -126,8 +138,8 @@ external analysis steps or copying final deliverables.}
 \value{
 Invisibly returns a list with run-level QC (\code{g1}), per-group QC
 (\code{g2}), Dorado/basecalling status (\code{stat}), FASTQ move plans, amplicon
-workflow results, trim summaries, IGV results, delivery copy summaries, and
-important output paths.
+workflow results, trim summaries, IGV results, delivery copy summaries, AB1
+generation summaries, and important output paths.
 }
 \description{
 \code{make_consensus_delivery()} runs the common ONT amplicon consensus delivery

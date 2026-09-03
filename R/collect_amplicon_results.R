@@ -24,6 +24,10 @@
 #'   `fastq_pass_trim/<barcode>` folder.
 #' @param include_execution Logical. If `TRUE`, copy the `execution` directory
 #'   when present.
+#' @param include_ab1 Logical. If `TRUE`, mention synthetic AB1 chromatogram
+#'   files in the generated README files.
+#' @param ab1_name_template AB1 filename template used in README files. The
+#'   placeholder `{barcode}` is replaced with each barcode directory name.
 #' @param readme_name README filename written into `output_dir`.
 #' @param chinese_readme_name Chinese README filename written into `output_dir`.
 #'   Set to `NULL` to skip writing the Chinese README.
@@ -57,6 +61,8 @@ collect_amplicon_results <- function(result_dir,
                                      fastq_pass_trim_dir = NULL,
                                      sample_length_plot_pattern = "^Distribution_seqLength__.*\\.png$",
                                      include_execution = FALSE,
+                                     include_ab1 = FALSE,
+                                     ab1_name_template = "{barcode}.synthetic.ab1",
                                      readme_name = "README.txt",
                                      chinese_readme_name = "README.zh-CN.txt",
                                      overwrite = TRUE) {
@@ -67,11 +73,13 @@ collect_amplicon_results <- function(result_dir,
   check_scalar_character(trimmed_consensus_file, "trimmed_consensus_file")
   check_scalar_character(barcode_pattern, "barcode_pattern")
   check_scalar_character(sample_length_plot_pattern, "sample_length_plot_pattern")
+  check_scalar_character(ab1_name_template, "ab1_name_template")
   check_scalar_character(readme_name, "readme_name")
   if (!is.null(chinese_readme_name)) {
     check_scalar_character(chinese_readme_name, "chinese_readme_name")
   }
   check_logical_scalar(include_execution, "include_execution")
+  check_logical_scalar(include_ab1, "include_ab1")
   check_logical_scalar(overwrite, "overwrite")
 
   result_dir <- normalizePath(result_dir, mustWork = TRUE)
@@ -195,7 +203,9 @@ collect_amplicon_results <- function(result_dir,
       sample_map_name = if (is.null(sample_map)) NULL else basename(sample_map),
       barcode_names = basename(barcode_dirs),
       include_sample_length_plots = !is.null(fastq_pass_trim_dir),
-      include_execution = include_execution
+      include_execution = include_execution,
+      include_ab1 = include_ab1,
+      ab1_name_template = ab1_name_template
     ),
     readme_path
   )
@@ -223,7 +233,9 @@ collect_amplicon_results <- function(result_dir,
         sample_map_name = if (is.null(sample_map)) NULL else basename(sample_map),
         barcode_names = basename(barcode_dirs),
         include_sample_length_plots = !is.null(fastq_pass_trim_dir),
-        include_execution = include_execution
+        include_execution = include_execution,
+        include_ab1 = include_ab1,
+        ab1_name_template = ab1_name_template
       ),
       chinese_readme_path
     )
@@ -296,7 +308,9 @@ amplicon_results_readme <- function(trimmed_consensus_file,
                                     sample_map_name,
                                     barcode_names,
                                     include_sample_length_plots,
-                                    include_execution) {
+                                    include_execution,
+                                    include_ab1,
+                                    ab1_name_template) {
   lines <- c(
     "Amplicon sequencing final results",
     "=================================",
@@ -354,6 +368,15 @@ amplicon_results_readme <- function(trimmed_consensus_file,
       "- barcode*/alignments/*.bam: read alignments for the barcode.",
       "- barcode*/alignments/*.bam.bai: BAM index files.",
       "- barcode*/alignments/*.png: alignment snapshot images when generated.",
+      if (isTRUE(include_ab1)) {
+        paste0(
+          "- barcode*/",
+          sub("[{]barcode[}]", "<barcode>", ab1_name_template),
+          ": synthetic Sanger-style AB1 chromatogram generated from ",
+          consensus_file,
+          " and the per-barcode BAM alignment."
+        )
+      },
       if (isTRUE(include_sample_length_plots)) {
         "- barcode*/Distribution_seqLength__*.png: per-barcode read length distribution plot generated from filtered reads."
       },
@@ -384,7 +407,9 @@ amplicon_results_readme_zh <- function(trimmed_consensus_file,
                                        sample_map_name,
                                        barcode_names,
                                        include_sample_length_plots,
-                                       include_execution) {
+                                       include_execution,
+                                       include_ab1,
+                                       ab1_name_template) {
   lines <- c(
     "扩增子测序最终结果",
     "==================",
@@ -441,6 +466,15 @@ amplicon_results_readme_zh <- function(trimmed_consensus_file,
       "- barcode*/alignments/*.bam：该 barcode 的 reads 比对结果。",
       "- barcode*/alignments/*.bam.bai：BAM 索引文件。",
       "- barcode*/alignments/*.png：已生成的比对结果截图。",
+      if (isTRUE(include_ab1)) {
+        paste0(
+          "- barcode*/",
+          sub("[{]barcode[}]", "<barcode>", ab1_name_template),
+          "：由 ",
+          consensus_file,
+          " 和该 barcode 的 BAM 比对结果生成的模拟 Sanger AB1 峰图文件。"
+        )
+      },
       if (isTRUE(include_sample_length_plots)) {
         "- barcode*/Distribution_seqLength__*.png：基于过滤后 reads 生成的每个 barcode 的读长分布图。"
       },

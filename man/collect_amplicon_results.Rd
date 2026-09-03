@@ -15,6 +15,8 @@ collect_amplicon_results(
   fastq_pass_trim_dir = NULL,
   sample_length_plot_pattern = "^Distribution_seqLength__.*\\\\.png$",
   include_execution = FALSE,
+  include_ab1 = FALSE,
+  ab1_name_template = "{barcode}.synthetic.ab1",
   readme_name = "README.txt",
   chinese_readme_name = "README.zh-CN.txt",
   overwrite = TRUE
@@ -49,6 +51,12 @@ per-barcode read-length distribution image files inside each
 
 \item{include_execution}{Logical. If \code{TRUE}, copy the \code{execution} directory
 when present.}
+
+\item{include_ab1}{Logical. If \code{TRUE}, mention synthetic AB1 chromatogram
+files in the generated README files.}
+
+\item{ab1_name_template}{AB1 filename template used in README files. The
+placeholder \code{{barcode}} is replaced with each barcode directory name.}
 
 \item{readme_name}{README filename written into \code{output_dir}.}
 

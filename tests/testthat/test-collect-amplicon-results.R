@@ -86,6 +86,7 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_true(any(grepl("barcode57", readme)))
   expect_true(any(grepl("read length distribution", readme)))
   expect_true(any(grepl("Distribution_seqLength", readme)))
+  expect_false(any(grepl("synthetic.ab1", readme)))
   expect_false(any(grepl("Workflow reports", readme)))
   expect_false(any(grepl("params.json", readme)))
 
@@ -96,6 +97,29 @@ test_that("collect_amplicon_results copies deliverables and writes README", {
   expect_true(any(grepl("barcode57", readme_zh)))
   expect_true(any(grepl("读长分布图", readme_zh)))
   expect_true(any(grepl("Distribution_seqLength", readme_zh)))
+  expect_false(any(grepl("synthetic.ab1", readme_zh)))
+})
+
+test_that("collect_amplicon_results can mention synthetic AB1 files in README", {
+  result_dir <- tempfile("amplicon-result-")
+  output_dir <- tempfile("amplicon-final-")
+  dir.create(file.path(result_dir, "barcode57", "alignments"), recursive = TRUE)
+  writeLines(">barcode57\nACGT", file.path(result_dir, "all-consensus-seqs.fasta"))
+
+  collect_amplicon_results(
+    result_dir = result_dir,
+    output_dir = output_dir,
+    include_ab1 = TRUE,
+    ab1_name_template = "{barcode}.synthetic.ab1"
+  )
+
+  readme <- readLines(file.path(output_dir, "README.txt"))
+  readme_zh <- readLines(file.path(output_dir, "README.zh-CN.txt"))
+
+  expect_true(any(grepl("barcode*/<barcode>.synthetic.ab1", readme, fixed = TRUE)))
+  expect_true(any(grepl("synthetic Sanger-style AB1 chromatogram", readme, fixed = TRUE)))
+  expect_true(any(grepl("barcode*/<barcode>.synthetic.ab1", readme_zh, fixed = TRUE)))
+  expect_true(any(grepl("模拟 Sanger AB1 峰图文件", readme_zh, fixed = TRUE)))
 })
 
 test_that("collect_amplicon_results reports missing optional files", {
