@@ -21,10 +21,10 @@ move_16s(
 \arguments{
 \item{path_result}{Path to a completed wf-16s result directory.}
 
-\item{path_delivery}{Delivery root directory. The function creates a \code{16s/}
+\item{path_delivery}{Delivery root directory. The function creates a \verb{16s/}
 subdirectory inside this path.}
 
-\item{overwrite}{Logical. If \code{TRUE}, replace an existing \code{16s/} delivery
+\item{overwrite}{Logical. If \code{TRUE}, replace an existing \verb{16s/} delivery
 directory.}
 
 \item{tax_levels}{Taxonomic levels to plot.}
@@ -35,11 +35,11 @@ directory.}
 \item{alignment_tables_dir}{Directory name of wf-16s per-barcode alignment
 tables under \code{path_result}.}
 
-\item{figure_dir}{Name of the figures directory under the \code{16s/} delivery
+\item{figure_dir}{Name of the figures directory under the \verb{16s/} delivery
 directory.}
 
 \item{identification_dir}{Name of the copied alignment-table directory under
-the \code{16s/} delivery directory.}
+the \verb{16s/} delivery directory.}
 
 \item{cutoff}{Minimum relative abundance kept in abundance plots.}
 

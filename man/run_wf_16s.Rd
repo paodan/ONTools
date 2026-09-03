@@ -13,7 +13,7 @@ run_wf_16s(
   workflow = "epi2me-labs/wf-16s",
   nextflow = "nextflow",
   quiet = FALSE,
-  extra_args = NULL,
+  extra_args = "--minimap2_by_reference",
   syntax_parser = NULL,
   ansi_log = FALSE,
   nextflow_env = NULL,
@@ -44,7 +44,7 @@ output.}
 
 \item{extra_args}{Optional raw command-line string appended after the standard
 arguments. Use this for additional wf-16s parameters exactly as you would
-type them in the shell, for example \code{"--minimap2_by_reference"}.}
+type them in the shell, the default is \code{"--minimap2_by_reference"}.}
 
 \item{syntax_parser}{Optional Nextflow syntax parser version passed as the
 \code{NXF_SYNTAX_PARSER} environment variable. Use \code{NULL} to leave it unchanged.}
@@ -72,7 +72,7 @@ Invisibly returns a list with \code{command}, \code{args}, \code{extra_args},
 \code{env}, \code{status}, and \code{paths}.
 }
 \description{
-\code{run_wf_16s()} is an R wrapper around \code{nextflow run epi2me-labs/wf-16s}
+\code{run_wf_16s()} is an R wrapper around \verb{nextflow run epi2me-labs/wf-16s}
 for ONT 16S analysis. Common Nextflow options are exposed as R arguments,
 and additional wf-16s options can be supplied as a raw command-line string
 through \code{extra_args}.
