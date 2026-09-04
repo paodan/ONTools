@@ -308,7 +308,7 @@ plot_seqQC <- function(filePath,
       files[["lenRead"]],
       plot = g2,
       width = len_read_size$width,
-      height = len_read_size$height
+      height = len_read_size$height, limitsize = FALSE
     )
 
     if (isTRUE(save_sample_len_plots)) {
@@ -461,7 +461,7 @@ seqqc_save_sample_len_plots <- function(seq_len_df,
       sample_len_files[[sample]],
       plot = sample_plot,
       width = width,
-      height = height
+      height = height, limitsize = FALSE
     )
   }
 
