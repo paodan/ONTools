@@ -133,6 +133,143 @@ move_16s <- function(path_result,
   ))
 }
 
+
+#' Build a ITS delivery folder from wf-16s results
+#'
+#' `move_ITS()` copies key wf-16s output files (using specific params for ITS sequences)
+#' into a delivery folder and generates abundance bar plots.
+#'
+#' @param path_result Path to a completed wf-16s result directory.
+#' @param path_delivery Delivery root directory. The function creates a `ITS/`
+#'   subdirectory inside this path.
+#' @param overwrite Logical. If `TRUE`, replace an existing `ITS/` delivery
+#'   directory.
+#' @param tax_levels Taxonomic levels to plot.
+#' @param abundance_table Filename of the wf-16s genus abundance table under
+#'   `path_result`.
+#' @param alignment_tables_dir Directory name of wf-16s per-barcode alignment
+#'   tables under `path_result`.
+#' @param figure_dir Name of the figures directory under the `ITS/` delivery
+#'   directory.
+#' @param identification_dir Name of the copied alignment-table directory under
+#'   the `ITS/` delivery directory.
+#' @param cutoff Minimum relative abundance kept in abundance plots.
+#' @param width,height Plot width and height in inches.
+#'
+#' @return Invisibly returns a list with input paths, output paths, and generated
+#'   ggplot objects.
+#'
+#' @export
+move_ITS <- function(path_result,
+                     path_delivery = "/data/project_delivery",
+                     overwrite = FALSE,
+                     tax_levels = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"),
+                     abundance_table = "abundance_table_genus.tsv",
+                     alignment_tables_dir = "alignment_tables",
+                     figure_dir = "figures",
+                     identification_dir = "identification_tables",
+                     cutoff = 0.01,
+                     width = 12,
+                     height = 6) {
+  check_dir_arg(path_result, "path_result")
+  check_scalar_character(path_delivery, "path_delivery")
+  check_logical_scalar(overwrite, "overwrite")
+  if (!is.character(tax_levels) || length(tax_levels) == 0L || anyNA(tax_levels)) {
+    stop("`tax_levels` must be a non-empty character vector.", call. = FALSE)
+  }
+  check_scalar_character(abundance_table, "abundance_table")
+  check_scalar_character(alignment_tables_dir, "alignment_tables_dir")
+  check_scalar_character(figure_dir, "figure_dir")
+  check_scalar_character(identification_dir, "identification_dir")
+  cutoff <- validate_fraction(cutoff, "cutoff")
+  width <- validate_positive_number(width, "width")
+  height <- validate_positive_number(height, "height")
+
+  path_result <- normalizePath(path_result, mustWork = TRUE)
+  dir.create(path_delivery, recursive = TRUE, showWarnings = FALSE)
+  path_delivery <- normalizePath(path_delivery, mustWork = TRUE)
+
+  path_ITS <- file.path(path_delivery, "ITS")
+  if (dir.exists(path_ITS)) {
+    if (!isTRUE(overwrite)) {
+      stop(path_ITS, " exists. Use `overwrite = TRUE` to replace it.",
+           call. = FALSE)
+    }
+    unlink(path_ITS, recursive = TRUE)
+  }
+
+  path_fig <- file.path(path_ITS, figure_dir)
+  path_identification <- file.path(path_ITS, identification_dir)
+  dir.create(path_fig, showWarnings = FALSE, recursive = TRUE)
+  dir.create(path_identification, showWarnings = FALSE, recursive = TRUE)
+
+  abun <- file.path(path_result, abundance_table)
+  tbls <- file.path(path_result, alignment_tables_dir)
+  check_file_arg(abun, "abundance_table")
+  check_dir_arg(tbls, "alignment_tables_dir")
+
+  # abun_name <- tools::file_path_sans_ext(basename(abun))
+  plots <- list()
+  plot_files <- character()
+  for (level in tax_levels) {
+    percentage_file <- file.path(
+      path_fig,
+      paste0("abundance_", level, "_percentage.png")
+    )
+    count_file <- file.path(
+      path_fig,
+      paste0("abundance_", level, "_count.png")
+    )
+
+    plots[[paste0(level, "_percentage")]] <- plot_abundance_bar(
+      abundance_table_genus = abun,
+      output = percentage_file,
+      fill = level,
+      cutoff = cutoff,
+      position = "fill",
+      width = width,
+      height = height
+    )
+    plots[[paste0(level, "_count")]] <- plot_abundance_bar(
+      abundance_table_genus = abun,
+      output = count_file,
+      fill = level,
+      cutoff = cutoff,
+      position = "stack",
+      width = width,
+      height = height
+    )
+    plot_files <- c(
+      plot_files,
+      stats::setNames(percentage_file, paste0(level, "_percentage")),
+      stats::setNames(count_file, paste0(level, "_count"))
+    )
+  }
+
+  copied_tables <- copy_directory_contents(tbls, path_identification, overwrite = TRUE)
+  copied_abundance <- file.copy(
+    abun,
+    file.path(path_ITS, basename(abun)),
+    overwrite = TRUE
+  )
+  if (!isTRUE(copied_abundance)) {
+    stop("Failed to copy abundance table: ", abun, call. = FALSE)
+  }
+
+  invisible(list(
+    path_result = path_result,
+    path_delivery = path_delivery,
+    path_ITS = path_ITS,
+    path_fig = path_fig,
+    path_identification = path_identification,
+    abundance_table = file.path(path_ITS, basename(abun)),
+    copied_tables = copied_tables,
+    plot_files = plot_files,
+    plot = plots
+  ))
+}
+
+
 #' Parse a wf-16s genus abundance table
 #'
 #' @param abundance_table_genus Path to `abundance_table_genus.tsv`.
