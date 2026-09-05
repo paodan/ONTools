@@ -14,6 +14,9 @@ make_consensus_delivery(
   fastq_out = "fastq_pass_trim",
   barcode_both_ends = FALSE,
   run_basecalling_demux_step = TRUE,
+  run_dorado_basecall_step = run_basecalling_demux_step,
+  run_dorado_demux_step = run_basecalling_demux_step,
+  run_dorado_fastq_step = run_basecalling_demux_step,
   run_QC_step = TRUE,
   move_fastq_step = TRUE,
   move_fastq_mode = c("move", "reuse", "auto"),
@@ -46,6 +49,12 @@ make_consensus_delivery(
   profile = "standard",
   resume = TRUE,
   barcode_digits = 3,
+  dorado_threads = NULL,
+  dorado = "dorado",
+  samtools = "samtools",
+  gzip = "gzip",
+  dorado_conda_env = NULL,
+  conda = "conda",
   igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh",
   overwrite_fastq = FALSE,
   overwrite_delivery = TRUE,
@@ -74,11 +83,21 @@ defaults to \verb{demux_out_<kit_name>}.}
 
 \item{fastq_out}{FASTQ output directory name created by Dorado conversion.}
 
-\item{barcode_both_ends}{Logical. Passed to \code{\link[=run_dorado_demux_to_fastq]{run_dorado_demux_to_fastq()}}.}
+\item{barcode_both_ends}{Logical. Passed to \code{\link[=dorado_demux_bam]{dorado_demux_bam()}}.}
 
 \item{run_basecalling_demux_step}{Logical. If \code{FALSE}, reuse
 \code{work/stat.Rdata} when present or reconstruct output paths from
 \code{path_proj}, \code{demux_out}, and \code{fastq_out}.}
+
+\item{run_dorado_basecall_step}{Logical. Run Dorado basecalling. Defaults to
+\code{run_basecalling_demux_step} for backward compatibility.}
+
+\item{run_dorado_demux_step}{Logical. Run Dorado barcode demultiplexing.
+Defaults to \code{run_basecalling_demux_step} for backward compatibility.}
+
+\item{run_dorado_fastq_step}{Logical. Convert demultiplexed BAM files to
+FASTQ.GZ files. Defaults to \code{run_basecalling_demux_step} for backward
+compatibility.}
 
 \item{run_QC_step}{Logical. Generate run-level QC plots and source FASTQ
 statistics.}
@@ -127,6 +146,17 @@ filter column names in each sample information file.}
 
 \item{barcode_digits}{Number of barcode digits used by \code{\link[=plot_seqQC]{plot_seqQC()}} for
 filtered-read QC.}
+
+\item{dorado_threads}{Optional thread count passed to \code{\link[=dorado_demux_bam]{dorado_demux_bam()}}.}
+
+\item{dorado, samtools, gzip}{Command names or executable paths used by the
+split Dorado steps.}
+
+\item{dorado_conda_env}{Optional conda environment used by the split Dorado,
+samtools, and gzip steps.}
+
+\item{conda}{Conda executable name or path used when \code{dorado_conda_env} is
+supplied.}
 
 \item{igv}{IGV executable path passed to \code{\link[=igv_snapshot]{igv_snapshot()}}.}
 

@@ -140,7 +140,7 @@ dorado_demux_bam <- function(calls_bam,
                              dry_run = FALSE,
                              echo = TRUE,
                              stderr = "") {
-  check_file_arg(calls_bam, "calls_bam")
+  check_scalar_character(calls_bam, "calls_bam")
   check_scalar_character(demux_dir, "demux_dir")
   check_scalar_character(kit_name, "kit_name")
   check_scalar_character(dorado, "dorado")
@@ -154,7 +154,12 @@ dorado_demux_bam <- function(calls_bam,
   if (!is.null(barcode_config_dir)) check_dir_arg(barcode_config_dir, "barcode_config_dir")
   threads <- validate_optional_positive_integer(threads, "threads")
 
-  calls_bam <- normalizePath(calls_bam, mustWork = TRUE)
+  if (isTRUE(dry_run)) {
+    calls_bam <- normalizePath(calls_bam, mustWork = FALSE)
+  } else {
+    check_file_arg(calls_bam, "calls_bam")
+    calls_bam <- normalizePath(calls_bam, mustWork = TRUE)
+  }
   dir.create(demux_dir, recursive = TRUE, showWarnings = FALSE)
   demux_dir <- normalizePath(demux_dir, mustWork = TRUE)
 

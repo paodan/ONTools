@@ -27,6 +27,10 @@ test_that("make_consensus_delivery builds dry-run plans and commands", {
   )
 
   expect_equal(res$stat$status, NA_integer_)
+  expect_equal(res$stat$basecall$args[1:2], c("basecaller", "sup"))
+  expect_true("--barcode-arrangement" %in% res$stat$demux$args)
+  expect_equal(nrow(res$stat$fastq$conversions), 0)
+  expect_match(res$stat$fastq$note, "no bam_pass")
   expect_true("PROJECT001_1600" %in% names(res$workflow))
   expect_match(res$workflow$PROJECT001_1600$command_string, "wf-amplicon")
   expect_match(res$workflow$PROJECT001_1600$command_string, "--min_read_length")
@@ -38,6 +42,60 @@ test_that("make_consensus_delivery builds dry-run plans and commands", {
     res$delivery$PROJECT001_1600$destination,
     file.path(normalizePath(delivery_dir), "PROJECT001_1600", "consensus_results")
   )
+})
+
+test_that("make_consensus_delivery can run only the BAM to FASTQ Dorado step", {
+  proj <- tempfile("ont-project-")
+  delivery_dir <- tempfile("amplicon-delivery-")
+  bam_dir <- file.path(
+    proj,
+    "demux_out_YS-NB576",
+    "run01",
+    "sample01",
+    "readset01",
+    "bam_pass",
+    "barcode001"
+  )
+  dir.create(bam_dir, recursive = TRUE)
+  writeLines("fake-bam", file.path(bam_dir, "part1.bam"))
+
+  sample_info <- tempfile(fileext = ".csv")
+  utils::write.csv(
+    data.frame(
+      Barcode_ID = "PBC001-001",
+      Project_ID = "PROJECT001",
+      Expected_Size_bp = "1600",
+      Min_Read_Length = 1200,
+      Max_Read_Length = 1800
+    ),
+    sample_info,
+    row.names = FALSE
+  )
+
+  res <- make_consensus_delivery(
+    path_proj = proj,
+    path_sampleInfo_file_list = c(PROJECT001_1600 = sample_info),
+    path_delivery = delivery_dir,
+    run_basecalling_demux_step = FALSE,
+    run_dorado_fastq_step = TRUE,
+    run_QC_step = FALSE,
+    move_fastq_step = FALSE,
+    run_amplicon_step = FALSE,
+    trim_consensus_step = FALSE,
+    run_filtered_QC_step = FALSE,
+    run_igv_step = FALSE,
+    collect_results_step = FALSE,
+    make_ab1 = FALSE,
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_equal(res$stat$basecall$status, NA_integer_)
+  expect_equal(res$stat$demux$status, NA_integer_)
+  expect_equal(nrow(res$stat$fastq$conversions), 1)
+  expect_equal(res$stat$fastq$conversions$barcode, "barcode001")
+  expect_match(res$stat$fastq$commands[["barcode001"]], "samtools")
+  expect_match(res$stat$fastq$conversions$output_fastq, "fastq_pass_trim/barcode001/barcode001[.]fastq[.]gz")
 })
 
 test_that("make_consensus_delivery can reconstruct skipped demux paths", {

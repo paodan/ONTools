@@ -15,10 +15,17 @@
 #' @param demux_out Demux output directory name under `path_proj`. If `NULL`,
 #'   defaults to `demux_out_<kit_name>`.
 #' @param fastq_out FASTQ output directory name created by Dorado conversion.
-#' @param barcode_both_ends Logical. Passed to [run_dorado_demux_to_fastq()].
+#' @param barcode_both_ends Logical. Passed to [dorado_demux_bam()].
 #' @param run_basecalling_demux_step Logical. If `FALSE`, reuse
 #'   `work/stat.Rdata` when present or reconstruct output paths from
 #'   `path_proj`, `demux_out`, and `fastq_out`.
+#' @param run_dorado_basecall_step Logical. Run Dorado basecalling. Defaults to
+#'   `run_basecalling_demux_step` for backward compatibility.
+#' @param run_dorado_demux_step Logical. Run Dorado barcode demultiplexing.
+#'   Defaults to `run_basecalling_demux_step` for backward compatibility.
+#' @param run_dorado_fastq_step Logical. Convert demultiplexed BAM files to
+#'   FASTQ.GZ files. Defaults to `run_basecalling_demux_step` for backward
+#'   compatibility.
 #' @param run_QC_step Logical. Generate run-level QC plots and source FASTQ
 #'   statistics.
 #' @param move_fastq_step Logical. Move barcode FASTQ folders into sample-info
@@ -52,6 +59,13 @@
 #'   Parameters passed to [run_wf_amplicon()].
 #' @param barcode_digits Number of barcode digits used by [plot_seqQC()] for
 #'   filtered-read QC.
+#' @param dorado_threads Optional thread count passed to [dorado_demux_bam()].
+#' @param dorado,samtools,gzip Command names or executable paths used by the
+#'   split Dorado steps.
+#' @param dorado_conda_env Optional conda environment used by the split Dorado,
+#'   samtools, and gzip steps.
+#' @param conda Conda executable name or path used when `dorado_conda_env` is
+#'   supplied.
 #' @param igv IGV executable path passed to [igv_snapshot()].
 #' @param overwrite_fastq Logical. Passed to [move_fastq_to_folders()].
 #' @param overwrite_delivery Logical. Passed to [collect_amplicon_results()].
@@ -138,6 +152,9 @@ make_consensus_delivery <- function(path_proj,
                                     fastq_out = "fastq_pass_trim",
                                     barcode_both_ends = FALSE,
                                     run_basecalling_demux_step = TRUE,
+                                    run_dorado_basecall_step = run_basecalling_demux_step,
+                                    run_dorado_demux_step = run_basecalling_demux_step,
+                                    run_dorado_fastq_step = run_basecalling_demux_step,
                                     run_QC_step = TRUE,
                                     move_fastq_step = TRUE,
                                     move_fastq_mode = c("move", "reuse", "auto"),
@@ -170,6 +187,12 @@ make_consensus_delivery <- function(path_proj,
                                     profile = "standard",
                                     resume = TRUE,
                                     barcode_digits = 3,
+                                    dorado_threads = NULL,
+                                    dorado = "dorado",
+                                    samtools = "samtools",
+                                    gzip = "gzip",
+                                    dorado_conda_env = NULL,
+                                    conda = "conda",
                                     igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh",
                                     overwrite_fastq = FALSE,
                                     overwrite_delivery = TRUE,
@@ -193,9 +216,16 @@ make_consensus_delivery <- function(path_proj,
   check_scalar_character(r_primer_col, "r_primer_col")
   check_scalar_character(override_basecaller_cfg, "override_basecaller_cfg")
   check_scalar_character(profile, "profile")
+  check_scalar_character(dorado, "dorado")
+  check_scalar_character(samtools, "samtools")
+  check_scalar_character(gzip, "gzip")
+  check_scalar_character(conda, "conda")
   check_scalar_character(igv, "igv")
   check_logical_scalar(barcode_both_ends, "barcode_both_ends")
   check_logical_scalar(run_basecalling_demux_step, "run_basecalling_demux_step")
+  check_logical_scalar(run_dorado_basecall_step, "run_dorado_basecall_step")
+  check_logical_scalar(run_dorado_demux_step, "run_dorado_demux_step")
+  check_logical_scalar(run_dorado_fastq_step, "run_dorado_fastq_step")
   check_logical_scalar(run_QC_step, "run_QC_step")
   check_logical_scalar(move_fastq_step, "move_fastq_step")
   move_fastq_mode <- match.arg(move_fastq_mode)
@@ -234,6 +264,10 @@ make_consensus_delivery <- function(path_proj,
   )
   barcode_digits <- validate_positive_integer(barcode_digits, "barcode_digits")
   min_read_qual <- validate_nonnegative_number(min_read_qual, "min_read_qual")
+  dorado_threads <- validate_optional_positive_integer(dorado_threads, "dorado_threads")
+  if (!is.null(dorado_conda_env)) {
+    check_scalar_character(dorado_conda_env, "dorado_conda_env")
+  }
 
   if (!is.null(demux_out)) {
     check_scalar_character(demux_out, "demux_out")
@@ -256,26 +290,136 @@ make_consensus_delivery <- function(path_proj,
     stop("Could not create `path_delivery`: ", path_delivery, call. = FALSE)
   }
 
-  if (isTRUE(run_basecalling_demux_step)) {
-    message("Step 1: basecalling and demultiplexing")
-    stat <- run_dorado_demux_to_fastq(
+  if (isTRUE(run_dorado_basecall_step) ||
+      isTRUE(run_dorado_demux_step) ||
+      isTRUE(run_dorado_fastq_step)) {
+    calls_bam <- file.path(path_proj, "bam", paste0("calls_", model, ".bam"))
+    demux_dir <- file.path(path_proj, demux_out_name)
+
+    if (isTRUE(run_dorado_basecall_step)) {
+      message("Step 1a: Dorado basecalling")
+      basecall_stat <- dorado_basecall(
+        proj = path_proj,
+        model = model,
+        output_bam = calls_bam,
+        overwrite = TRUE,
+        dorado = dorado,
+        conda_env = dorado_conda_env,
+        conda = conda,
+        dry_run = dry_run,
+        echo = echo,
+        stderr = stderr
+      )
+    } else {
+      message("Step 1a: Dorado basecalling (skipped)")
+      basecall_stat <- list(
+        status = NA_integer_,
+        command = NA_character_,
+        args = character(),
+        command_string = NA_character_,
+        paths = list(
+          project_dir = path_proj,
+          pod5_dir = file.path(path_proj, "pod5"),
+          output_bam = calls_bam
+        ),
+        conda_env = dorado_conda_env
+      )
+    }
+
+    if (isTRUE(run_dorado_demux_step)) {
+      message("Step 1b: Dorado barcode demultiplexing")
+      demux_stat <- dorado_demux_bam(
+        calls_bam = calls_bam,
+        demux_dir = demux_dir,
+        kit_name = kit_name,
+        barcode_both_ends = barcode_both_ends,
+        emit_summary = TRUE,
+        threads = dorado_threads,
+        require_bam_pass = !isTRUE(dry_run),
+        dorado = dorado,
+        conda_env = dorado_conda_env,
+        conda = conda,
+        dry_run = dry_run,
+        echo = echo,
+        stderr = stderr
+      )
+    } else {
+      message("Step 1b: Dorado barcode demultiplexing (skipped)")
+      demux_stat <- list(
+        status = NA_integer_,
+        command = NA_character_,
+        args = character(),
+        command_string = NA_character_,
+        paths = list(calls_bam = calls_bam, demux_dir = demux_dir),
+        conda_env = dorado_conda_env
+      )
+    }
+
+    if (isTRUE(run_dorado_fastq_step)) {
+      message("Step 1c: Convert demultiplexed BAM files to FASTQ.GZ")
+      if (isTRUE(dry_run) && !dorado_demux_has_bam_pass(demux_dir)) {
+        fastq_stat <- list(
+          status = NA_integer_,
+          commands = character(),
+          conversions = data.frame(
+            bam_pass_dir = character(),
+            barcode_dir = character(),
+            barcode = character(),
+            rel_path = character(),
+            out_dir = character(),
+            output_fastq = character(),
+            n_bam = integer(),
+            bam_files = I(list())
+          ),
+          paths = list(
+            demux_dir = demux_dir,
+            bam_pass_dirs = character(),
+            fastq_dirs = character()
+          ),
+          conda_env = dorado_conda_env,
+          note = "dry_run: no bam_pass directory exists yet, so FASTQ conversion commands could not be enumerated."
+        )
+      } else {
+        fastq_stat <- dorado_bam_to_fastq(
+          demux_dir = demux_dir,
+          fastq_out = fastq_out,
+          overwrite = TRUE,
+          include_unclassified = TRUE,
+          allow_empty = FALSE,
+          samtools = samtools,
+          gzip = gzip,
+          conda_env = dorado_conda_env,
+          conda = conda,
+          dry_run = dry_run,
+          echo = echo,
+          stderr = stderr
+        )
+      }
+    } else {
+      message("Step 1c: Convert demultiplexed BAM files to FASTQ.GZ (skipped)")
+      fastq_stat <- list(
+        status = NA_integer_,
+        commands = character(),
+        conversions = data.frame(),
+        paths = list(demux_dir = demux_dir, bam_pass_dirs = character(), fastq_dirs = character()),
+        conda_env = dorado_conda_env
+      )
+    }
+
+    stat <- make_consensus_dorado_stat(
       proj = path_proj,
-      kit_name = kit_name,
       model = model,
       demux_out = demux_out_name,
       fastq_out = fastq_out,
-      barcode_both_ends = barcode_both_ends,
-      dry_run = dry_run,
-      echo = echo,
-      wait = wait,
-      stdout = stdout,
-      stderr = stderr
+      basecall = basecall_stat,
+      demux = demux_stat,
+      fastq = fastq_stat
     )
     if (!isTRUE(dry_run) && isTRUE(wait)) {
       save(stat, file = file.path(path_work, "stat.Rdata"))
     }
   } else {
-    message("Step 1: basecalling and demultiplexing (skipped)")
+    message("Step 1: Dorado basecalling, demultiplexing, and FASTQ conversion (skipped)")
     stat_file <- file.path(path_work, "stat.Rdata")
     if (file.exists(stat_file)) {
       load(stat_file)
@@ -947,4 +1091,39 @@ delivery_barcode_names <- function(sample_info, barcode_col) {
   }
 
   as.character(sample_info[[barcode_col]])
+}
+
+make_consensus_dorado_stat <- function(proj,
+                                       model,
+                                       demux_out,
+                                       fastq_out,
+                                       basecall,
+                                       demux,
+                                       fastq) {
+  paths <- dorado_demux_to_fastq_paths(
+    proj = proj,
+    model = model,
+    demux_out = demux_out,
+    fastq_out = fastq_out,
+    scan_dynamic = TRUE
+  )
+
+  step_status <- c(basecall$status, demux$status, fastq$status)
+  status <- if (any(is.na(step_status))) {
+    NA_integer_
+  } else if (all(step_status == 0L)) {
+    0L
+  } else {
+    step_status[step_status != 0L][[1L]]
+  }
+
+  list(
+    command = NA_character_,
+    args = character(),
+    status = status,
+    paths = paths,
+    basecall = basecall,
+    demux = demux,
+    fastq = fastq
+  )
 }

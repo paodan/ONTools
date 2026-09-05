@@ -303,7 +303,7 @@ plot_seqQC <- function(filePath,
       )
     )
 
-    ggplot2::ggsave(files[["numRead"]], plot = g1, width = 10, height = 6)
+    ggplot2::ggsave(files[["numRead"]], plot = g1, width = 20, height = 6)
     ggplot2::ggsave(
       files[["lenRead"]],
       plot = g2,
