@@ -112,7 +112,7 @@ split_sample_info <- function(sampleInfo,
     missing_min <- is.na(sampleInfo_2[["Min_Read_Length"]]) & !is.na(readLen)
     missing_max <- is.na(sampleInfo_2[["Max_Read_Length"]]) & !is.na(readLen)
     sampleInfo_2[["Min_Read_Length"]][missing_min] <-
-      pmax(0, round(readLen[missing_min] - min_read_delta))
+      pmax(1, round(readLen[missing_min] - min_read_delta))
     sampleInfo_2[["Max_Read_Length"]][missing_max] <-
       round(readLen[missing_max] + max_read_delta)
   }
