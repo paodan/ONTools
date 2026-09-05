@@ -86,6 +86,72 @@ md5_write() {
   fi
 }
 
+md5_of_file() {
+  local file="$1"
+
+  if has_cmd md5sum; then
+    md5sum "$file" | awk '{print $1}'
+  elif has_cmd md5; then
+    md5 -q "$file"
+  else
+    die "Neither md5sum nor md5 was found."
+  fi
+}
+
+md5_lower() {
+  printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+source_md5_file_for_fastq() {
+  local fastq="$1"
+
+  if [[ -f "${fastq}.md5" ]]; then
+    printf '%s\n' "${fastq}.md5"
+  elif [[ -f "${fastq%.gz}.md5" && "$fastq" == *.gz ]]; then
+    printf '%s\n' "${fastq%.gz}.md5"
+  else
+    printf '\n'
+  fi
+}
+
+md5_from_source_or_calculate() {
+  local source_fastq="$1"
+  local delivered_fastq="$2"
+  local source_md5_file source_md5 source_actual delivered_actual
+
+  source_md5_file="$(source_md5_file_for_fastq "$source_fastq")"
+  if [[ -n "$source_md5_file" ]]; then
+    source_md5="$(awk 'NF > 0 {print $1; exit}' "$source_md5_file")"
+    [[ "$source_md5" =~ ^[0-9a-fA-F]{32}$ ]] || die "Invalid MD5 file: $source_md5_file"
+
+    source_actual="$(md5_of_file "$source_fastq")"
+    [[ "$(md5_lower "$source_actual")" == "$(md5_lower "$source_md5")" ]] || die "Source FASTQ does not match MD5: $source_fastq"
+
+    delivered_actual="$(md5_of_file "$delivered_fastq")"
+    [[ "$(md5_lower "$delivered_actual")" == "$(md5_lower "$source_md5")" ]] || die "Delivered FASTQ does not match source MD5: $delivered_fastq"
+
+    md5_lower "$source_md5"
+  else
+    md5_of_file "$delivered_fastq" | tr '[:upper:]' '[:lower:]'
+  fi
+}
+
+md5_write_from_fastq_list() {
+  local fastq_list="$1"
+  local delivery_fastq_dir="$2"
+  local md5_file="$3"
+  local source_fastq base delivered_fastq sum
+
+  : > "$md5_file"
+  while IFS= read -r source_fastq; do
+    base="$(basename "$source_fastq")"
+    delivered_fastq="$delivery_fastq_dir/$base"
+    [[ -f "$delivered_fastq" ]] || die "Delivered FASTQ not found for MD5: $delivered_fastq"
+    sum="$(md5_from_source_or_calculate "$source_fastq" "$delivered_fastq")"
+    printf '%s  %s\n' "$sum" "$base" >> "$md5_file"
+  done < "$fastq_list"
+}
+
 INPUT_DIR=""
 OUTPUT_ROOT=""
 PROJECT_ID=""
@@ -359,7 +425,7 @@ cat > "$DELIVERY_DIR/README.zh-CN.txt" <<EOF
 EOF
 
 log "Writing MD5 checksums."
-md5_write "$DELIVERY_DIR/01_fastq" "$DELIVERY_DIR/03_md5/md5.txt"
+md5_write_from_fastq_list "$FASTQ_LIST" "$DELIVERY_DIR/01_fastq" "$DELIVERY_DIR/03_md5/md5.txt"
 
 if [[ "$MAKE_ARCHIVE" -eq 1 ]]; then
   log "Creating archive: $ARCHIVE"

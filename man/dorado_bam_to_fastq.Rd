@@ -10,6 +10,7 @@ dorado_bam_to_fastq(
   overwrite = TRUE,
   include_unclassified = TRUE,
   allow_empty = FALSE,
+  write_md5 = TRUE,
   samtools = "samtools",
   gzip = "gzip",
   conda_env = NULL,
@@ -35,6 +36,9 @@ folders.}
 \item{allow_empty}{Logical. If \code{FALSE}, stop when a converted FASTQ.GZ has no
 FASTQ records.}
 
+\item{write_md5}{Logical. If \code{TRUE}, write an MD5 checksum file next to each
+converted FASTQ.GZ file.}
+
 \item{samtools, gzip}{Command names or executable paths for \code{samtools} and
 \code{gzip}.}
 
@@ -52,7 +56,8 @@ with \verb{conda run -n <conda_env>}.}
 \value{
 Invisibly returns a list with \code{status}, \code{commands}, \code{conversions},
 \code{paths}, and \code{conda_env}. \code{conversions} is a data frame with barcode BAM
-directories, output FASTQ paths, and the number of BAM files converted.
+directories, output FASTQ paths, MD5 file paths, and the number of BAM files
+converted.
 }
 \description{
 \code{dorado_bam_to_fastq()} searches for Dorado \verb{bam_pass/} directories under a

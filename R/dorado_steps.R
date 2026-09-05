@@ -255,13 +255,16 @@ dorado_demux_has_bam_pass <- function(demux_dir) {
 #'   folders.
 #' @param allow_empty Logical. If `FALSE`, stop when a converted FASTQ.GZ has no
 #'   FASTQ records.
+#' @param write_md5 Logical. If `TRUE`, write an MD5 checksum file next to each
+#'   converted FASTQ.GZ file.
 #' @param samtools,gzip Command names or executable paths for `samtools` and
 #'   `gzip`.
 #' @inheritParams dorado_basecall
 #'
 #' @return Invisibly returns a list with `status`, `commands`, `conversions`,
 #'   `paths`, and `conda_env`. `conversions` is a data frame with barcode BAM
-#'   directories, output FASTQ paths, and the number of BAM files converted.
+#'   directories, output FASTQ paths, MD5 file paths, and the number of BAM
+#'   files converted.
 #'
 #' @export
 dorado_bam_to_fastq <- function(demux_dir,
@@ -269,6 +272,7 @@ dorado_bam_to_fastq <- function(demux_dir,
                                 overwrite = TRUE,
                                 include_unclassified = TRUE,
                                 allow_empty = FALSE,
+                                write_md5 = TRUE,
                                 samtools = "samtools",
                                 gzip = "gzip",
                                 conda_env = NULL,
@@ -284,6 +288,7 @@ dorado_bam_to_fastq <- function(demux_dir,
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(include_unclassified, "include_unclassified")
   check_logical_scalar(allow_empty, "allow_empty")
+  check_logical_scalar(write_md5, "write_md5")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
@@ -335,10 +340,11 @@ dorado_bam_to_fastq <- function(demux_dir,
     return(invisible(list(
       status = NA_integer_,
       commands = commands,
-      conversions = conversions,
-      paths = paths,
-      conda_env = conda_env
-    )))
+    conversions = conversions,
+    paths = paths,
+    write_md5 = write_md5,
+    conda_env = conda_env
+  )))
   }
 
   if (is.null(conda_env)) {
@@ -378,6 +384,9 @@ dorado_bam_to_fastq <- function(demux_dir,
            conversions$barcode[[i]], ": ", conversions$output_fastq[[i]],
            call. = FALSE)
     }
+    if (isTRUE(write_md5)) {
+      dorado_write_md5(conversions$output_fastq[[i]], conversions$md5_file[[i]])
+    }
   }
 
   invisible(list(
@@ -385,8 +394,22 @@ dorado_bam_to_fastq <- function(demux_dir,
     commands = commands,
     conversions = conversions,
     paths = paths,
+    write_md5 = write_md5,
     conda_env = conda_env
   ))
+}
+
+dorado_write_md5 <- function(path, md5_file) {
+  checksum <- tools::md5sum(path)
+  if (is.na(checksum[[1L]])) {
+    stop("Failed to calculate MD5 for: ", path, call. = FALSE)
+  }
+
+  writeLines(
+    paste(unname(checksum[[1L]]), basename(path)),
+    md5_file
+  )
+  md5_file
 }
 
 dorado_fastq_gz_has_record <- function(path) {
@@ -479,6 +502,7 @@ dorado_bam_to_fastq_plan <- function(demux_dir,
         rel_path = rel_path,
         out_dir = out_dir,
         output_fastq = output_fastq,
+        md5_file = paste0(output_fastq, ".md5"),
         n_bam = length(bam_files),
         stringsAsFactors = FALSE
       )
@@ -494,6 +518,7 @@ dorado_bam_to_fastq_plan <- function(demux_dir,
       rel_path = character(),
       out_dir = character(),
       output_fastq = character(),
+      md5_file = character(),
       n_bam = integer(),
       bam_files = I(list())
     ))

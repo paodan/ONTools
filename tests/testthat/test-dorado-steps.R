@@ -259,6 +259,7 @@ test_that("dorado_bam_to_fastq plans barcode conversions", {
   expect_equal(res$conversions$n_bam, c(2L, 1L))
   expect_true(all(grepl("fastq_pass_trim", res$conversions$output_fastq, fixed = TRUE)))
   expect_true(all(grepl("[.]fastq[.]gz$", res$conversions$output_fastq)))
+  expect_true(all(grepl("[.]fastq[.]gz[.]md5$", res$conversions$md5_file)))
   expect_equal(length(res$commands), 2L)
 })
 
@@ -313,8 +314,13 @@ test_that("dorado_bam_to_fastq runs conversion commands", {
 
   expect_equal(res$status, 0L)
   expect_true(file.exists(res$conversions$output_fastq[[1]]))
+  expect_true(file.exists(res$conversions$md5_file[[1]]))
   expect_gt(file.info(res$conversions$output_fastq[[1]])$size, 0)
   expect_equal(readLines(gzfile(res$conversions$output_fastq[[1]])), c("@read1", "ACGT", "+", "!!!!"))
+  expect_equal(
+    readLines(res$conversions$md5_file[[1]]),
+    paste(unname(tools::md5sum(res$conversions$output_fastq[[1]])), "barcode001.fastq.gz")
+  )
 })
 
 test_that("dorado_bam_to_fastq surfaces samtools failures in the pipe", {

@@ -282,6 +282,58 @@ test_that("make_ont_fastq_delivery can skip archive creation", {
   expect_null(res$paths$archive)
 })
 
+test_that("make_ont_fastq_delivery reuses and verifies source FASTQ md5 files", {
+  fastq_dir <- tempfile("ont-fastq-")
+  output_dir <- tempfile("ont-delivery-")
+  fake_bin <- tempfile("ont-delivery-bin-")
+  dir.create(fastq_dir)
+  dir.create(output_dir)
+  dir.create(fake_bin)
+
+  fastq <- file.path(fastq_dir, "barcode01.fastq")
+  writeLines(c("@read1", "ACGT", "+", "!!!!"), fastq)
+  expected_md5 <- unname(tools::md5sum(fastq))
+  writeLines(paste(expected_md5, "barcode01.fastq"), paste0(fastq, ".md5"))
+
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "printf 'file\\tformat\\ttype\\tnum_seqs\\tsum_len\\n'",
+      "for f in \"$@\"; do",
+      "  case \"$f\" in",
+      "    --*) ;;",
+      "    *) [[ -f \"$f\" ]] && printf '%s\\tFASTQ\\tDNA\\t1\\t4\\n' \"$f\" ;;",
+      "  esac",
+      "done"
+    ),
+    file.path(fake_bin, "seqkit")
+  )
+  Sys.chmod(file.path(fake_bin, "seqkit"), mode = "0755")
+
+  old_path <- Sys.getenv("PATH")
+  on.exit(Sys.setenv(PATH = old_path), add = TRUE)
+  Sys.setenv(PATH = paste(fake_bin, old_path, sep = .Platform$path.sep))
+
+  make_ont_fastq_delivery(
+    input = fastq_dir,
+    output = output_dir,
+    project = "PROJECT001",
+    script = system.file("scripts", "make_ont_fastq_delivery.sh", package = "ONTools"),
+    run_nanoplot = FALSE,
+    run_multiqc = FALSE,
+    make_archive = FALSE,
+    overwrite = TRUE,
+    echo = FALSE,
+    stdout = FALSE,
+    stderr = FALSE
+  )
+
+  expect_equal(
+    readLines(file.path(output_dir, "raw", "03_md5", "md5.txt")),
+    paste(tolower(expected_md5), " barcode01.fastq")
+  )
+})
+
 test_that("make_ont_fastq_delivery can disable NanoPlot reuse", {
   fastq_dir <- tempfile("ont-fastq-")
   output_dir <- tempfile("ont-delivery-")
