@@ -57,6 +57,9 @@
 #' @param f_primer_col,r_primer_col Forward and reverse primer column names.
 #' @param min_read_qual,min_n_reads,force_spoa_length_threshold,override_basecaller_cfg,profile,resume
 #'   Parameters passed to [run_wf_amplicon()].
+#' @param amplicon_extra_args Optional raw command-line string appended to each
+#'   [run_wf_amplicon()] call. Use this for extra wf-amplicon parameters exactly
+#'   as you would type them in the shell.
 #' @param barcode_digits Number of barcode digits used by [plot_seqQC()] for
 #'   filtered-read QC.
 #' @param dorado_threads Optional thread count passed to [dorado_demux_bam()].
@@ -188,6 +191,7 @@ make_consensus_delivery <- function(path_proj,
                                     override_basecaller_cfg = "dna_r10.4.1_e8.2_400bps_sup@v5.2.0",
                                     profile = "standard",
                                     resume = TRUE,
+                                    amplicon_extra_args = NULL,
                                     barcode_digits = 3,
                                     dorado_threads = NULL,
                                     dorado_fastq_write_md5 = TRUE,
@@ -253,6 +257,9 @@ make_consensus_delivery <- function(path_proj,
     stop("`ab1_name_template` must contain `{barcode}`.", call. = FALSE)
   }
   check_logical_scalar(resume, "resume")
+  if (!is.null(amplicon_extra_args)) {
+    check_scalar_character(amplicon_extra_args, "amplicon_extra_args")
+  }
   check_logical_scalar(overwrite_fastq, "overwrite_fastq")
   check_logical_scalar(overwrite_delivery, "overwrite_delivery")
   check_logical_scalar(include_execution, "include_execution")
@@ -617,6 +624,7 @@ make_consensus_delivery <- function(path_proj,
         override_basecaller_cfg = override_basecaller_cfg,
         profile = profile,
         resume = resume,
+        extra_args = amplicon_extra_args,
         dry_run = dry_run,
         echo = echo,
         wait = wait,

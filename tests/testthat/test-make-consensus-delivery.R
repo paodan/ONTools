@@ -22,6 +22,7 @@ test_that("make_consensus_delivery builds dry-run plans and commands", {
     path_proj = proj,
     path_sampleInfo_file_list = c(PROJECT001_1600 = sample_info),
     path_delivery = delivery_dir,
+    amplicon_extra_args = "--drop_frac_longest_reads 0 --take_longest_remaining_reads false --threads 20",
     dry_run = TRUE,
     echo = FALSE
   )
@@ -35,6 +36,9 @@ test_that("make_consensus_delivery builds dry-run plans and commands", {
   expect_match(res$workflow$PROJECT001_1600$command_string, "wf-amplicon")
   expect_match(res$workflow$PROJECT001_1600$command_string, "--min_read_length")
   expect_match(res$workflow$PROJECT001_1600$command_string, "1200")
+  expect_match(res$workflow$PROJECT001_1600$command_string, "--drop_frac_longest_reads 0", fixed = TRUE)
+  expect_match(res$workflow$PROJECT001_1600$command_string, "--take_longest_remaining_reads false", fixed = TRUE)
+  expect_match(res$workflow$PROJECT001_1600$command_string, "--threads 20", fixed = TRUE)
   expect_equal(res$move_plans$PROJECT001_1600$status, c("dry_run", "dry_run"))
   expect_equal(res$move_plans$PROJECT001_1600$barcode, c("barcode001", "barcode002"))
   expect_equal(res$trim$PROJECT001_1600$status, "dry_run")
