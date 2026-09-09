@@ -639,6 +639,55 @@ make_consensus_delivery <- function(path_proj,
       )
     }
 
+    consensus_path <- file.path(workflow[[folder]]$paths$out_dir, consensus_file)
+    needs_consensus_downstream <- isTRUE(trim_consensus_step) ||
+      isTRUE(run_filtered_QC_step) ||
+      isTRUE(run_igv_step) ||
+      isTRUE(make_ab1) ||
+      isTRUE(collect_results_step)
+    if (!isTRUE(dry_run) && isTRUE(needs_consensus_downstream) &&
+        !file.exists(consensus_path)) {
+      warning(
+        "Consensus FASTA was not generated for group `", folder, "`: ",
+        consensus_path,
+        ". Skipping trim, filtered QC, IGV, AB1 generation, and result collection for this group.",
+        call. = FALSE
+      )
+      trim[[folder]] <- list(
+        status = "skipped_no_consensus",
+        input_fasta = consensus_path
+      )
+      g2[[folder]] <- NULL
+      igv_results[[folder]] <- list(
+        status = "skipped_no_consensus",
+        input_fasta = consensus_path
+      )
+      ab1_results[[folder]] <- data.frame(
+        barcode = character(),
+        consensus = character(),
+        bam = character(),
+        bai = character(),
+        ab1 = character(),
+        consensus_exists = logical(),
+        bam_exists = logical(),
+        bai_exists = logical(),
+        generated = logical(),
+        status = character(),
+        stringsAsFactors = FALSE
+      )
+      delivery[[folder]] <- data.frame(
+        label = "delivery",
+        source = workflow[[folder]]$paths$out_dir,
+        destination = file.path(path_delivery, folder, "consensus_results"),
+        type = "directory",
+        exists = dir.exists(workflow[[folder]]$paths$out_dir),
+        copied = FALSE,
+        status = "skipped_no_consensus",
+        stringsAsFactors = FALSE
+      )
+      next
+    }
+
     if (isTRUE(trim_consensus_step)) {
       message("Step 5: Trim extra bases")
       if (has_primer_pair(sample_info_sub, f_primer_col, r_primer_col)) {

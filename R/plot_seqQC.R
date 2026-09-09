@@ -30,7 +30,7 @@
 #'   combined read-length distribution plot. When either value is `NULL`, it is
 #'   calculated from the number of facets and the corresponding unit size.
 #' @param len_read_unit_width,len_read_unit_height Width and height in inches
-#'   used per facet when calculating the combined read-length plot size.
+#'   used per facet when calculating the combined read-length plot size. Default is 2.5.
 #' @param len_read_ncol Number of facet columns in the combined read-length
 #'   distribution plot.
 #' @param save_sample_len_plots Logical. If `TRUE`, save one read-length
@@ -98,8 +98,8 @@ plot_seqQC <- function(filePath,
                        filename_suffix = NULL,
                        len_read_width = NULL,
                        len_read_height = NULL,
-                       len_read_unit_width = 2,
-                       len_read_unit_height = 2,
+                       len_read_unit_width = 2.5,
+                       len_read_unit_height = 2.5,
                        len_read_ncol = 12,
                        save_sample_len_plots = TRUE,
                        sample_len_subdir = "seqLength_by_sample",
