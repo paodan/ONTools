@@ -29,13 +29,14 @@ test_that("read_vcf parses single-sample VCF files", {
 test_that("vcf_variant_type infers wf-amplicon style variant types", {
   expect_equal(
     vcf_variant_type(
-      ref = c("A", "AT", "A", "AC", "A", "A"),
-      alt = c("G", "A", "AT", "GT", "A", ".")
+      ref = c("A", "AT", "A", "AC", "A", "A", "CC"),
+      alt = c("G", "A", "AT", "GT", "A", ".", "G")
     ),
-    c("SNP", "INDEL", "INDEL", "MNP", "REF", NA)
+    c("SNP", "INDEL", "INDEL", "MNP", "REF", NA, "OTHER")
   )
 
   expect_equal(vcf_variant_type("A", "G,AT"), "MIXED")
+  expect_equal(vcf_variant_type("CC", "G"), "OTHER")
   expect_equal(vcf_variant_type("A", "G,T"), "SNP")
   expect_equal(vcf_variant_type("A", "G,AT", collapse_multiallelic = FALSE)[[1]],
                c("SNP", "INDEL"))

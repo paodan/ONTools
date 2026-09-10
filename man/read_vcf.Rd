@@ -36,9 +36,11 @@ all VCF sample columns are used.}
 
 \item{add_variant_type}{Logical. If \code{TRUE}, add a \code{Type} column inferred from
 the \code{REF} and \code{ALT} alleles. The rule mirrors the variant type shown in the
-wf-amplicon report: single-base substitutions are \code{SNP}, unequal-length
-alleles are \code{INDEL}, equal-length multi-base substitutions are \code{MNP}, and
-reference/missing calls are \code{REF}/\code{NA}.}
+wf-amplicon report with an extra normalized-indel guard: single-base
+substitutions are \code{SNP}, unequal-length alleles with a shared anchor base
+are \code{INDEL}, equal-length multi-base substitutions are \code{MNP}, unequal-length
+alleles without a shared anchor are \code{OTHER}, and reference/missing calls are
+\code{REF}/\code{NA}.}
 
 \item{keep_info}{Logical. If \code{TRUE}, keep the original \code{INFO} column after
 parsing.}

@@ -16,9 +16,11 @@
 #'   all VCF sample columns are used.
 #' @param add_variant_type Logical. If `TRUE`, add a `Type` column inferred from
 #'   the `REF` and `ALT` alleles. The rule mirrors the variant type shown in the
-#'   wf-amplicon report: single-base substitutions are `SNP`, unequal-length
-#'   alleles are `INDEL`, equal-length multi-base substitutions are `MNP`, and
-#'   reference/missing calls are `REF`/`NA`.
+#'   wf-amplicon report with an extra normalized-indel guard: single-base
+#'   substitutions are `SNP`, unequal-length alleles with a shared anchor base
+#'   are `INDEL`, equal-length multi-base substitutions are `MNP`, unequal-length
+#'   alleles without a shared anchor are `OTHER`, and reference/missing calls are
+#'   `REF`/`NA`.
 #' @param keep_info Logical. If `TRUE`, keep the original `INFO` column after
 #'   parsing.
 #' @param keep_format Logical. If `TRUE`, keep the original `FORMAT` and raw
@@ -178,9 +180,11 @@ read_vcf <- function(vcf_file,
 #' Infer VCF variant type from REF and ALT alleles
 #'
 #' `vcf_variant_type()` classifies variants from the allele strings in the same
-#' broad way used by wf-amplicon reports: single-base substitutions are `SNP`,
-#' unequal-length alleles are `INDEL`, equal-length multi-base substitutions are
-#' `MNP`, and reference or missing calls are `REF` or `NA`.
+#' broad way used by wf-amplicon reports, with an extra normalized-indel guard:
+#' single-base substitutions are `SNP`, unequal-length alleles with a shared
+#' anchor base are `INDEL`, equal-length multi-base substitutions are `MNP`,
+#' unequal-length alleles without a shared anchor are `OTHER`, and reference or
+#' missing calls are `REF` or `NA`.
 #'
 #' @param ref Character vector of VCF `REF` alleles.
 #' @param alt Character vector of VCF `ALT` alleles. Multi-allelic values such as
@@ -428,10 +432,18 @@ infer_vcf_variant_type_one <- function(ref, alt) {
       return("SNP")
     }
     if (nchar(ref) != nchar(one_alt)) {
-      return("INDEL")
+      if (has_shared_indel_anchor(ref, one_alt)) {
+        return("INDEL")
+      }
+      return("OTHER")
     }
     "MNP"
   }, character(1)))
+}
+
+has_shared_indel_anchor <- function(ref, alt) {
+  substr(ref, 1L, 1L) == substr(alt, 1L, 1L) ||
+    substr(ref, nchar(ref), nchar(ref)) == substr(alt, nchar(alt), nchar(alt))
 }
 
 summarize_vcf_variant_types <- function(types) {

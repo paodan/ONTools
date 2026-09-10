@@ -23,9 +23,11 @@ list of character vectors.
 }
 \description{
 \code{vcf_variant_type()} classifies variants from the allele strings in the same
-broad way used by wf-amplicon reports: single-base substitutions are \code{SNP},
-unequal-length alleles are \code{INDEL}, equal-length multi-base substitutions are
-\code{MNP}, and reference or missing calls are \code{REF} or \code{NA}.
+broad way used by wf-amplicon reports, with an extra normalized-indel guard:
+single-base substitutions are \code{SNP}, unequal-length alleles with a shared
+anchor base are \code{INDEL}, equal-length multi-base substitutions are \code{MNP},
+unequal-length alleles without a shared anchor are \code{OTHER}, and reference or
+missing calls are \code{REF} or \code{NA}.
 }
 \examples{
 vcf_variant_type(c("A", "AT", "A", "AC"), c("G", "A", "AT", "GT"))
