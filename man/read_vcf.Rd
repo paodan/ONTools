@@ -73,9 +73,9 @@ numeric columns when possible.}
 multi-sample wide output uses \code{<sample>_<field>}.}
 }
 \value{
-A data frame. Empty VCF files return a zero-row data frame with the detected
-VCF columns. When \code{add_allele_depth = TRUE} and medaka/wf-amplicon
-INFO fields are available, additional columns are added:
+A data frame, or \code{NULL} for VCF files with no variant records. When
+\code{add_allele_depth = TRUE} and medaka/wf-amplicon INFO fields are available,
+additional columns are added:
 \itemize{
 \item \code{ref_fwd_depth}, \code{ref_rev_depth}: forward/reverse spanning reads
 best aligned to the reference allele.

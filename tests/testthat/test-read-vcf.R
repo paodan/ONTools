@@ -233,9 +233,7 @@ test_that("read_vcf handles empty VCF files", {
 
   res <- read_vcf(vcf)
 
-  expect_s3_class(res, "data.frame")
-  expect_equal(nrow(res), 0)
-  expect_true(all(c("CHROM", "POS", "INFO") %in% names(res)))
+  expect_null(res)
 })
 
 test_that("parse_vcf_info supports flags, missing fields, and prefixes", {

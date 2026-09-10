@@ -42,9 +42,9 @@
 #'   `NULL`, single-sample wide output uses bare names such as `GT` and `DP`;
 #'   multi-sample wide output uses `<sample>_<field>`.
 #'
-#' @return A data frame. Empty VCF files return a zero-row data frame with the
-#'   detected VCF columns. When `add_allele_depth = TRUE` and medaka/wf-amplicon
-#'   INFO fields are available, additional columns are added:
+#' @return A data frame, or `NULL` for VCF files with no variant records. When
+#'   `add_allele_depth = TRUE` and medaka/wf-amplicon INFO fields are available,
+#'   additional columns are added:
 #'   \itemize{
 #'     \item `ref_fwd_depth`, `ref_rev_depth`: forward/reverse spanning reads
 #'       best aligned to the reference allele.
@@ -127,7 +127,7 @@ read_vcf <- function(vcf_file,
   data_lines <- data_lines[nzchar(data_lines)]
 
   if (length(data_lines) == 0L) {
-    return(empty_vcf_data_frame(header))
+    return(NULL)
   }
 
   vcf <- utils::read.delim(
