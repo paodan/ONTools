@@ -115,6 +115,56 @@ test_that("read_vcf sums SR depth across multiple ALT alleles", {
   expect_equal(res$variant_percent, 18 / 21 * 100)
 })
 
+test_that("read_vcf adds reference flanking sequences", {
+  ref <- tempfile(fileext = ".fasta")
+  writeLines(c(">chr1", "ACGTACGTACGT"), ref)
+  vcf <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+    "chr1\t5\t.\tA\tG\t60\tPASS\tDP=30",
+    "chr1\t5\t.\tAC\tA\t60\tPASS\tDP=30"
+  ), vcf)
+
+  res <- read_vcf(vcf, reference_fasta = ref, flank_width = 4)
+
+  expect_equal(res$ref_upstream_4bp, c("ACGT", "ACGT"))
+  expect_equal(res$ref_downstream_4bp, c("CGTA", "GTAC"))
+})
+
+test_that("read_vcf reference flanks are clipped at sequence boundaries", {
+  ref <- tempfile(fileext = ".fasta")
+  writeLines(c(">chr1", "ACGTACGT"), ref)
+  vcf <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+    "chr1\t1\t.\tA\tG\t60\tPASS\tDP=30",
+    "chr1\t8\t.\tT\tC\t60\tPASS\tDP=30"
+  ), vcf)
+
+  res <- read_vcf(vcf, reference_fasta = ref, flank_width = 4)
+
+  expect_equal(res$ref_upstream_4bp, c("", "TACG"))
+  expect_equal(res$ref_downstream_4bp, c("CGTA", ""))
+})
+
+test_that("read_vcf validates CHROM values when adding reference flanks", {
+  ref <- tempfile(fileext = ".fasta")
+  writeLines(c(">chr2", "ACGTACGT"), ref)
+  vcf <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+    "chr1\t1\t.\tA\tG\t60\tPASS\tDP=30"
+  ), vcf)
+
+  expect_error(
+    read_vcf(vcf, reference_fasta = ref),
+    "not found in `reference_fasta`"
+  )
+})
+
 test_that("read_vcf parses gzipped VCF files", {
   vcf <- tempfile(fileext = ".vcf.gz")
   con <- gzfile(vcf, open = "wt")

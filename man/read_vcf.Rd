@@ -12,6 +12,8 @@ read_vcf(
   samples = NULL,
   add_variant_type = TRUE,
   add_allele_depth = TRUE,
+  reference_fasta = NULL,
+  flank_width = 20,
   keep_info = FALSE,
   keep_format = FALSE,
   simplify = TRUE,
@@ -48,6 +50,13 @@ from medaka/wf-amplicon \code{SR} and \code{AR} INFO fields when available. \cod
 interpreted as \code{ref_fwd,ref_rev,alt1_fwd,alt1_rev,...}; \code{AR} is interpreted
 as ambiguous spanning reads by strand, \code{ambiguous_fwd,ambiguous_rev}.}
 
+\item{reference_fasta}{Optional reference FASTA file. When supplied,
+\code{read_vcf()} adds reference sequence flanks around each variant position.
+FASTA record names must match the VCF \code{CHROM} values.}
+
+\item{flank_width}{Number of reference bases to extract upstream and
+downstream of each edited \code{REF} interval. Defaults to 20.}
+
 \item{keep_info}{Logical. If \code{TRUE}, keep the original \code{INFO} column after
 parsing.}
 
@@ -78,12 +87,16 @@ summed.
 \item \code{ambiguous_fwd_depth}, \code{ambiguous_rev_depth}, \code{ambiguous_depth}:
 ambiguous spanning reads from \code{AR}.
 }
+When \code{reference_fasta} is supplied, two columns named
+\code{ref_upstream_<flank_width>bp} and \code{ref_downstream_<flank_width>bp} are
+added. Upstream sequence is taken before \code{POS}; downstream sequence is taken
+after the \code{REF} interval.
 }
 \description{
 \code{read_vcf()} reads plain or gzipped VCF files and returns a data frame with
 fixed VCF columns, optional REF/ALT variant types, optional medaka allele
-depth summaries, parsed \code{INFO} fields, and optionally parsed sample genotype
-fields from \code{FORMAT}.
+depth summaries, optional reference flanking sequences, parsed \code{INFO} fields,
+and optionally parsed sample genotype fields from \code{FORMAT}.
 }
 \examples{
 vcf <- tempfile(fileext = ".vcf")

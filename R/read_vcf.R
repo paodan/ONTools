@@ -2,8 +2,8 @@
 #'
 #' `read_vcf()` reads plain or gzipped VCF files and returns a data frame with
 #' fixed VCF columns, optional REF/ALT variant types, optional medaka allele
-#' depth summaries, parsed `INFO` fields, and optionally parsed sample genotype
-#' fields from `FORMAT`.
+#' depth summaries, optional reference flanking sequences, parsed `INFO` fields,
+#' and optionally parsed sample genotype fields from `FORMAT`.
 #'
 #' @param vcf_file Path to a `.vcf` or `.vcf.gz` file.
 #' @param parse_info Logical. If `TRUE`, split the `INFO` column into separate
@@ -26,6 +26,11 @@
 #'   from medaka/wf-amplicon `SR` and `AR` INFO fields when available. `SR` is
 #'   interpreted as `ref_fwd,ref_rev,alt1_fwd,alt1_rev,...`; `AR` is interpreted
 #'   as ambiguous spanning reads by strand, `ambiguous_fwd,ambiguous_rev`.
+#' @param reference_fasta Optional reference FASTA file. When supplied,
+#'   `read_vcf()` adds reference sequence flanks around each variant position.
+#'   FASTA record names must match the VCF `CHROM` values.
+#' @param flank_width Number of reference bases to extract upstream and
+#'   downstream of each edited `REF` interval. Defaults to 20.
 #' @param keep_info Logical. If `TRUE`, keep the original `INFO` column after
 #'   parsing.
 #' @param keep_format Logical. If `TRUE`, keep the original `FORMAT` and raw
@@ -51,6 +56,10 @@
 #'     \item `ambiguous_fwd_depth`, `ambiguous_rev_depth`, `ambiguous_depth`:
 #'       ambiguous spanning reads from `AR`.
 #'   }
+#'   When `reference_fasta` is supplied, two columns named
+#'   `ref_upstream_<flank_width>bp` and `ref_downstream_<flank_width>bp` are
+#'   added. Upstream sequence is taken before `POS`; downstream sequence is taken
+#'   after the `REF` interval.
 #'
 #' @examples
 #' vcf <- tempfile(fileext = ".vcf")
@@ -70,6 +79,8 @@ read_vcf <- function(vcf_file,
                      samples = NULL,
                      add_variant_type = TRUE,
                      add_allele_depth = TRUE,
+                     reference_fasta = NULL,
+                     flank_width = 20,
                      keep_info = FALSE,
                      keep_format = FALSE,
                      simplify = TRUE,
@@ -80,6 +91,7 @@ read_vcf <- function(vcf_file,
   check_logical_scalar(parse_genotypes, "parse_genotypes")
   check_logical_scalar(add_variant_type, "add_variant_type")
   check_logical_scalar(add_allele_depth, "add_allele_depth")
+  flank_width <- validate_nonnegative_integer(flank_width, "flank_width")
   check_logical_scalar(keep_info, "keep_info")
   check_logical_scalar(keep_format, "keep_format")
   check_logical_scalar(simplify, "simplify")
@@ -88,6 +100,10 @@ read_vcf <- function(vcf_file,
   if (!is.null(samples) && (!is.character(samples) || anyNA(samples))) {
     stop("`samples` must be a character vector without missing values.",
          call. = FALSE)
+  }
+  if (!is.null(reference_fasta)) {
+    check_file_arg(reference_fasta, "reference_fasta")
+    reference_fasta <- normalizePath(reference_fasta, mustWork = TRUE)
   }
   sample_format <- match.arg(sample_format)
 
@@ -150,6 +166,9 @@ read_vcf <- function(vcf_file,
   out <- vcf[, fixed_cols, drop = FALSE]
   if (isTRUE(add_variant_type) && all(c("REF", "ALT") %in% names(out))) {
     out$Type <- vcf_variant_type(out$REF, out$ALT)
+  }
+  if (!is.null(reference_fasta) && all(c("CHROM", "POS", "REF") %in% names(out))) {
+    out <- add_vcf_reference_flanks(out, reference_fasta, flank_width)
   }
 
   if (isTRUE(keep_info) && has_info) {
@@ -267,6 +286,62 @@ add_vcf_allele_depth_columns <- function(out, info) {
     out$ambiguous_depth <- ar$ambiguous_depth
   }
   out
+}
+
+add_vcf_reference_flanks <- function(out, reference_fasta, flank_width) {
+  references <- Biostrings::readDNAStringSet(reference_fasta)
+  if (length(references) == 0L) {
+    stop("No reference sequences found in `reference_fasta`.", call. = FALSE)
+  }
+
+  reference_names <- names(references)
+  missing_chroms <- setdiff(unique(out$CHROM), reference_names)
+  missing_chroms <- missing_chroms[nzchar(missing_chroms)]
+  if (length(missing_chroms) > 0L) {
+    stop("VCF CHROM value(s) not found in `reference_fasta`: ",
+         paste(missing_chroms, collapse = ", "), call. = FALSE)
+  }
+
+  upstream <- character(nrow(out))
+  downstream <- character(nrow(out))
+  for (i in seq_len(nrow(out))) {
+    flank <- get_vcf_reference_flank_one(
+      reference = references[[out$CHROM[[i]]]],
+      pos = out$POS[[i]],
+      ref = out$REF[[i]],
+      flank_width = flank_width
+    )
+    upstream[[i]] <- flank$upstream
+    downstream[[i]] <- flank$downstream
+  }
+
+  out[[paste0("ref_upstream_", flank_width, "bp")]] <- upstream
+  out[[paste0("ref_downstream_", flank_width, "bp")]] <- downstream
+  out
+}
+
+get_vcf_reference_flank_one <- function(reference, pos, ref, flank_width) {
+  seq_len_ref <- length(reference)
+  ref_width <- nchar(ref)
+  if (is.na(pos) || is.na(ref) || ref_width == 0L || identical(ref, ".")) {
+    return(list(upstream = NA_character_, downstream = NA_character_))
+  }
+
+  upstream_start <- max(1L, pos - flank_width)
+  upstream_end <- pos - 1L
+  downstream_start <- pos + ref_width
+  downstream_end <- min(seq_len_ref, downstream_start + flank_width - 1L)
+
+  upstream <- extract_reference_subseq(reference, upstream_start, upstream_end)
+  downstream <- extract_reference_subseq(reference, downstream_start, downstream_end)
+  list(upstream = upstream, downstream = downstream)
+}
+
+extract_reference_subseq <- function(reference, start, end) {
+  if (start > end || start < 1L || end < 1L || start > length(reference)) {
+    return("")
+  }
+  as.character(Biostrings::subseq(reference, start = start, end = end))
 }
 
 parse_vcf_sr <- function(sr, alt) {
