@@ -40,6 +40,31 @@ test_that("run_wf_amplicon appends raw extra arguments", {
   expect_match(res$command_string, "--threads 16 --custom_param 'raw value'", fixed = TRUE)
 })
 
+test_that("run_wf_amplicon supports a reference FASTA", {
+  ref <- tempfile(fileext = ".fasta")
+  writeLines(c(">amplicon1", "ACGTACGT"), ref)
+
+  res <- run_wf_amplicon(
+    reference = ref,
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_true(any(res$args == "--reference"))
+  expect_true(any(res$args == normalizePath(ref)))
+  expect_equal(res$paths$reference, normalizePath(ref))
+  expect_match(res$command_string, "--reference", fixed = TRUE)
+  expect_match(res$command_string, normalizePath(ref), fixed = TRUE)
+})
+
+test_that("run_wf_amplicon validates reference FASTA path", {
+  expect_error(
+    run_wf_amplicon(reference = tempfile(fileext = ".fasta"),
+                   dry_run = TRUE, echo = FALSE),
+    "reference"
+  )
+})
+
 test_that("run_wf_amplicon can override Nextflow environment", {
   res <- run_wf_amplicon(
     syntax_parser = NULL,

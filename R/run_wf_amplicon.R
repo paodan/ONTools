@@ -7,6 +7,9 @@
 #'
 #' @param fastq Path to the input FASTQ directory passed to `--fastq`.
 #' @param out_dir Output directory passed to `--out_dir`.
+#' @param reference Optional reference FASTA file passed to `--reference`. When
+#'   supplied, wf-amplicon runs in variant-calling mode; when `NULL`, it runs in
+#'   de-novo consensus mode.
 #' @param min_read_length Minimum read length passed to `--min_read_length`.
 #' @param max_read_length Maximum read length passed to `--max_read_length`.
 #' @param min_read_qual Minimum read quality passed to `--min_read_qual`.
@@ -74,6 +77,7 @@
 #' @export
 run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
                             out_dir = "./results/wf_amplicon_denovo",
+                            reference = NULL,
                             min_read_length = 2000,
                             max_read_length = 3300,
                             min_read_qual = 10,
@@ -96,6 +100,10 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
                             stderr = "") {
   check_scalar_character(fastq, "fastq")
   check_scalar_character(out_dir, "out_dir")
+  if (!is.null(reference)) {
+    check_file_arg(reference, "reference")
+    reference <- normalizePath(reference, mustWork = TRUE)
+  }
   check_scalar_character(override_basecaller_cfg, "override_basecaller_cfg")
   check_scalar_character(profile, "profile")
   check_scalar_character(workflow, "workflow")
@@ -147,6 +155,9 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
     "--override_basecaller_cfg", override_basecaller_cfg,
     "-profile", profile
   )
+  if (!is.null(reference)) {
+    args <- c(args, "--reference", reference)
+  }
 
   if (isTRUE(resume)) {
     args <- c(args, "-resume")
@@ -160,7 +171,8 @@ run_wf_amplicon <- function(fastq = "./fastq_pass_trim",
 
   paths <- list(
     fastq = fastq,
-    out_dir = out_dir
+    out_dir = out_dir,
+    reference = reference
   )
 
   uses_shell <- !is.null(extra_args)

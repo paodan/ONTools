@@ -7,6 +7,7 @@
 run_wf_amplicon(
   fastq = "./fastq_pass_trim",
   out_dir = "./results/wf_amplicon_denovo",
+  reference = NULL,
   min_read_length = 2000,
   max_read_length = 3300,
   min_read_qual = 10,
@@ -33,6 +34,10 @@ run_wf_amplicon(
 \item{fastq}{Path to the input FASTQ directory passed to \code{--fastq}.}
 
 \item{out_dir}{Output directory passed to \code{--out_dir}.}
+
+\item{reference}{Optional reference FASTA file passed to \code{--reference}. When
+supplied, wf-amplicon runs in variant-calling mode; when \code{NULL}, it runs in
+de-novo consensus mode.}
 
 \item{min_read_length}{Minimum read length passed to \code{--min_read_length}.}
 
