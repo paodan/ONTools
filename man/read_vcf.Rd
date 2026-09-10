@@ -82,8 +82,10 @@ best aligned to the reference allele.
 \item \code{alt_fwd_depth}, \code{alt_rev_depth}: forward/reverse spanning reads
 best aligned to ALT allele(s). For multi-allelic records, all ALT alleles are
 summed.
-\item \code{ref_depth}, \code{alt_depth}: strand-summed REF and ALT support.
-\item \code{variant_percent}: \code{alt_depth / (ref_depth + alt_depth) * 100}.
+\item \code{ref_depth_downsampled}, \code{alt_depth_downsampled}: strand-summed
+REF and ALT support from downsampled medaka spanning reads.
+\item \code{variant_percent}: \code{alt_depth_downsampled /
+(ref_depth_downsampled + alt_depth_downsampled) * 100}.
 \item \code{ambiguous_fwd_depth}, \code{ambiguous_rev_depth}, \code{ambiguous_depth}:
 ambiguous spanning reads from \code{AR}.
 }

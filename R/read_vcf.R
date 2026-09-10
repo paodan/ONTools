@@ -51,8 +51,10 @@
 #'     \item `alt_fwd_depth`, `alt_rev_depth`: forward/reverse spanning reads
 #'       best aligned to ALT allele(s). For multi-allelic records, all ALT
 #'       alleles are summed.
-#'     \item `ref_depth`, `alt_depth`: strand-summed REF and ALT support.
-#'     \item `variant_percent`: `alt_depth / (ref_depth + alt_depth) * 100`.
+#'     \item `ref_depth_downsampled`, `alt_depth_downsampled`: strand-summed
+#'       REF and ALT support from downsampled medaka spanning reads.
+#'     \item `variant_percent`: `alt_depth_downsampled /
+#'       (ref_depth_downsampled + alt_depth_downsampled) * 100`.
 #'     \item `ambiguous_fwd_depth`, `ambiguous_rev_depth`, `ambiguous_depth`:
 #'       ambiguous spanning reads from `AR`.
 #'   }
@@ -275,8 +277,8 @@ add_vcf_allele_depth_columns <- function(out, info) {
     out$ref_rev_depth <- sr$ref_rev_depth
     out$alt_fwd_depth <- sr$alt_fwd_depth
     out$alt_rev_depth <- sr$alt_rev_depth
-    out$ref_depth <- sr$ref_depth
-    out$alt_depth <- sr$alt_depth
+    out$ref_depth_downsampled <- sr$ref_depth_downsampled
+    out$alt_depth_downsampled <- sr$alt_depth_downsampled
     out$variant_percent <- sr$variant_percent
   }
   if ("AR" %in% names(info)) {
@@ -397,7 +399,7 @@ parse_vcf_sr <- function(sr, alt) {
   colnames(mat) <- c(
     "ref_fwd_depth", "ref_rev_depth",
     "alt_fwd_depth", "alt_rev_depth",
-    "ref_depth", "alt_depth", "variant_percent"
+    "ref_depth_downsampled", "alt_depth_downsampled", "variant_percent"
   )
   as.data.frame(mat, stringsAsFactors = FALSE, check.names = FALSE)
 }

@@ -73,8 +73,8 @@ test_that("read_vcf derives medaka allele depth columns from SR and AR", {
   expect_equal(res$ref_rev_depth, 1)
   expect_equal(res$alt_fwd_depth, 4)
   expect_equal(res$alt_rev_depth, 3)
-  expect_equal(res$ref_depth, 1)
-  expect_equal(res$alt_depth, 7)
+  expect_equal(res$ref_depth_downsampled, 1)
+  expect_equal(res$alt_depth_downsampled, 7)
   expect_equal(res$variant_percent, 87.5)
   expect_equal(res$ambiguous_fwd_depth, 0)
   expect_equal(res$ambiguous_rev_depth, 1)
@@ -92,8 +92,8 @@ test_that("read_vcf can derive medaka allele depth columns without parsing INFO 
   res <- read_vcf(vcf, parse_info = FALSE)
 
   expect_false("SR" %in% names(res))
-  expect_equal(res$ref_depth, 5)
-  expect_equal(res$alt_depth, 9)
+  expect_equal(res$ref_depth_downsampled, 5)
+  expect_equal(res$alt_depth_downsampled, 9)
   expect_equal(res$variant_percent, 9 / 14 * 100)
   expect_equal(res$ambiguous_depth, 3)
 })
@@ -108,10 +108,10 @@ test_that("read_vcf sums SR depth across multiple ALT alleles", {
 
   res <- read_vcf(vcf)
 
-  expect_equal(res$ref_depth, 3)
+  expect_equal(res$ref_depth_downsampled, 3)
   expect_equal(res$alt_fwd_depth, 8)
   expect_equal(res$alt_rev_depth, 10)
-  expect_equal(res$alt_depth, 18)
+  expect_equal(res$alt_depth_downsampled, 18)
   expect_equal(res$variant_percent, 18 / 21 * 100)
 })
 
