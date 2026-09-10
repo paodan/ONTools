@@ -10,6 +10,7 @@ read_vcf(
   parse_genotypes = TRUE,
   sample_format = c("wide", "long"),
   samples = NULL,
+  add_variant_type = TRUE,
   keep_info = FALSE,
   keep_format = FALSE,
   simplify = TRUE,
@@ -33,6 +34,12 @@ VCF-record/sample pair.}
 \item{samples}{Optional character vector of sample names to keep. If \code{NULL},
 all VCF sample columns are used.}
 
+\item{add_variant_type}{Logical. If \code{TRUE}, add a \code{Type} column inferred from
+the \code{REF} and \code{ALT} alleles. The rule mirrors the variant type shown in the
+wf-amplicon report: single-base substitutions are \code{SNP}, unequal-length
+alleles are \code{INDEL}, equal-length multi-base substitutions are \code{MNP}, and
+reference/missing calls are \code{REF}/\code{NA}.}
+
 \item{keep_info}{Logical. If \code{TRUE}, keep the original \code{INFO} column after
 parsing.}
 
@@ -54,8 +61,8 @@ VCF columns.
 }
 \description{
 \code{read_vcf()} reads plain or gzipped VCF files and returns a data frame with
-fixed VCF columns, parsed \code{INFO} fields, and optionally parsed sample genotype
-fields from \code{FORMAT}.
+fixed VCF columns, optional REF/ALT variant types, parsed \code{INFO} fields, and
+optionally parsed sample genotype fields from \code{FORMAT}.
 }
 \examples{
 vcf <- tempfile(fileext = ".vcf")

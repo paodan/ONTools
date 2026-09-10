@@ -14,6 +14,7 @@ test_that("read_vcf parses single-sample VCF files", {
   expect_equal(res$CHROM, c("chr1", "chr1"))
   expect_equal(res$POS, c(10L, 20L))
   expect_equal(res$QUAL, c(60, NA))
+  expect_equal(res$Type, c("SNP", "INDEL"))
   expect_equal(res$DP, c(30, 12))
   expect_equal(res$AF, c(0.4, NA))
   expect_equal(res$SOMATIC, c(TRUE, NA))
@@ -23,6 +24,34 @@ test_that("read_vcf parses single-sample VCF files", {
   expect_equal(res$FORMAT_DP, c(30, 12))
   expect_equal(res$FORMAT_AF, c(0.4, NA))
   expect_equal(res$AD, c("18,12", NA))
+})
+
+test_that("vcf_variant_type infers wf-amplicon style variant types", {
+  expect_equal(
+    vcf_variant_type(
+      ref = c("A", "AT", "A", "AC", "A", "A"),
+      alt = c("G", "A", "AT", "GT", "A", ".")
+    ),
+    c("SNP", "INDEL", "INDEL", "MNP", "REF", NA)
+  )
+
+  expect_equal(vcf_variant_type("A", "G,AT"), "MIXED")
+  expect_equal(vcf_variant_type("A", "G,T"), "SNP")
+  expect_equal(vcf_variant_type("A", "G,AT", collapse_multiallelic = FALSE)[[1]],
+               c("SNP", "INDEL"))
+})
+
+test_that("read_vcf can omit inferred variant Type", {
+  vcf <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+    "chr1\t10\t.\tA\tG\t60\tPASS\tDP=30"
+  ), vcf)
+
+  res <- read_vcf(vcf, add_variant_type = FALSE)
+
+  expect_false("Type" %in% names(res))
 })
 
 test_that("read_vcf parses gzipped VCF files", {

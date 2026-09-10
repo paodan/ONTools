@@ -1,8 +1,8 @@
 #' Read a VCF file into a data frame
 #'
 #' `read_vcf()` reads plain or gzipped VCF files and returns a data frame with
-#' fixed VCF columns, parsed `INFO` fields, and optionally parsed sample genotype
-#' fields from `FORMAT`.
+#' fixed VCF columns, optional REF/ALT variant types, parsed `INFO` fields, and
+#' optionally parsed sample genotype fields from `FORMAT`.
 #'
 #' @param vcf_file Path to a `.vcf` or `.vcf.gz` file.
 #' @param parse_info Logical. If `TRUE`, split the `INFO` column into separate
@@ -14,6 +14,11 @@
 #'   VCF-record/sample pair.
 #' @param samples Optional character vector of sample names to keep. If `NULL`,
 #'   all VCF sample columns are used.
+#' @param add_variant_type Logical. If `TRUE`, add a `Type` column inferred from
+#'   the `REF` and `ALT` alleles. The rule mirrors the variant type shown in the
+#'   wf-amplicon report: single-base substitutions are `SNP`, unequal-length
+#'   alleles are `INDEL`, equal-length multi-base substitutions are `MNP`, and
+#'   reference/missing calls are `REF`/`NA`.
 #' @param keep_info Logical. If `TRUE`, keep the original `INFO` column after
 #'   parsing.
 #' @param keep_format Logical. If `TRUE`, keep the original `FORMAT` and raw
@@ -44,6 +49,7 @@ read_vcf <- function(vcf_file,
                      parse_genotypes = TRUE,
                      sample_format = c("wide", "long"),
                      samples = NULL,
+                     add_variant_type = TRUE,
                      keep_info = FALSE,
                      keep_format = FALSE,
                      simplify = TRUE,
@@ -52,6 +58,7 @@ read_vcf <- function(vcf_file,
   check_file_arg(vcf_file, "vcf_file")
   check_logical_scalar(parse_info, "parse_info")
   check_logical_scalar(parse_genotypes, "parse_genotypes")
+  check_logical_scalar(add_variant_type, "add_variant_type")
   check_logical_scalar(keep_info, "keep_info")
   check_logical_scalar(keep_format, "keep_format")
   check_logical_scalar(simplify, "simplify")
@@ -120,6 +127,9 @@ read_vcf <- function(vcf_file,
   }
 
   out <- vcf[, fixed_cols, drop = FALSE]
+  if (isTRUE(add_variant_type) && all(c("REF", "ALT") %in% names(out))) {
+    out$Type <- vcf_variant_type(out$REF, out$ALT)
+  }
 
   if (isTRUE(keep_info) && has_info) {
     out$INFO <- vcf$INFO
@@ -163,6 +173,48 @@ read_vcf <- function(vcf_file,
     names(genotype) <- disambiguate_vcf_genotype_names(names(genotype), names(out))
   }
   cbind(out, genotype)
+}
+
+#' Infer VCF variant type from REF and ALT alleles
+#'
+#' `vcf_variant_type()` classifies variants from the allele strings in the same
+#' broad way used by wf-amplicon reports: single-base substitutions are `SNP`,
+#' unequal-length alleles are `INDEL`, equal-length multi-base substitutions are
+#' `MNP`, and reference or missing calls are `REF` or `NA`.
+#'
+#' @param ref Character vector of VCF `REF` alleles.
+#' @param alt Character vector of VCF `ALT` alleles. Multi-allelic values such as
+#'   `"A,AT"` are supported.
+#' @param collapse_multiallelic Logical. If `TRUE`, a multi-allelic `ALT` value
+#'   is summarized into one value per VCF row. Rows with mixed non-reference
+#'   variant types are reported as `"MIXED"`. If `FALSE`, a list-column with one
+#'   type per ALT allele is returned.
+#'
+#' @return A character vector when `collapse_multiallelic = TRUE`; otherwise a
+#'   list of character vectors.
+#'
+#' @examples
+#' vcf_variant_type(c("A", "AT", "A", "AC"), c("G", "A", "AT", "GT"))
+#'
+#' @export
+vcf_variant_type <- function(ref, alt, collapse_multiallelic = TRUE) {
+  if (!is.character(ref)) ref <- as.character(ref)
+  if (!is.character(alt)) alt <- as.character(alt)
+  check_logical_scalar(collapse_multiallelic, "collapse_multiallelic")
+
+  n <- max(length(ref), length(alt))
+  ref <- rep_len(ref, n)
+  alt <- rep_len(alt, n)
+
+  types <- Map(function(r, a) {
+    infer_vcf_variant_type_one(r, a)
+  }, ref, alt)
+
+  if (!isTRUE(collapse_multiallelic)) {
+    return(types)
+  }
+
+  unname(vapply(types, summarize_vcf_variant_types, character(1)))
 }
 
 #' Parse VCF INFO strings
@@ -355,4 +407,45 @@ disambiguate_vcf_genotype_names <- function(genotype_names, existing_names) {
   conflicts <- genotype_names %in% existing_names
   genotype_names[conflicts] <- paste0("FORMAT_", genotype_names[conflicts])
   genotype_names
+}
+
+infer_vcf_variant_type_one <- function(ref, alt) {
+  if (is.na(ref) || is.na(alt) || !nzchar(ref) || !nzchar(alt) ||
+      identical(ref, ".") || identical(alt, ".")) {
+    return(NA_character_)
+  }
+
+  alts <- strsplit(alt, ",", fixed = TRUE)[[1L]]
+  alts <- alts[nzchar(alts)]
+  unname(vapply(alts, function(one_alt) {
+    if (is.na(one_alt) || identical(one_alt, ".")) {
+      return(NA_character_)
+    }
+    if (identical(ref, one_alt)) {
+      return("REF")
+    }
+    if (nchar(ref) == 1L && nchar(one_alt) == 1L) {
+      return("SNP")
+    }
+    if (nchar(ref) != nchar(one_alt)) {
+      return("INDEL")
+    }
+    "MNP"
+  }, character(1)))
+}
+
+summarize_vcf_variant_types <- function(types) {
+  types <- types[!is.na(types)]
+  if (length(types) == 0L) {
+    return(NA_character_)
+  }
+  non_ref_types <- types[types != "REF"]
+  if (length(non_ref_types) == 0L) {
+    return("REF")
+  }
+  unique_types <- unique(non_ref_types)
+  if (length(unique_types) == 1L) {
+    return(unique_types[[1L]])
+  }
+  "MIXED"
 }
