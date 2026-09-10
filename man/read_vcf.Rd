@@ -11,6 +11,7 @@ read_vcf(
   sample_format = c("wide", "long"),
   samples = NULL,
   add_variant_type = TRUE,
+  add_allele_depth = TRUE,
   keep_info = FALSE,
   keep_format = FALSE,
   simplify = TRUE,
@@ -42,6 +43,11 @@ are \code{INDEL}, equal-length multi-base substitutions are \code{MNP}, unequal-
 alleles without a shared anchor are \code{OTHER}, and reference/missing calls are
 \code{REF}/\code{NA}.}
 
+\item{add_allele_depth}{Logical. If \code{TRUE}, add allele-depth summary columns
+from medaka/wf-amplicon \code{SR} and \code{AR} INFO fields when available. \code{SR} is
+interpreted as \code{ref_fwd,ref_rev,alt1_fwd,alt1_rev,...}; \code{AR} is interpreted
+as ambiguous spanning reads by strand, \code{ambiguous_fwd,ambiguous_rev}.}
+
 \item{keep_info}{Logical. If \code{TRUE}, keep the original \code{INFO} column after
 parsing.}
 
@@ -59,12 +65,25 @@ multi-sample wide output uses \code{<sample>_<field>}.}
 }
 \value{
 A data frame. Empty VCF files return a zero-row data frame with the detected
-VCF columns.
+VCF columns. When \code{add_allele_depth = TRUE} and medaka/wf-amplicon
+INFO fields are available, additional columns are added:
+\itemize{
+\item \code{ref_fwd_depth}, \code{ref_rev_depth}: forward/reverse spanning reads
+best aligned to the reference allele.
+\item \code{alt_fwd_depth}, \code{alt_rev_depth}: forward/reverse spanning reads
+best aligned to ALT allele(s). For multi-allelic records, all ALT alleles are
+summed.
+\item \code{ref_depth}, \code{alt_depth}: strand-summed REF and ALT support.
+\item \code{variant_percent}: \code{alt_depth / (ref_depth + alt_depth) * 100}.
+\item \code{ambiguous_fwd_depth}, \code{ambiguous_rev_depth}, \code{ambiguous_depth}:
+ambiguous spanning reads from \code{AR}.
+}
 }
 \description{
 \code{read_vcf()} reads plain or gzipped VCF files and returns a data frame with
-fixed VCF columns, optional REF/ALT variant types, parsed \code{INFO} fields, and
-optionally parsed sample genotype fields from \code{FORMAT}.
+fixed VCF columns, optional REF/ALT variant types, optional medaka allele
+depth summaries, parsed \code{INFO} fields, and optionally parsed sample genotype
+fields from \code{FORMAT}.
 }
 \examples{
 vcf <- tempfile(fileext = ".vcf")

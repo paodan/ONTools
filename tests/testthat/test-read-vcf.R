@@ -55,6 +55,66 @@ test_that("read_vcf can omit inferred variant Type", {
   expect_false("Type" %in% names(res))
 })
 
+test_that("read_vcf derives medaka allele depth columns from SR and AR", {
+  vcf <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tbarcode279",
+    paste0(
+      "PLA3_A_\t76\t.\tCG\tC\t1.858\tPASS\t",
+      "DP=37;DPS=13,24;DPSP=9;SR=0,1,4,3;AR=0,1;",
+      "SC=681,782,693,790\tGT:GQ\t1:2"
+    )
+  ), vcf)
+
+  res <- read_vcf(vcf)
+
+  expect_equal(res$ref_fwd_depth, 0)
+  expect_equal(res$ref_rev_depth, 1)
+  expect_equal(res$alt_fwd_depth, 4)
+  expect_equal(res$alt_rev_depth, 3)
+  expect_equal(res$ref_depth, 1)
+  expect_equal(res$alt_depth, 7)
+  expect_equal(res$variant_percent, 87.5)
+  expect_equal(res$ambiguous_fwd_depth, 0)
+  expect_equal(res$ambiguous_rev_depth, 1)
+  expect_equal(res$ambiguous_depth, 1)
+})
+
+test_that("read_vcf can derive medaka allele depth columns without parsing INFO output", {
+  vcf <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+    "chr1\t10\t.\tA\tG\t60\tPASS\tSR=2,3,4,5;AR=1,2"
+  ), vcf)
+
+  res <- read_vcf(vcf, parse_info = FALSE)
+
+  expect_false("SR" %in% names(res))
+  expect_equal(res$ref_depth, 5)
+  expect_equal(res$alt_depth, 9)
+  expect_equal(res$variant_percent, 9 / 14 * 100)
+  expect_equal(res$ambiguous_depth, 3)
+})
+
+test_that("read_vcf sums SR depth across multiple ALT alleles", {
+  vcf <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+    "chr1\t10\t.\tA\tG,AT\t60\tPASS\tSR=1,2,3,4,5,6"
+  ), vcf)
+
+  res <- read_vcf(vcf)
+
+  expect_equal(res$ref_depth, 3)
+  expect_equal(res$alt_fwd_depth, 8)
+  expect_equal(res$alt_rev_depth, 10)
+  expect_equal(res$alt_depth, 18)
+  expect_equal(res$variant_percent, 18 / 21 * 100)
+})
+
 test_that("read_vcf parses gzipped VCF files", {
   vcf <- tempfile(fileext = ".vcf.gz")
   con <- gzfile(vcf, open = "wt")

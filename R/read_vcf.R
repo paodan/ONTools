@@ -1,8 +1,9 @@
 #' Read a VCF file into a data frame
 #'
 #' `read_vcf()` reads plain or gzipped VCF files and returns a data frame with
-#' fixed VCF columns, optional REF/ALT variant types, parsed `INFO` fields, and
-#' optionally parsed sample genotype fields from `FORMAT`.
+#' fixed VCF columns, optional REF/ALT variant types, optional medaka allele
+#' depth summaries, parsed `INFO` fields, and optionally parsed sample genotype
+#' fields from `FORMAT`.
 #'
 #' @param vcf_file Path to a `.vcf` or `.vcf.gz` file.
 #' @param parse_info Logical. If `TRUE`, split the `INFO` column into separate
@@ -21,6 +22,10 @@
 #'   are `INDEL`, equal-length multi-base substitutions are `MNP`, unequal-length
 #'   alleles without a shared anchor are `OTHER`, and reference/missing calls are
 #'   `REF`/`NA`.
+#' @param add_allele_depth Logical. If `TRUE`, add allele-depth summary columns
+#'   from medaka/wf-amplicon `SR` and `AR` INFO fields when available. `SR` is
+#'   interpreted as `ref_fwd,ref_rev,alt1_fwd,alt1_rev,...`; `AR` is interpreted
+#'   as ambiguous spanning reads by strand, `ambiguous_fwd,ambiguous_rev`.
 #' @param keep_info Logical. If `TRUE`, keep the original `INFO` column after
 #'   parsing.
 #' @param keep_format Logical. If `TRUE`, keep the original `FORMAT` and raw
@@ -33,7 +38,19 @@
 #'   multi-sample wide output uses `<sample>_<field>`.
 #'
 #' @return A data frame. Empty VCF files return a zero-row data frame with the
-#'   detected VCF columns.
+#'   detected VCF columns. When `add_allele_depth = TRUE` and medaka/wf-amplicon
+#'   INFO fields are available, additional columns are added:
+#'   \itemize{
+#'     \item `ref_fwd_depth`, `ref_rev_depth`: forward/reverse spanning reads
+#'       best aligned to the reference allele.
+#'     \item `alt_fwd_depth`, `alt_rev_depth`: forward/reverse spanning reads
+#'       best aligned to ALT allele(s). For multi-allelic records, all ALT
+#'       alleles are summed.
+#'     \item `ref_depth`, `alt_depth`: strand-summed REF and ALT support.
+#'     \item `variant_percent`: `alt_depth / (ref_depth + alt_depth) * 100`.
+#'     \item `ambiguous_fwd_depth`, `ambiguous_rev_depth`, `ambiguous_depth`:
+#'       ambiguous spanning reads from `AR`.
+#'   }
 #'
 #' @examples
 #' vcf <- tempfile(fileext = ".vcf")
@@ -52,6 +69,7 @@ read_vcf <- function(vcf_file,
                      sample_format = c("wide", "long"),
                      samples = NULL,
                      add_variant_type = TRUE,
+                     add_allele_depth = TRUE,
                      keep_info = FALSE,
                      keep_format = FALSE,
                      simplify = TRUE,
@@ -61,6 +79,7 @@ read_vcf <- function(vcf_file,
   check_logical_scalar(parse_info, "parse_info")
   check_logical_scalar(parse_genotypes, "parse_genotypes")
   check_logical_scalar(add_variant_type, "add_variant_type")
+  check_logical_scalar(add_allele_depth, "add_allele_depth")
   check_logical_scalar(keep_info, "keep_info")
   check_logical_scalar(keep_format, "keep_format")
   check_logical_scalar(simplify, "simplify")
@@ -136,9 +155,18 @@ read_vcf <- function(vcf_file,
   if (isTRUE(keep_info) && has_info) {
     out$INFO <- vcf$INFO
   }
+  info_for_depth <- NULL
   if (isTRUE(parse_info) && has_info) {
     info <- parse_vcf_info(vcf$INFO, prefix = info_prefix, simplify = simplify)
+    if (isTRUE(add_allele_depth)) {
+      info_for_depth <- parse_vcf_info(vcf$INFO, simplify = FALSE)
+    }
     out <- cbind(out, info)
+  } else if (isTRUE(add_allele_depth) && has_info) {
+    info_for_depth <- parse_vcf_info(vcf$INFO, simplify = FALSE)
+  }
+  if (isTRUE(add_allele_depth) && !is.null(info_for_depth)) {
+    out <- add_vcf_allele_depth_columns(out, info_for_depth)
   }
 
   if (!isTRUE(parse_genotypes) || !has_format || length(sample_cols) == 0L) {
@@ -219,6 +247,120 @@ vcf_variant_type <- function(ref, alt, collapse_multiallelic = TRUE) {
   }
 
   unname(vapply(types, summarize_vcf_variant_types, character(1)))
+}
+
+add_vcf_allele_depth_columns <- function(out, info) {
+  if ("SR" %in% names(info)) {
+    sr <- parse_vcf_sr(info$SR, out$ALT)
+    out$ref_fwd_depth <- sr$ref_fwd_depth
+    out$ref_rev_depth <- sr$ref_rev_depth
+    out$alt_fwd_depth <- sr$alt_fwd_depth
+    out$alt_rev_depth <- sr$alt_rev_depth
+    out$ref_depth <- sr$ref_depth
+    out$alt_depth <- sr$alt_depth
+    out$variant_percent <- sr$variant_percent
+  }
+  if ("AR" %in% names(info)) {
+    ar <- parse_vcf_ar(info$AR)
+    out$ambiguous_fwd_depth <- ar$ambiguous_fwd_depth
+    out$ambiguous_rev_depth <- ar$ambiguous_rev_depth
+    out$ambiguous_depth <- ar$ambiguous_depth
+  }
+  out
+}
+
+parse_vcf_sr <- function(sr, alt) {
+  parsed <- Map(function(value, alt_value) {
+    values <- parse_integer_list(value)
+    if (length(values) < 2L) {
+      return(rep(NA_integer_, 7L))
+    }
+
+    n_alt <- count_alt_alleles(alt_value)
+    if (n_alt == 0L) {
+      ref_fwd <- values[[1L]]
+      ref_rev <- values[[2L]]
+      ref_depth <- sum(c(ref_fwd, ref_rev), na.rm = TRUE)
+      if (all(is.na(c(ref_fwd, ref_rev)))) ref_depth <- NA_integer_
+      return(c(
+        ref_fwd, ref_rev, NA_integer_, NA_integer_,
+        ref_depth, NA_integer_, NA_real_
+      ))
+    }
+    expected <- 2L + 2L * n_alt
+    if (length(values) < expected) {
+      length(values) <- expected
+    }
+
+    ref_fwd <- values[[1L]]
+    ref_rev <- values[[2L]]
+    alt_values <- values[seq.int(3L, expected)]
+    alt_fwd <- sum(alt_values[c(TRUE, FALSE)], na.rm = TRUE)
+    alt_rev <- sum(alt_values[c(FALSE, TRUE)], na.rm = TRUE)
+    if (all(is.na(alt_values[c(TRUE, FALSE)]))) alt_fwd <- NA_integer_
+    if (all(is.na(alt_values[c(FALSE, TRUE)]))) alt_rev <- NA_integer_
+
+    ref_depth <- sum(c(ref_fwd, ref_rev), na.rm = TRUE)
+    alt_depth <- sum(c(alt_fwd, alt_rev), na.rm = TRUE)
+    if (all(is.na(c(ref_fwd, ref_rev)))) ref_depth <- NA_integer_
+    if (all(is.na(c(alt_fwd, alt_rev)))) alt_depth <- NA_integer_
+
+    denominator <- ref_depth + alt_depth
+    variant_percent <- if (is.na(denominator) || denominator == 0L) {
+      NA_real_
+    } else {
+      alt_depth / denominator * 100
+    }
+
+    c(
+      ref_fwd, ref_rev, alt_fwd, alt_rev,
+      ref_depth, alt_depth, variant_percent
+    )
+  }, sr, alt)
+
+  mat <- do.call(rbind, parsed)
+  colnames(mat) <- c(
+    "ref_fwd_depth", "ref_rev_depth",
+    "alt_fwd_depth", "alt_rev_depth",
+    "ref_depth", "alt_depth", "variant_percent"
+  )
+  as.data.frame(mat, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+parse_vcf_ar <- function(ar) {
+  parsed <- lapply(ar, function(value) {
+    values <- parse_integer_list(value)
+    length(values) <- max(length(values), 2L)
+    ambiguous_fwd <- values[[1L]]
+    ambiguous_rev <- values[[2L]]
+    ambiguous_depth <- sum(c(ambiguous_fwd, ambiguous_rev), na.rm = TRUE)
+    if (all(is.na(c(ambiguous_fwd, ambiguous_rev)))) ambiguous_depth <- NA_integer_
+    c(ambiguous_fwd, ambiguous_rev, ambiguous_depth)
+  })
+
+  mat <- do.call(rbind, parsed)
+  colnames(mat) <- c(
+    "ambiguous_fwd_depth",
+    "ambiguous_rev_depth",
+    "ambiguous_depth"
+  )
+  as.data.frame(mat, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+parse_integer_list <- function(x) {
+  if (is.na(x) || !nzchar(x) || identical(x, ".")) {
+    return(integer())
+  }
+  values <- strsplit(x, ",", fixed = TRUE)[[1L]]
+  values[values == "."] <- NA_character_
+  suppressWarnings(as.integer(values))
+}
+
+count_alt_alleles <- function(alt) {
+  if (is.na(alt) || !nzchar(alt) || identical(alt, ".")) {
+    return(0L)
+  }
+  length(strsplit(alt, ",", fixed = TRUE)[[1L]])
 }
 
 #' Parse VCF INFO strings
