@@ -4,8 +4,20 @@ make_fake_ITS_inputs <- function() {
 
   dir.create(file.path(consensus_delivery, "project", "barcode303"), recursive = TRUE)
   writeLines(
-    c(">barcode303_consensus", "ACGTACGTACGT"),
+    c(">barcode303_original_consensus", "ACGTACGTACGT"),
+    file.path(consensus_delivery, "project", "all-consensus-seqs.fasta")
+  )
+  writeLines(
+    "barcode303_original_consensus\t12\t0\t12\t12",
+    file.path(consensus_delivery, "project", "all-consensus-seqs.fasta.fai")
+  )
+  writeLines(
+    c(">barcode303_trimmed_consensus", "ACGT"),
     file.path(consensus_delivery, "project", "all-consensus-seqs_trimmed.fasta")
+  )
+  writeLines(
+    "barcode303_trimmed_consensus\t4\t0\t4\t4",
+    file.path(consensus_delivery, "project", "all-consensus-seqs_trimmed.fasta.fai")
   )
   writeLines(
     "consensus summary",
@@ -35,8 +47,10 @@ make_fake_ITS_inputs <- function() {
 make_fake_grouped_ITS_inputs <- function() {
   consensus_delivery <- tempfile("consensus-delivery-")
   its_result <- tempfile("its-result-")
-  sample_info_303 <- tempfile(fileext = ".csv")
-  sample_info_304 <- tempfile(fileext = ".csv")
+  sample_info_dir <- tempfile("sample-info-")
+  dir.create(sample_info_dir)
+  sample_info_303 <- file.path(sample_info_dir, "PROJECT001_ITS.csv")
+  sample_info_304 <- file.path(sample_info_dir, "PROJECT002_ITS.csv")
 
   for (group in c("PROJECT001_ITS", "PROJECT002_ITS")) {
     barcode <- if (identical(group, "PROJECT001_ITS")) "barcode303" else "barcode304"
@@ -49,12 +63,39 @@ make_fake_grouped_ITS_inputs <- function() {
       file.path(consensus_delivery, group, "consensus_results", barcode, "summary.txt")
     )
     writeLines(
-      c(paste0(">", barcode, "_consensus"), "ACGTACGTACGT"),
+      c(paste0(">", barcode, "_original_consensus"), "ACGTACGTACGT"),
+      file.path(
+        consensus_delivery,
+        group,
+        "consensus_results",
+        "all-consensus-seqs.fasta"
+      )
+    )
+    writeLines(
+      paste0(barcode, "_original_consensus\t12\t0\t12\t12"),
+      file.path(
+        consensus_delivery,
+        group,
+        "consensus_results",
+        "all-consensus-seqs.fasta.fai"
+      )
+    )
+    writeLines(
+      c(paste0(">", barcode, "_trimmed_consensus"), "ACGT"),
       file.path(
         consensus_delivery,
         group,
         "consensus_results",
         "all-consensus-seqs_trimmed.fasta"
+      )
+    )
+    writeLines(
+      paste0(barcode, "_trimmed_consensus\t4\t0\t4\t4"),
+      file.path(
+        consensus_delivery,
+        group,
+        "consensus_results",
+        "all-consensus-seqs_trimmed.fasta.fai"
       )
     )
   }
@@ -116,12 +157,84 @@ test_that("make_ITS_delivery reports a dry-run plan", {
   expect_equal(plan$paths$samples, file.path("delivery_its", "samples"))
   expect_equal(plan$paths$readme$readme, file.path("delivery_its", "README.txt"))
   expect_equal(plan$paths$readme$readme_zh, file.path("delivery_its", "README.zh-CN.txt"))
+  expect_true(plan$consensus_steps$run_basecalling_demux_step)
+  expect_true(plan$consensus_steps$run_dorado_basecall_step)
+  expect_true(plan$consensus_steps$run_dorado_demux_step)
+  expect_true(plan$consensus_steps$run_dorado_fastq_step)
+  expect_true(plan$consensus_steps$run_QC_step)
+  expect_true(plan$ITS_steps$run_ITS_step)
+  expect_true(plan$ITS_steps$move_ITS_step)
+})
+
+test_that("make_ITS_delivery passes unified ITS workflow arguments", {
+  plan <- make_ITS_delivery(
+    path_ITS_result = NULL,
+    path_delivery = "delivery_its",
+    consensus_delivery_path = "missing-consensus",
+    fastq_out = "fastq_pass_trim",
+    path_work = "work_root",
+    out_dir = "custom_its_out",
+    work_dir = "custom_its_work",
+    profile = "docker",
+    resume = FALSE,
+    database_set = "ncbi_16s_18s_28s_ITS",
+    min_len = 300,
+    max_len = 900,
+    extra_args = "--minimap2_by_reference",
+    run_basecalling_demux_step = FALSE,
+    run_dorado_basecall_step = FALSE,
+    run_dorado_demux_step = FALSE,
+    run_dorado_fastq_step = FALSE,
+    run_QC_step = FALSE,
+    move_fastq_step = FALSE,
+    move_fastq_mode = "auto",
+    run_amplicon_step = FALSE,
+    trim_consensus_step = FALSE,
+    run_filtered_QC_step = FALSE,
+    run_igv_step = FALSE,
+    collect_results_step = FALSE,
+    make_ab1 = FALSE,
+    dry_run = TRUE
+  )
+
+  expect_equal(plan$ITS_plan$paths$fastq, "fastq_pass_trim")
+  expect_equal(plan$ITS_plan$paths$out_dir, "custom_its_out")
+  expect_equal(plan$ITS_plan$paths$work_dir, "custom_its_work")
+  expect_match(plan$ITS_plan$command_string, "-profile' 'docker", fixed = TRUE)
+  expect_match(plan$ITS_plan$command_string, "--max_len' '900", fixed = TRUE)
+  expect_false(any(plan$ITS_plan$args == "-resume"))
+  expect_false(plan$consensus_steps$run_basecalling_demux_step)
+  expect_false(plan$consensus_steps$run_dorado_basecall_step)
+  expect_false(plan$consensus_steps$run_dorado_demux_step)
+  expect_false(plan$consensus_steps$run_dorado_fastq_step)
+  expect_false(plan$consensus_steps$run_QC_step)
+  expect_false(plan$consensus_steps$move_fastq_step)
+  expect_equal(plan$consensus_steps$move_fastq_mode, "auto")
+  expect_false(plan$consensus_steps$run_amplicon_step)
+  expect_false(plan$consensus_steps$trim_consensus_step)
+  expect_false(plan$consensus_steps$run_filtered_QC_step)
+  expect_false(plan$consensus_steps$run_igv_step)
+  expect_false(plan$consensus_steps$collect_results_step)
+  expect_false(plan$consensus_steps$make_ab1)
+  expect_true(plan$ITS_steps$run_ITS_step)
+  expect_true(plan$ITS_steps$move_ITS_step)
 })
 
 test_that("make_ITS_delivery rejects removed output_dir argument", {
   expect_error(
     make_ITS_delivery(output_dir = "old", dry_run = TRUE),
-    "`output_dir` has been removed"
+    "unused argument"
+  )
+})
+
+test_that("make_ITS_delivery rejects removed ITS-prefixed workflow arguments", {
+  expect_error(
+    make_ITS_delivery(ITS_fastq = "fastq_pass_trim", dry_run = TRUE),
+    "unused argument"
+  )
+  expect_error(
+    make_ITS_delivery(ITS_out_dir = "wf_its", dry_run = TRUE),
+    "unused argument"
   )
 })
 
@@ -160,10 +273,10 @@ test_that("make_ITS_delivery can run ITS when path_ITS_result is missing", {
       path_ITS_result = NULL,
       path_delivery = path_delivery,
       consensus_delivery_path = inputs$consensus_delivery,
-      ITS_fastq = "fastq_pass_trim",
-      ITS_out_dir = its_out_dir,
-      ITS_work_dir = its_work_dir,
-      ITS_nextflow = file.path(fake_bin, "nextflow"),
+      fastq_out = "fastq_pass_trim",
+      out_dir = its_out_dir,
+      work_dir = its_work_dir,
+      nextflow = file.path(fake_bin, "nextflow"),
       tax_levels = "Genus",
       width = 4,
       height = 3,
@@ -229,6 +342,19 @@ test_that("make_ITS_delivery creates grouped delivery folders from sample info",
   group2 <- file.path(path_delivery, "PROJECT002_ITS")
   expect_true(file.exists(file.path(group1, "abundance_table_genus.tsv")))
   expect_true(file.exists(file.path(group2, "abundance_table_genus.tsv")))
+  expect_true(file.exists(file.path(group1, "PROJECT001_ITS.csv")))
+  expect_true(file.exists(file.path(group1, "all-consensus-seqs.fasta")))
+  expect_true(file.exists(file.path(group1, "all-consensus-seqs.fasta.fai")))
+  expect_true(file.exists(file.path(group1, "all-consensus-seqs_trimmed.fasta")))
+  expect_true(file.exists(file.path(group1, "all-consensus-seqs_trimmed.fasta.fai")))
+  expect_match(
+    paste(readLines(file.path(group1, "all-consensus-seqs.fasta")), collapse = "\n"),
+    "barcode303_trimmed_consensus"
+  )
+  expect_match(
+    paste(readLines(file.path(group1, "all-consensus-seqs_trimmed.fasta")), collapse = "\n"),
+    "barcode303_trimmed_consensus"
+  )
   expect_true(file.exists(file.path(
     group1,
     "samples",
@@ -300,7 +426,18 @@ test_that("make_ITS_delivery organizes consensus and ITS results under samples",
     "identification_tables",
     "barcode303-alignment-stats.tsv"
   )))
-  expect_true(file.exists(file.path(path_delivery, "consensus_for_unite.fasta")))
+  expect_true(file.exists(file.path(path_delivery, "all-consensus-seqs.fasta")))
+  expect_true(file.exists(file.path(path_delivery, "all-consensus-seqs.fasta.fai")))
+  expect_true(file.exists(file.path(path_delivery, "all-consensus-seqs_trimmed.fasta")))
+  expect_true(file.exists(file.path(path_delivery, "all-consensus-seqs_trimmed.fasta.fai")))
+  expect_match(
+    paste(readLines(file.path(path_delivery, "all-consensus-seqs.fasta")), collapse = "\n"),
+    "barcode303_trimmed_consensus"
+  )
+  expect_match(
+    paste(readLines(file.path(path_delivery, "all-consensus-seqs_trimmed.fasta")), collapse = "\n"),
+    "barcode303_trimmed_consensus"
+  )
   expect_true(file.exists(file.path(path_delivery, "README.txt")))
   expect_true(file.exists(file.path(path_delivery, "README.zh-CN.txt")))
   expect_null(res$unite_annotation)

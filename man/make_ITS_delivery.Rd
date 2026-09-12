@@ -10,23 +10,75 @@ make_ITS_delivery(
   path_proj = NULL,
   path_sampleInfo_file_list = NULL,
   consensus_delivery_output = NULL,
-  ITS_fastq = "./fastq_pass_trim",
-  ITS_out_dir = NULL,
-  ITS_work_dir = NULL,
-  ITS_profile = "standard",
-  ITS_resume = TRUE,
-  ITS_database_set = "ncbi_16s_18s_28s_ITS",
-  ITS_min_len = 300,
-  ITS_max_len = 2000,
-  ITS_workflow = "epi2me-labs/wf-16s",
-  ITS_nextflow = "nextflow",
-  ITS_quiet = FALSE,
-  ITS_extra_args = "--minimap2_by_reference",
-  ITS_syntax_parser = "v1",
-  ITS_ansi_log = FALSE,
-  ITS_nextflow_env = NULL,
-  ITS_dir = "ITS_results",
+  kit_name = "YS-NB576",
+  model = "sup",
+  demux_out = NULL,
+  fastq_out = "fastq_pass_trim",
+  barcode_both_ends = FALSE,
+  run_basecalling_demux_step = TRUE,
+  run_dorado_basecall_step = run_basecalling_demux_step,
+  run_dorado_demux_step = run_basecalling_demux_step,
+  run_dorado_fastq_step = run_basecalling_demux_step,
+  run_QC_step = TRUE,
+  move_fastq_step = TRUE,
+  move_fastq_mode = c("move", "reuse", "auto"),
+  run_amplicon_step = TRUE,
+  trim_consensus_step = TRUE,
+  run_filtered_QC_step = TRUE,
+  run_igv_step = TRUE,
+  collect_results_step = TRUE,
+  make_ab1 = TRUE,
+  ab1_name_template = "{barcode}.synthetic.ab1",
+  ab1_samtools = "samtools",
+  consensus_file = "all-consensus-seqs.fasta",
+  consensus_index_file = paste0(consensus_file, ".fai"),
+  trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
+  barcode_pattern = "^barcode[0-9]+$",
+  sample_length_plot_pattern = "^Distribution_seqLength__.*\\\\.png$",
+  readme_name = "README.txt",
+  chinese_readme_name = "README.zh-CN.txt",
+  project_col = "Project_ID",
+  amplicon_size_col = "Expected_Size_bp",
   barcode_col = "Barcode_ID",
+  min_read_length_col = "Min_Read_Length",
+  max_read_length_col = "Max_Read_Length",
+  f_primer_col = "Primer_F",
+  r_primer_col = "Primer_R",
+  min_read_qual = 10,
+  min_n_reads = 40,
+  force_spoa_length_threshold = 2000,
+  override_basecaller_cfg = "dna_r10.4.1_e8.2_400bps_sup@v5.2.0",
+  path_work = NULL,
+  out_dir = NULL,
+  work_dir = NULL,
+  profile = "standard",
+  resume = TRUE,
+  amplicon_extra_args = NULL,
+  barcode_digits = 3,
+  dorado_threads = NULL,
+  dorado_fastq_write_md5 = TRUE,
+  dorado = "dorado",
+  samtools = "samtools",
+  gzip = "gzip",
+  dorado_conda_env = NULL,
+  conda = "conda",
+  igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh",
+  overwrite_fastq = FALSE,
+  overwrite_delivery = TRUE,
+  include_execution = FALSE,
+  run_ITS_step = TRUE,
+  move_ITS_step = TRUE,
+  database_set = "ncbi_16s_18s_28s_ITS",
+  min_len = 300,
+  max_len = 2000,
+  workflow = "epi2me-labs/wf-16s",
+  nextflow = "nextflow",
+  quiet = FALSE,
+  extra_args = "--minimap2_by_reference",
+  syntax_parser = "v1",
+  ansi_log = FALSE,
+  nextflow_env = NULL,
+  ITS_dir = "ITS_results",
   samples_dir = "samples",
   abundance_table = "abundance_table_genus.tsv",
   alignment_tables_dir = "alignment_tables",
@@ -36,9 +88,6 @@ make_ITS_delivery(
   cutoff = 0.01,
   width = 12,
   height = 6,
-  consensus_file = "all-consensus-seqs.fasta",
-  trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
-  barcode_pattern = "^barcode[0-9]+$",
   run_unite_annotation = TRUE,
   unite_db = NULL,
   unite_db_fasta = NULL,
@@ -62,38 +111,40 @@ make_ITS_delivery(
   unite_blastn = "blastn",
   unite_makeblastdb = "makeblastdb",
   unite_conda_env = NULL,
-  conda = "conda",
-  readme_name = "README.txt",
-  chinese_readme_name = "README.zh-CN.txt",
   overwrite = FALSE,
   dry_run = FALSE,
   echo = TRUE,
   wait = TRUE,
   stdout = "",
-  stderr = "",
-  ...
+  stderr = ""
 )
 }
 \arguments{
 \item{path_ITS_result}{Path to a completed wf-16s result directory for ITS data. Default is \code{NULL}. If \code{NULL} or if the directory does not exist, \code{run_ITS()} is run first. When an existing directory is supplied, the function expects it to contain \code{abundance_table_genus.tsv} and \code{alignment_tables/}.}
 \item{path_delivery}{Final ITS delivery root. Default is \code{"/data/project_delivery"}. In grouped mode, per-group ITS deliveries are created below this directory.}
-\item{consensus_delivery_path}{Existing consensus delivery directory. If \code{NULL} or if the directory does not exist, \code{make_consensus_delivery()} is run first using \code{path_proj}, \code{path_sampleInfo_file_list}, and \code{...}.}
-\item{path_proj, path_sampleInfo_file_list}{Arguments passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is missing. When \code{path_sampleInfo_file_list} is supplied, its names are also used as delivery group names, matching \code{make_consensus_delivery()}.}
+\item{consensus_delivery_path}{Existing consensus delivery directory. If \code{NULL} or if the directory does not exist, \code{make_consensus_delivery()} is run first using \code{path_proj}, \code{path_sampleInfo_file_list}, and the consensus-related parameters in this function.}
+\item{path_proj, path_sampleInfo_file_list}{Arguments passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is missing. When \code{path_sampleInfo_file_list} is supplied, its names are also used as delivery group names, matching \code{make_consensus_delivery()}. Each sample information file is copied to the corresponding project root.}
 \item{consensus_delivery_output}{Directory used to store newly generated consensus delivery results. The default \code{NULL} creates a sibling work directory named \code{basename(path_delivery)_consensus_work}.}
-\item{ITS_fastq}{FASTQ directory passed to \code{run_ITS()} when ITS results need to be generated. Default is \code{"./fastq_pass_trim"}.}
-\item{ITS_out_dir}{Output directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling directory named \code{basename(path_delivery)_wf_ITS}; this directory then becomes the effective \code{path_ITS_result}.}
-\item{ITS_work_dir}{Nextflow work directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling directory named \code{basename(path_delivery)_wf_ITS_work}.}
-\item{ITS_profile}{Nextflow profile passed to \code{run_ITS()}. Default is \code{"standard"}.}
-\item{ITS_resume}{Logical. If \code{TRUE} (default), pass \code{-resume} to Nextflow through \code{run_ITS()}.}
-\item{ITS_database_set}{wf-16s database set used by \code{run_ITS()}. Default is \code{"ncbi_16s_18s_28s_ITS"}.}
-\item{ITS_min_len, ITS_max_len}{Minimum and maximum read length passed to \code{run_ITS()}. Defaults are \code{300} and \code{2000}.}
-\item{ITS_workflow}{Nextflow workflow name or path passed to \code{run_ITS()}. Default is \code{"epi2me-labs/wf-16s"}.}
-\item{ITS_nextflow}{Nextflow executable name or path. Default is \code{"nextflow"}.}
-\item{ITS_quiet}{Logical. If \code{TRUE}, pass \code{-q} to Nextflow. Default is \code{FALSE}.}
-\item{ITS_extra_args}{Additional raw wf-16s command-line arguments passed through \code{run_ITS()}. Default is \code{"--minimap2_by_reference"}.}
-\item{ITS_syntax_parser}{Nextflow syntax parser version passed as \code{NXF_SYNTAX_PARSER}. Default is \code{"v1"}. Use \code{NULL} to leave it unchanged.}
-\item{ITS_ansi_log}{Logical. Passed as \code{NXF_ANSI_LOG}. Default is \code{FALSE}.}
-\item{ITS_nextflow_env}{Optional additional environment variables passed to \code{run_ITS()}, formatted as \code{"NAME=value"}. Default is \code{NULL}.}
+\item{kit_name, model, demux_out, barcode_both_ends}{Dorado basecalling and demultiplexing parameters passed to \code{make_consensus_delivery()} when consensus results need to be generated. Defaults match \code{make_consensus_delivery()}.}
+\item{fastq_out}{FASTQ directory or directory name passed to \code{run_ITS()} when ITS results need to be generated. This matches the \code{fastq_out} argument in \code{make_consensus_delivery()}. Default is \code{"fastq_pass_trim"}.}
+\item{run_basecalling_demux_step, run_dorado_basecall_step, run_dorado_demux_step, run_dorado_fastq_step, run_QC_step, move_fastq_step, move_fastq_mode, run_amplicon_step, trim_consensus_step, run_filtered_QC_step, run_igv_step, collect_results_step, make_ab1}{Consensus-delivery step controls passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is \code{NULL} or missing. Defaults match \code{make_consensus_delivery()}. They have no effect when an existing \code{consensus_delivery_path} is supplied.}
+\item{ab1_name_template, ab1_samtools, consensus_index_file, sample_length_plot_pattern, project_col, amplicon_size_col, min_read_length_col, max_read_length_col, f_primer_col, r_primer_col, min_read_qual, min_n_reads, force_spoa_length_threshold, override_basecaller_cfg, amplicon_extra_args, barcode_digits, dorado_threads, dorado_fastq_write_md5, dorado, samtools, gzip, dorado_conda_env, igv, overwrite_fastq, overwrite_delivery, include_execution}{Additional \code{make_consensus_delivery()} parameters passed through when consensus results need to be generated. Defaults match \code{make_consensus_delivery()}.}
+\item{path_work}{Shared work root used to derive default ITS workflow output and work directories. If \code{NULL}, sibling directories of \code{path_delivery} are used.}
+\item{out_dir}{Output directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling/work directory named \code{basename(path_delivery)_wf_ITS}; this directory then becomes the effective \code{path_ITS_result}.}
+\item{work_dir}{Nextflow work directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling/work directory named \code{basename(path_delivery)_wf_ITS_work}.}
+\item{profile}{Nextflow profile passed to \code{run_ITS()}. Default is \code{"standard"}.}
+\item{resume}{Logical. If \code{TRUE} (default), pass \code{-resume} to Nextflow through \code{run_ITS()}.}
+\item{database_set}{wf-16s database set used by \code{run_ITS()}. Default is \code{"ncbi_16s_18s_28s_ITS"}.}
+\item{min_len, max_len}{Minimum and maximum read length passed to \code{run_ITS()}. Defaults are \code{300} and \code{2000}.}
+\item{workflow}{Nextflow workflow name or path passed to \code{run_ITS()}. Default is \code{"epi2me-labs/wf-16s"}.}
+\item{nextflow}{Nextflow executable name or path. Default is \code{"nextflow"}.}
+\item{quiet}{Logical. If \code{TRUE}, pass \code{-q} to Nextflow. Default is \code{FALSE}.}
+\item{extra_args}{Additional raw wf-16s command-line arguments passed through \code{run_ITS()}. Default is \code{"--minimap2_by_reference"}.}
+\item{syntax_parser}{Nextflow syntax parser version passed as \code{NXF_SYNTAX_PARSER}. Default is \code{"v1"}. Use \code{NULL} to leave it unchanged.}
+\item{ansi_log}{Logical. Passed as \code{NXF_ANSI_LOG}. Default is \code{FALSE}.}
+\item{nextflow_env}{Optional additional environment variables passed to \code{run_ITS()}, formatted as \code{"NAME=value"}. Default is \code{NULL}.}
+\item{run_ITS_step}{Logical. If \code{TRUE}, run \code{run_ITS()} when \code{path_ITS_result} is \code{NULL} or missing. Default is \code{TRUE}.}
+\item{move_ITS_step}{Logical. If \code{TRUE}, organize wf-16s ITS results into the delivery structure using \code{move_ITS()} outputs. Default is \code{TRUE}.}
 \item{ITS_dir}{Directory name created under each barcode sample directory for ITS-specific per-sample evidence. Default is \code{"ITS_results"}, producing \code{path_delivery/samples/barcode*/ITS_results/} in single-project mode and \code{path_delivery/<group>/samples/barcode*/ITS_results/} in grouped mode.}
 \item{barcode_col}{Column name in each sample information file used to infer barcode directory names. Default is \code{"Barcode_ID"}, matching \code{make_consensus_delivery()}. Values like \code{PBC001-097} are converted to \code{barcode097}; otherwise values are used as-is after resolving the barcode column.}
 \item{samples_dir}{Directory under \code{path_delivery} that stores per-barcode sample results. The default \code{"samples"} creates \code{path_delivery/samples/barcode*/}. Set to \code{NULL} to put \code{barcode*/} directly under \code{path_delivery}.}
@@ -104,8 +155,8 @@ make_ITS_delivery(
 \item{tax_levels}{Taxonomic levels plotted from the abundance table. Default is \code{c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")}.}
 \item{cutoff}{Minimum relative abundance kept as a separate plotted taxon by \code{plot_abundance_bar()}. Default is \code{0.01}.}
 \item{width, height}{Plot size in inches. Defaults are \code{width = 12} and \code{height = 6}.}
-\item{consensus_file}{Fallback consensus FASTA filename searched under the consensus delivery. Default is \code{"all-consensus-seqs.fasta"}.}
-\item{trimmed_consensus_file}{Preferred consensus FASTA filename for UNITE review. Default is \code{"all-consensus-seqs_trimmed.fasta"}.}
+\item{consensus_file}{Fallback consensus FASTA filename searched under the consensus delivery. Default is \code{"all-consensus-seqs.fasta"}. The selected consensus sequences are copied or collected at the project root as this filename and used for optional UNITE review.}
+\item{trimmed_consensus_file}{Preferred consensus FASTA filename used before falling back to \code{consensus_file}. Default is \code{"all-consensus-seqs_trimmed.fasta"}. When this file is available, it is also preserved under this original filename in the project root. Matching FASTA indexes are copied when available.}
 \item{barcode_pattern}{Regular expression used to identify barcode directories and alignment-stat files. The default \code{"^barcode[0-9]+$"} matches names such as \code{barcode097} and \code{barcode303}.}
 \item{run_unite_annotation}{Logical. If \code{TRUE}, run \code{annotate_consensus_blast()} on the collected consensus FASTA. Default is \code{TRUE}; if neither \code{unite_db} nor \code{unite_db_fasta} is supplied, this step is skipped with a warning.}
 \item{unite_db}{Prefix of an already-built nucleotide BLAST database, for example \code{"/data/reference/UNITE/unite_eukaryotes"}. Default is \code{NULL}.}
@@ -134,7 +185,6 @@ make_ITS_delivery(
 \item{dry_run}{Logical. If \code{TRUE}, return a plan without copying files or running external tools. Default is \code{FALSE}.}
 \item{echo}{Logical. If \code{TRUE}, print commands from wrapped runners. Default is \code{TRUE}.}
 \item{wait, stdout, stderr}{Passed to wrapped command runners. Defaults are \code{wait = TRUE}, \code{stdout = ""}, and \code{stderr = ""}.}
-\item{...}{Additional arguments passed to \code{make_consensus_delivery()} when a new consensus delivery must be generated.}
 }
 \value{
 Invisibly returns a list describing generated and copied outputs.
@@ -168,11 +218,12 @@ in its sample-info table. Without \code{path_sampleInfo_file_list},
 Per-barcode consensus outputs are copied to
 \code{samples/barcode*/consensus_results/}, per-barcode wf-16s alignment tables
 are copied to \code{samples/barcode*/ITS_results/identification_tables/}, and
-project-level abundance files and figures are copied to the project root.
+project-level abundance files, figures, sample information, and consensus FASTA
+are copied to the project root.
 \item Optionally run consensus-vs-UNITE review. Consensus FASTA files are
-collected into \code{consensus_for_unite.fasta}, BLAST output is written to
-\code{unite_consensus_annotation/consensus.blast.tsv}, and the top-hit summary
-is written both to
+collected into the project-root \code{all-consensus-seqs.fasta}, BLAST output is
+written to \code{unite_consensus_annotation/consensus.blast.tsv}, and the
+top-hit summary is written both to
 \code{unite_consensus_annotation/consensus.top_hits.tsv} and to the root-level
 \code{unite_consensus_top_hits.tsv}.
 }
@@ -190,7 +241,7 @@ make_ITS_delivery(
 make_ITS_delivery(
   path_delivery = "delivery/ITS",
   path_ITS_result = NULL,
-  ITS_fastq = "fastq_pass_trim",
+  fastq_out = "fastq_pass_trim",
   consensus_delivery_path = NULL,
   path_proj = "/data/minknow/project/run",
   path_sampleInfo_file_list = "SampleInfo.csv",

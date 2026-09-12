@@ -17,19 +17,44 @@
 #'   deliveries are created below this directory.
 #' @param consensus_delivery_path Existing consensus delivery directory. If
 #'   `NULL` or if the directory does not exist, [make_consensus_delivery()] is
-#'   run first using `path_proj`, `path_sampleInfo_file_list`, and `...`.
+#'   run first using `path_proj`, `path_sampleInfo_file_list`, and the
+#'   consensus-related parameters in this function.
 #' @param path_proj,path_sampleInfo_file_list Arguments passed to
 #'   [make_consensus_delivery()] when `consensus_delivery_path` is missing.
 #'   When `path_sampleInfo_file_list` is supplied, its names are also used as
-#'   delivery group names, matching [make_consensus_delivery()].
+#'   delivery group names, matching [make_consensus_delivery()]. Each sample
+#'   information file is copied to the corresponding project root.
 #' @param consensus_delivery_output Directory used to store newly generated
 #'   consensus delivery results. The default `NULL` creates a sibling work
 #'   directory named `basename(path_delivery)_consensus_work`.
-#' @param ITS_fastq,ITS_out_dir,ITS_work_dir,ITS_profile,ITS_resume,ITS_database_set,ITS_min_len,ITS_max_len,ITS_workflow,ITS_nextflow,ITS_quiet,ITS_extra_args,ITS_syntax_parser,ITS_ansi_log,ITS_nextflow_env
+#' @param kit_name,model,demux_out,barcode_both_ends Dorado basecalling and
+#'   demultiplexing parameters passed to [make_consensus_delivery()] when
+#'   consensus results need to be generated. Defaults match
+#'   [make_consensus_delivery()].
+#' @param fastq_out FASTQ directory or directory name passed to [run_ITS()] when
+#'   ITS results need to be generated. This matches the `fastq_out` argument in
+#'   [make_consensus_delivery()]. Default is `"fastq_pass_trim"`.
+#' @param run_basecalling_demux_step,run_dorado_basecall_step,run_dorado_demux_step,run_dorado_fastq_step,run_QC_step,move_fastq_step,move_fastq_mode,run_amplicon_step,trim_consensus_step,run_filtered_QC_step,run_igv_step,collect_results_step,make_ab1
+#'   Consensus-delivery step controls passed to [make_consensus_delivery()] when
+#'   `consensus_delivery_path` is `NULL` or missing. Defaults match
+#'   [make_consensus_delivery()]. They have no effect when an existing
+#'   `consensus_delivery_path` is supplied.
+#' @param ab1_name_template,ab1_samtools,consensus_index_file,sample_length_plot_pattern,project_col,amplicon_size_col,min_read_length_col,max_read_length_col,f_primer_col,r_primer_col,min_read_qual,min_n_reads,force_spoa_length_threshold,override_basecaller_cfg,amplicon_extra_args,barcode_digits,dorado_threads,dorado_fastq_write_md5,dorado,samtools,gzip,dorado_conda_env,igv,overwrite_fastq,overwrite_delivery,include_execution
+#'   Additional [make_consensus_delivery()] parameters passed through when
+#'   consensus results need to be generated. Defaults match
+#'   [make_consensus_delivery()].
+#' @param path_work Shared work root used to derive default ITS workflow output
+#'   and work directories. If `NULL`, sibling directories of `path_delivery` are
+#'   used.
+#' @param out_dir,work_dir,profile,resume,database_set,min_len,max_len,workflow,nextflow,quiet,extra_args,syntax_parser,ansi_log,nextflow_env
 #'   Parameters passed to [run_ITS()] when `path_ITS_result` is `NULL` or
-#'   missing. Defaults mirror [run_ITS()] except that `ITS_out_dir` and
-#'   `ITS_work_dir` default to sibling work directories derived from
-#'   `path_delivery`.
+#'   missing. Defaults mirror [run_ITS()] for ITS use: `database_set =
+#'   "ncbi_16s_18s_28s_ITS"`, `min_len = 300`, `max_len = 2000`, and
+#'   `extra_args = "--minimap2_by_reference"`.
+#' @param run_ITS_step Logical. If `TRUE`, run [run_ITS()] when
+#'   `path_ITS_result` is `NULL` or missing. Default is `TRUE`.
+#' @param move_ITS_step Logical. If `TRUE`, organize wf-16s ITS results into
+#'   the delivery structure using [move_ITS()] outputs. Default is `TRUE`.
 #' @param ITS_dir Directory name created under each barcode sample directory
 #'   for ITS-specific per-sample evidence. Default is `"ITS_results"`,
 #'   producing `path_delivery/samples/barcode*/ITS_results/` in single-project
@@ -57,8 +82,12 @@
 #'   are grouped by the plotting helper; figures are saved at 12 x 6 inches.
 #' @param consensus_file,trimmed_consensus_file Consensus FASTA names searched
 #'   under the consensus delivery. The default prefers
-#'   `"all-consensus-seqs_trimmed.fasta"` for UNITE review and falls back to
-#'   `"all-consensus-seqs.fasta"` when trimmed consensus files are absent.
+#'   `"all-consensus-seqs_trimmed.fasta"` and falls back to
+#'   `"all-consensus-seqs.fasta"` when the trimmed file is absent. The selected
+#'   consensus sequences are copied or collected at the project root as
+#'   `consensus_file` and used for optional UNITE review. When trimmed consensus
+#'   is available, it is also preserved under `trimmed_consensus_file`; matching
+#'   FASTA indexes are copied when available.
 #' @param barcode_pattern Regular expression used to identify barcode
 #'   directories and alignment-stat files. The default `"^barcode[0-9]+$"`
 #'   matches names such as `barcode097` and `barcode303`.
@@ -94,8 +123,6 @@
 #'   Default is `TRUE`.
 #' @param wait,stdout,stderr Passed to wrapped command runners. Defaults are
 #'   `wait = TRUE`, `stdout = ""`, and `stderr = ""`.
-#' @param ... Additional arguments passed to [make_consensus_delivery()] when a
-#'   new consensus delivery must be generated.
 #'
 #' @return Invisibly returns a list describing generated/copied outputs.
 #'
@@ -117,11 +144,12 @@
 #'    `samples/barcode*/consensus_results/`, per-barcode wf-16s alignment
 #'    tables are copied to
 #'    `samples/barcode*/ITS_results/identification_tables/`, and project-level
-#'    abundance files and figures are copied to the project root.
+#'    abundance files, figures, sample information, and consensus FASTA are
+#'    copied to the project root.
 #' 4. Optionally run consensus-vs-UNITE review. Consensus FASTA files are
-#'    collected into `consensus_for_unite.fasta`, BLAST output is written to
-#'    `unite_consensus_annotation/consensus.blast.tsv`, and the top-hit summary
-#'    is written both to
+#'    collected into the project-root `all-consensus-seqs.fasta`, BLAST output
+#'    is written to `unite_consensus_annotation/consensus.blast.tsv`, and the
+#'    top-hit summary is written both to
 #'    `unite_consensus_annotation/consensus.top_hits.tsv` and to the root-level
 #'    `unite_consensus_top_hits.tsv`.
 #'
@@ -138,7 +166,7 @@
 #' make_ITS_delivery(
 #'   path_delivery = "delivery/ITS",
 #'   path_ITS_result = NULL,
-#'   ITS_fastq = "fastq_pass_trim",
+#'   fastq_out = "fastq_pass_trim",
 #'   consensus_delivery_path = NULL,
 #'   path_proj = "/data/minknow/project/run",
 #'   path_sampleInfo_file_list = "SampleInfo.csv",
@@ -153,23 +181,75 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
                               path_proj = NULL,
                               path_sampleInfo_file_list = NULL,
                               consensus_delivery_output = NULL,
-                              ITS_fastq = "./fastq_pass_trim",
-                              ITS_out_dir = NULL,
-                              ITS_work_dir = NULL,
-                              ITS_profile = "standard",
-                              ITS_resume = TRUE,
-                              ITS_database_set = "ncbi_16s_18s_28s_ITS",
-                              ITS_min_len = 300,
-                              ITS_max_len = 2000,
-                              ITS_workflow = "epi2me-labs/wf-16s",
-                              ITS_nextflow = "nextflow",
-                              ITS_quiet = FALSE,
-                              ITS_extra_args = "--minimap2_by_reference",
-                              ITS_syntax_parser = "v1",
-                              ITS_ansi_log = FALSE,
-                              ITS_nextflow_env = NULL,
-                              ITS_dir = "ITS_results",
+                              kit_name = "YS-NB576",
+                              model = "sup",
+                              demux_out = NULL,
+                              fastq_out = "fastq_pass_trim",
+                              barcode_both_ends = FALSE,
+                              run_basecalling_demux_step = TRUE,
+                              run_dorado_basecall_step = run_basecalling_demux_step,
+                              run_dorado_demux_step = run_basecalling_demux_step,
+                              run_dorado_fastq_step = run_basecalling_demux_step,
+                              run_QC_step = TRUE,
+                              move_fastq_step = TRUE,
+                              move_fastq_mode = c("move", "reuse", "auto"),
+                              run_amplicon_step = TRUE,
+                              trim_consensus_step = TRUE,
+                              run_filtered_QC_step = TRUE,
+                              run_igv_step = TRUE,
+                              collect_results_step = TRUE,
+                              make_ab1 = TRUE,
+                              ab1_name_template = "{barcode}.synthetic.ab1",
+                              ab1_samtools = "samtools",
+                              consensus_file = "all-consensus-seqs.fasta",
+                              consensus_index_file = paste0(consensus_file, ".fai"),
+                              trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
+                              barcode_pattern = "^barcode[0-9]+$",
+                              sample_length_plot_pattern = "^Distribution_seqLength__.*\\.png$",
+                              readme_name = "README.txt",
+                              chinese_readme_name = "README.zh-CN.txt",
+                              project_col = "Project_ID",
+                              amplicon_size_col = "Expected_Size_bp",
                               barcode_col = "Barcode_ID",
+                              min_read_length_col = "Min_Read_Length",
+                              max_read_length_col = "Max_Read_Length",
+                              f_primer_col = "Primer_F",
+                              r_primer_col = "Primer_R",
+                              min_read_qual = 10,
+                              min_n_reads = 40,
+                              force_spoa_length_threshold = 2000,
+                              override_basecaller_cfg = "dna_r10.4.1_e8.2_400bps_sup@v5.2.0",
+                              path_work = NULL,
+                              out_dir = NULL,
+                              work_dir = NULL,
+                              profile = "standard",
+                              resume = TRUE,
+                              amplicon_extra_args = NULL,
+                              barcode_digits = 3,
+                              dorado_threads = NULL,
+                              dorado_fastq_write_md5 = TRUE,
+                              dorado = "dorado",
+                              samtools = "samtools",
+                              gzip = "gzip",
+                              dorado_conda_env = NULL,
+                              conda = "conda",
+                              igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh",
+                              overwrite_fastq = FALSE,
+                              overwrite_delivery = TRUE,
+                              include_execution = FALSE,
+                              run_ITS_step = TRUE,
+                              move_ITS_step = TRUE,
+                              database_set = "ncbi_16s_18s_28s_ITS",
+                              min_len = 300,
+                              max_len = 900,
+                              workflow = "epi2me-labs/wf-16s",
+                              nextflow = "nextflow",
+                              quiet = FALSE,
+                              extra_args = "--minimap2_by_reference",
+                              syntax_parser = "v1",
+                              ansi_log = FALSE,
+                              nextflow_env = NULL,
+                              ITS_dir = "ITS_results",
                               samples_dir = "samples",
                               abundance_table = "abundance_table_genus.tsv",
                               alignment_tables_dir = "alignment_tables",
@@ -179,9 +259,6 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
                               cutoff = 0.01,
                               width = 12,
                               height = 6,
-                              consensus_file = "all-consensus-seqs.fasta",
-                              trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
-                              barcode_pattern = "^barcode[0-9]+$",
                               run_unite_annotation = TRUE,
                               unite_db = NULL,
                               unite_db_fasta = NULL,
@@ -205,24 +282,12 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
                               unite_blastn = "blastn",
                               unite_makeblastdb = "makeblastdb",
                               unite_conda_env = NULL,
-                              conda = "conda",
-                              readme_name = "README.txt",
-                              chinese_readme_name = "README.zh-CN.txt",
                               overwrite = FALSE,
                               dry_run = FALSE,
                               echo = TRUE,
                               wait = TRUE,
                               stdout = "",
-                              stderr = "",
-                              ...) {
-  dots <- list(...)
-  if ("output_dir" %in% names(dots)) {
-    stop(
-      "`output_dir` has been removed from `make_ITS_delivery()`; ",
-      "use `path_delivery` instead.",
-      call. = FALSE
-    )
-  }
+                              stderr = "") {
   if (!is.null(path_ITS_result)) {
     check_scalar_character(path_ITS_result, "path_ITS_result")
   }
@@ -232,45 +297,94 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     check_scalar_character(consensus_delivery_path, "consensus_delivery_path")
   }
   if (!is.null(path_proj)) check_scalar_character(path_proj, "path_proj")
-  check_scalar_character(ITS_fastq, "ITS_fastq")
-  if (!is.null(ITS_out_dir)) check_scalar_character(ITS_out_dir, "ITS_out_dir")
-  if (!is.null(ITS_work_dir)) check_scalar_character(ITS_work_dir, "ITS_work_dir")
-  check_scalar_character(ITS_profile, "ITS_profile")
-  check_logical_scalar(ITS_resume, "ITS_resume")
-  check_scalar_character(ITS_database_set, "ITS_database_set")
-  ITS_min_len <- validate_positive_integer(ITS_min_len, "ITS_min_len")
-  ITS_max_len <- validate_positive_integer(ITS_max_len, "ITS_max_len")
-  check_scalar_character(ITS_workflow, "ITS_workflow")
-  check_scalar_character(ITS_nextflow, "ITS_nextflow")
-  check_logical_scalar(ITS_quiet, "ITS_quiet")
-  if (!is.null(ITS_extra_args)) check_scalar_character(ITS_extra_args, "ITS_extra_args")
-  if (!is.null(ITS_syntax_parser)) check_scalar_character(ITS_syntax_parser, "ITS_syntax_parser")
-  check_logical_scalar(ITS_ansi_log, "ITS_ansi_log")
-  check_scalar_character(ITS_dir, "ITS_dir")
+  check_scalar_character(kit_name, "kit_name")
+  check_scalar_character(model, "model")
+  if (!is.null(demux_out)) check_scalar_character(demux_out, "demux_out")
+  check_scalar_character(fastq_out, "fastq_out")
+  check_logical_scalar(barcode_both_ends, "barcode_both_ends")
+  check_logical_scalar(run_basecalling_demux_step, "run_basecalling_demux_step")
+  check_logical_scalar(run_dorado_basecall_step, "run_dorado_basecall_step")
+  check_logical_scalar(run_dorado_demux_step, "run_dorado_demux_step")
+  check_logical_scalar(run_dorado_fastq_step, "run_dorado_fastq_step")
+  check_logical_scalar(run_QC_step, "run_QC_step")
+  check_logical_scalar(move_fastq_step, "move_fastq_step")
+  move_fastq_mode <- match.arg(move_fastq_mode)
+  check_logical_scalar(run_amplicon_step, "run_amplicon_step")
+  check_logical_scalar(trim_consensus_step, "trim_consensus_step")
+  check_logical_scalar(run_filtered_QC_step, "run_filtered_QC_step")
+  check_logical_scalar(run_igv_step, "run_igv_step")
+  check_logical_scalar(collect_results_step, "collect_results_step")
+  check_logical_scalar(make_ab1, "make_ab1")
+  check_scalar_character(ab1_name_template, "ab1_name_template")
+  check_scalar_character(ab1_samtools, "ab1_samtools")
+  check_scalar_character(consensus_file, "consensus_file")
+  check_scalar_character(consensus_index_file, "consensus_index_file")
+  check_scalar_character(trimmed_consensus_file, "trimmed_consensus_file")
+  check_scalar_character(barcode_pattern, "barcode_pattern")
+  check_scalar_character(sample_length_plot_pattern, "sample_length_plot_pattern")
+  check_scalar_character(readme_name, "readme_name")
+  if (!is.null(chinese_readme_name)) {
+    check_scalar_character(chinese_readme_name, "chinese_readme_name")
+  }
+  check_scalar_character(project_col, "project_col")
+  check_scalar_character(amplicon_size_col, "amplicon_size_col")
   check_scalar_character(barcode_col, "barcode_col")
+  check_scalar_character(min_read_length_col, "min_read_length_col")
+  check_scalar_character(max_read_length_col, "max_read_length_col")
+  check_scalar_character(f_primer_col, "f_primer_col")
+  check_scalar_character(r_primer_col, "r_primer_col")
+  min_read_qual <- validate_nonnegative_number(min_read_qual, "min_read_qual")
+  min_n_reads <- validate_positive_integer(min_n_reads, "min_n_reads")
+  force_spoa_length_threshold <- validate_positive_integer(
+    force_spoa_length_threshold,
+    "force_spoa_length_threshold"
+  )
+  check_scalar_character(override_basecaller_cfg, "override_basecaller_cfg")
+  if (!is.null(path_work)) check_scalar_character(path_work, "path_work")
+  if (!is.null(out_dir)) check_scalar_character(out_dir, "out_dir")
+  if (!is.null(work_dir)) check_scalar_character(work_dir, "work_dir")
+  check_scalar_character(profile, "profile")
+  check_logical_scalar(resume, "resume")
+  check_scalar_character(database_set, "database_set")
+  min_len <- validate_positive_integer(min_len, "min_len")
+  max_len <- validate_positive_integer(max_len, "max_len")
+  check_scalar_character(workflow, "workflow")
+  check_scalar_character(nextflow, "nextflow")
+  check_logical_scalar(quiet, "quiet")
+  if (!is.null(extra_args)) check_scalar_character(extra_args, "extra_args")
+  if (!is.null(syntax_parser)) check_scalar_character(syntax_parser, "syntax_parser")
+  check_logical_scalar(ansi_log, "ansi_log")
+  if (!is.null(amplicon_extra_args)) check_scalar_character(amplicon_extra_args, "amplicon_extra_args")
+  barcode_digits <- validate_positive_integer(barcode_digits, "barcode_digits")
+  dorado_threads <- validate_optional_positive_integer(dorado_threads, "dorado_threads")
+  check_logical_scalar(dorado_fastq_write_md5, "dorado_fastq_write_md5")
+  check_scalar_character(dorado, "dorado")
+  check_scalar_character(samtools, "samtools")
+  check_scalar_character(gzip, "gzip")
+  if (!is.null(dorado_conda_env)) check_scalar_character(dorado_conda_env, "dorado_conda_env")
+  check_scalar_character(conda, "conda")
+  check_scalar_character(igv, "igv")
+  check_logical_scalar(overwrite_fastq, "overwrite_fastq")
+  check_logical_scalar(overwrite_delivery, "overwrite_delivery")
+  check_logical_scalar(include_execution, "include_execution")
+  check_logical_scalar(run_ITS_step, "run_ITS_step")
+  check_logical_scalar(move_ITS_step, "move_ITS_step")
+  check_scalar_character(ITS_dir, "ITS_dir")
   if (!is.null(samples_dir)) check_scalar_character(samples_dir, "samples_dir")
   check_scalar_character(abundance_table, "abundance_table")
   check_scalar_character(alignment_tables_dir, "alignment_tables_dir")
   check_scalar_character(figure_dir, "figure_dir")
   check_scalar_character(identification_dir, "identification_dir")
-  check_scalar_character(consensus_file, "consensus_file")
-  check_scalar_character(trimmed_consensus_file, "trimmed_consensus_file")
-  check_scalar_character(barcode_pattern, "barcode_pattern")
   check_logical_scalar(run_unite_annotation, "run_unite_annotation")
   check_scalar_character(unite_dir, "unite_dir")
   check_scalar_character(unite_top_hits_name, "unite_top_hits_name")
   check_scalar_character(unite_evalue, "unite_evalue")
   check_scalar_character(unite_blastn, "unite_blastn")
   check_scalar_character(unite_makeblastdb, "unite_makeblastdb")
-  check_scalar_character(conda, "conda")
-  check_scalar_character(readme_name, "readme_name")
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   check_logical_scalar(wait, "wait")
-  if (!is.null(chinese_readme_name)) {
-    check_scalar_character(chinese_readme_name, "chinese_readme_name")
-  }
   if (!is.null(unite_db)) check_scalar_character(unite_db, "unite_db")
   if (!is.null(unite_db_fasta)) check_file_arg(unite_db_fasta, "unite_db_fasta")
   if (!is.null(unite_conda_env)) check_scalar_character(unite_conda_env, "unite_conda_env")
@@ -296,6 +410,12 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   if (!isTRUE(dry_run)) {
     if (!isTRUE(need_ITS)) {
       check_dir_arg(path_ITS_result, "path_ITS_result")
+    } else if (!isTRUE(run_ITS_step)) {
+      stop(
+        "`path_ITS_result` is NULL or missing, but `run_ITS_step = FALSE`. ",
+        "Supply an existing `path_ITS_result` or set `run_ITS_step = TRUE`.",
+        call. = FALSE
+      )
     } else if (!isTRUE(wait)) {
       stop(
         "`path_ITS_result` is NULL or missing, so `run_ITS()` must be run ",
@@ -325,38 +445,39 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   } else {
     check_scalar_character(consensus_delivery_output, "consensus_delivery_output")
   }
-  if (is.null(ITS_out_dir)) {
-    ITS_out_dir <- file.path(
-      dirname(output_dir),
+  default_work_root <- if (is.null(path_work)) dirname(output_dir) else path_work
+  if (is.null(out_dir)) {
+    out_dir <- file.path(
+      default_work_root,
       paste0(basename(output_dir), "_wf_ITS")
     )
   }
-  if (is.null(ITS_work_dir)) {
-    ITS_work_dir <- file.path(
-      dirname(output_dir),
+  if (is.null(work_dir)) {
+    work_dir <- file.path(
+      default_work_root,
       paste0(basename(output_dir), "_wf_ITS_work")
     )
   }
 
   if (isTRUE(dry_run)) {
     ITS_plan <- NULL
-    if (isTRUE(need_ITS)) {
+    if (isTRUE(need_ITS) && isTRUE(run_ITS_step)) {
       ITS_plan <- run_ITS(
-        fastq = ITS_fastq,
-        out_dir = ITS_out_dir,
-        work_dir = ITS_work_dir,
-        profile = ITS_profile,
-        resume = ITS_resume,
-        database_set = ITS_database_set,
-        min_len = ITS_min_len,
-        max_len = ITS_max_len,
-        workflow = ITS_workflow,
-        nextflow = ITS_nextflow,
-        quiet = ITS_quiet,
-        extra_args = ITS_extra_args,
-        syntax_parser = ITS_syntax_parser,
-        ansi_log = ITS_ansi_log,
-        nextflow_env = ITS_nextflow_env,
+        fastq = fastq_out,
+        out_dir = out_dir,
+        work_dir = work_dir,
+        profile = profile,
+        resume = resume,
+        database_set = database_set,
+        min_len = min_len,
+        max_len = max_len,
+        workflow = workflow,
+        nextflow = nextflow,
+        quiet = quiet,
+        extra_args = extra_args,
+        syntax_parser = syntax_parser,
+        ansi_log = ansi_log,
+        nextflow_env = nextflow_env,
         dry_run = TRUE,
         echo = FALSE,
         wait = TRUE,
@@ -366,7 +487,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     }
     return(invisible(make_ITS_delivery_dry_plan(
       path_ITS_result = path_ITS_result,
-      ITS_out_dir = ITS_out_dir,
+      out_dir = out_dir,
       need_ITS = need_ITS,
       ITS_plan = ITS_plan,
       grouped_delivery = grouped_delivery,
@@ -376,6 +497,21 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       consensus_delivery_path = consensus_delivery_path,
       consensus_delivery_output = consensus_delivery_output,
       need_consensus = need_consensus,
+      run_basecalling_demux_step = run_basecalling_demux_step,
+      run_dorado_basecall_step = run_dorado_basecall_step,
+      run_dorado_demux_step = run_dorado_demux_step,
+      run_dorado_fastq_step = run_dorado_fastq_step,
+      run_QC_step = run_QC_step,
+      move_fastq_step = move_fastq_step,
+      move_fastq_mode = move_fastq_mode,
+      run_amplicon_step = run_amplicon_step,
+      trim_consensus_step = trim_consensus_step,
+      run_filtered_QC_step = run_filtered_QC_step,
+      run_igv_step = run_igv_step,
+      collect_results_step = collect_results_step,
+      make_ab1 = make_ab1,
+      run_ITS_step = run_ITS_step,
+      move_ITS_step = move_ITS_step,
       samples_dir = samples_dir,
       abundance_table = abundance_table,
       figure_dir = figure_dir,
@@ -400,30 +536,30 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     output_dir <- normalizePath(output_dir, mustWork = TRUE)
   }
   ITS_result <- NULL
-  if (isTRUE(need_ITS)) {
+  if (isTRUE(need_ITS) && isTRUE(run_ITS_step)) {
     ITS_result <- run_ITS(
-      fastq = ITS_fastq,
-      out_dir = ITS_out_dir,
-      work_dir = ITS_work_dir,
-      profile = ITS_profile,
-      resume = ITS_resume,
-      database_set = ITS_database_set,
-      min_len = ITS_min_len,
-      max_len = ITS_max_len,
-      workflow = ITS_workflow,
-      nextflow = ITS_nextflow,
-      quiet = ITS_quiet,
-      extra_args = ITS_extra_args,
-      syntax_parser = ITS_syntax_parser,
-      ansi_log = ITS_ansi_log,
-      nextflow_env = ITS_nextflow_env,
+      fastq = fastq_out,
+      out_dir = out_dir,
+      work_dir = work_dir,
+      profile = profile,
+      resume = resume,
+      database_set = database_set,
+      min_len = min_len,
+      max_len = max_len,
+      workflow = workflow,
+      nextflow = nextflow,
+      quiet = quiet,
+      extra_args = extra_args,
+      syntax_parser = syntax_parser,
+      ansi_log = ansi_log,
+      nextflow_env = nextflow_env,
       dry_run = FALSE,
       echo = echo,
       wait = wait,
       stdout = stdout,
       stderr = stderr
     )
-    path_ITS_result <- ITS_out_dir
+    path_ITS_result <- out_dir
   }
   path_ITS_result <- normalizePath(path_ITS_result, mustWork = TRUE)
 
@@ -433,12 +569,64 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       path_proj = path_proj,
       path_sampleInfo_file_list = path_sampleInfo_file_list,
       path_delivery = consensus_delivery_output,
+      kit_name = kit_name,
+      model = model,
+      demux_out = demux_out,
+      fastq_out = fastq_out,
+      barcode_both_ends = barcode_both_ends,
+      run_basecalling_demux_step = run_basecalling_demux_step,
+      run_dorado_basecall_step = run_dorado_basecall_step,
+      run_dorado_demux_step = run_dorado_demux_step,
+      run_dorado_fastq_step = run_dorado_fastq_step,
+      run_QC_step = run_QC_step,
+      move_fastq_step = move_fastq_step,
+      move_fastq_mode = move_fastq_mode,
+      run_amplicon_step = run_amplicon_step,
+      trim_consensus_step = trim_consensus_step,
+      run_filtered_QC_step = run_filtered_QC_step,
+      run_igv_step = run_igv_step,
+      collect_results_step = collect_results_step,
+      make_ab1 = make_ab1,
+      ab1_name_template = ab1_name_template,
+      ab1_samtools = ab1_samtools,
+      consensus_file = consensus_file,
+      consensus_index_file = consensus_index_file,
+      trimmed_consensus_file = trimmed_consensus_file,
+      barcode_pattern = barcode_pattern,
+      sample_length_plot_pattern = sample_length_plot_pattern,
+      readme_name = readme_name,
+      chinese_readme_name = chinese_readme_name,
+      project_col = project_col,
+      amplicon_size_col = amplicon_size_col,
+      barcode_col = barcode_col,
+      min_read_length_col = min_read_length_col,
+      max_read_length_col = max_read_length_col,
+      f_primer_col = f_primer_col,
+      r_primer_col = r_primer_col,
+      min_read_qual = min_read_qual,
+      min_n_reads = min_n_reads,
+      force_spoa_length_threshold = force_spoa_length_threshold,
+      override_basecaller_cfg = override_basecaller_cfg,
+      profile = profile,
+      resume = resume,
+      amplicon_extra_args = amplicon_extra_args,
+      barcode_digits = barcode_digits,
+      dorado_threads = dorado_threads,
+      dorado_fastq_write_md5 = dorado_fastq_write_md5,
+      dorado = dorado,
+      samtools = samtools,
+      gzip = gzip,
+      dorado_conda_env = dorado_conda_env,
+      conda = conda,
+      igv = igv,
+      overwrite_fastq = overwrite_fastq,
+      overwrite_delivery = overwrite_delivery,
+      include_execution = include_execution,
       dry_run = FALSE,
       echo = echo,
       wait = wait,
       stdout = stdout,
-      stderr = stderr,
-      ...
+      stderr = stderr
     )
     consensus_delivery_path <- consensus_delivery_output
   }
@@ -447,8 +635,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   targets <- make_ITS_delivery_targets(
     output_dir = output_dir,
     grouped_delivery = grouped_delivery,
-    sample_info_groups = sample_info_groups,
-    ITS_dir = ITS_dir
+    sample_info_groups = sample_info_groups
   )
   deliveries <- list()
   for (target_name in names(targets)) {
@@ -457,6 +644,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     deliveries[[target_name]] <- assemble_single_ITS_delivery(
       path_ITS_result = path_ITS_result,
       output_dir = target$output_dir,
+      sample_info_file = target$sample_info_file,
       consensus_delivery_path = resolve_ITS_group_consensus_root(
         consensus_delivery_path,
         target$group
@@ -464,6 +652,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       barcodes = target$barcodes,
       samples_dir = samples_dir,
       ITS_dir = ITS_dir,
+      move_ITS_step = move_ITS_step,
       abundance_table = abundance_table,
       alignment_tables_dir = alignment_tables_dir,
       figure_dir = figure_dir,
@@ -637,13 +826,13 @@ make_ITS_sample_info_groups <- function(path_sampleInfo_file_list,
 
 make_ITS_delivery_targets <- function(output_dir,
                                       grouped_delivery,
-                                      sample_info_groups,
-                                      ITS_dir) {
+                                      sample_info_groups) {
   if (!isTRUE(grouped_delivery)) {
     return(list(.single = list(
       group = NA_character_,
       output_dir = output_dir,
-      barcodes = NULL
+      barcodes = NULL,
+      sample_info_file = NULL
     )))
   }
 
@@ -652,7 +841,8 @@ make_ITS_delivery_targets <- function(output_dir,
     targets[[group]] <- list(
       group = group,
       output_dir = file.path(output_dir, group),
-      barcodes = sample_info_groups[[group]]$barcodes
+      barcodes = sample_info_groups[[group]]$barcodes,
+      sample_info_file = sample_info_groups[[group]]$sample_info_file
     )
   }
   targets
@@ -672,10 +862,12 @@ resolve_ITS_group_consensus_root <- function(consensus_delivery_path, group) {
 
 assemble_single_ITS_delivery <- function(path_ITS_result,
                                          output_dir,
+                                         sample_info_file,
                                          consensus_delivery_path,
                                          barcodes,
                                          samples_dir,
                                          ITS_dir,
+                                         move_ITS_step,
                                          abundance_table,
                                          alignment_tables_dir,
                                          figure_dir,
@@ -730,6 +922,12 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
   sample_root <- if (is.null(samples_dir)) output_dir else file.path(output_dir, samples_dir)
   dir.create(sample_root, recursive = TRUE, showWarnings = FALSE)
 
+  copied_sample_info <- copy_optional_sample_info_file(
+    sample_info_file = sample_info_file,
+    output_dir = output_dir,
+    overwrite = TRUE
+  )
+
   consensus_copy <- copy_consensus_delivery_to_ITS_samples(
     consensus_delivery_path = consensus_delivery_path,
     sample_root = sample_root,
@@ -738,59 +936,73 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
     overwrite = TRUE
   )
 
-  prepared_ITS <- prepare_ITS_result_for_barcodes(
-    path_ITS_result = path_ITS_result,
-    barcodes = barcodes,
-    abundance_table = abundance_table,
-    alignment_tables_dir = alignment_tables_dir
+  prepared_ITS <- NULL
+  its_moved <- NULL
+  copied_abundance <- NA_character_
+  copied_figures <- character()
+  identification_copy <- data.frame(
+    barcode = character(),
+    source = character(),
+    destination = character(),
+    copied = logical(),
+    stringsAsFactors = FALSE
   )
-  on.exit(if (!is.null(prepared_ITS$tmpdir)) unlink(prepared_ITS$tmpdir, recursive = TRUE),
-          add = TRUE)
+  if (isTRUE(move_ITS_step)) {
+    prepared_ITS <- prepare_ITS_result_for_barcodes(
+      path_ITS_result = path_ITS_result,
+      barcodes = barcodes,
+      abundance_table = abundance_table,
+      alignment_tables_dir = alignment_tables_dir
+    )
+    on.exit(if (!is.null(prepared_ITS$tmpdir)) unlink(prepared_ITS$tmpdir, recursive = TRUE),
+            add = TRUE)
 
-  tmp_delivery <- tempfile("its-move-")
-  on.exit(unlink(tmp_delivery, recursive = TRUE), add = TRUE)
-  its_moved <- move_ITS(
-    path_result = prepared_ITS$path_result,
-    path_delivery = tmp_delivery,
-    overwrite = TRUE,
-    tax_levels = tax_levels,
-    abundance_table = abundance_table,
-    alignment_tables_dir = alignment_tables_dir,
-    figure_dir = figure_dir,
-    identification_dir = identification_dir,
-    cutoff = cutoff,
-    width = width,
-    height = height,
-    readme_name = "README.wf-ITS.txt",
-    chinese_readme_name = NULL
-  )
+    tmp_delivery <- tempfile("its-move-")
+    on.exit(unlink(tmp_delivery, recursive = TRUE), add = TRUE)
+    its_moved <- move_ITS(
+      path_result = prepared_ITS$path_result,
+      path_delivery = tmp_delivery,
+      overwrite = TRUE,
+      tax_levels = tax_levels,
+      abundance_table = abundance_table,
+      alignment_tables_dir = alignment_tables_dir,
+      figure_dir = figure_dir,
+      identification_dir = identification_dir,
+      cutoff = cutoff,
+      width = width,
+      height = height,
+      readme_name = "README.wf-ITS.txt",
+      chinese_readme_name = NULL
+    )
 
-  moved_its_dir <- its_moved$path_ITS
-  copied_abundance <- copy_file_required(
-    file.path(moved_its_dir, abundance_table),
-    file.path(output_dir, abundance_table),
-    overwrite = TRUE
-  )
-  copied_figures <- copy_directory_contents(
-    file.path(moved_its_dir, figure_dir),
-    file.path(output_dir, figure_dir),
-    overwrite = TRUE
-  )
-  identification_copy <- distribute_ITS_identification_tables(
-    identification_dir = file.path(moved_its_dir, identification_dir),
-    sample_root = sample_root,
-    ITS_dir = ITS_dir,
-    destination_dir_name = identification_dir,
-    barcode_pattern = barcode_pattern,
-    barcodes = barcodes,
-    overwrite = TRUE
-  )
+    moved_its_dir <- its_moved$path_ITS
+    copied_abundance <- copy_file_required(
+      file.path(moved_its_dir, abundance_table),
+      file.path(output_dir, abundance_table),
+      overwrite = TRUE
+    )
+    copied_figures <- copy_directory_contents(
+      file.path(moved_its_dir, figure_dir),
+      file.path(output_dir, figure_dir),
+      overwrite = TRUE
+    )
+    identification_copy <- distribute_ITS_identification_tables(
+      identification_dir = file.path(moved_its_dir, identification_dir),
+      sample_root = sample_root,
+      ITS_dir = ITS_dir,
+      destination_dir_name = identification_dir,
+      barcode_pattern = barcode_pattern,
+      barcodes = barcodes,
+      overwrite = TRUE
+    )
+  }
 
   consensus_fasta <- collect_ITS_consensus_fasta(
     consensus_delivery_path = consensus_delivery_path,
     output_dir = output_dir,
     trimmed_consensus_file = trimmed_consensus_file,
-    consensus_file = consensus_file
+    consensus_file = consensus_file,
+    output_name = consensus_file
   )
 
   unite_annotation <- NULL
@@ -871,6 +1083,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
     path_delivery = output_dir,
     samples_dir = sample_root,
     ITS_dir = ITS_dir,
+    sample_info_file = copied_sample_info,
     barcodes = barcodes,
     consensus_copy = consensus_copy,
     its_result = its_moved,
@@ -886,7 +1099,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
 }
 
 make_ITS_delivery_dry_plan <- function(path_ITS_result,
-                                       ITS_out_dir,
+                                       out_dir,
                                        need_ITS,
                                        ITS_plan,
                                        grouped_delivery,
@@ -896,6 +1109,21 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
                                        consensus_delivery_path,
                                        consensus_delivery_output,
                                        need_consensus,
+                                       run_basecalling_demux_step,
+                                       run_dorado_basecall_step,
+                                       run_dorado_demux_step,
+                                       run_dorado_fastq_step,
+                                       run_QC_step,
+                                       move_fastq_step,
+                                       move_fastq_mode,
+                                       run_amplicon_step,
+                                       trim_consensus_step,
+                                       run_filtered_QC_step,
+                                       run_igv_step,
+                                       collect_results_step,
+                                       make_ab1,
+                                       run_ITS_step,
+                                       move_ITS_step,
                                        samples_dir,
                                        abundance_table,
                                        figure_dir,
@@ -913,7 +1141,7 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
     status = "dry_run",
     path_delivery = output_dir,
     need_ITS = need_ITS,
-    ITS_out_dir = ITS_out_dir,
+    out_dir = out_dir,
     grouped_delivery = grouped_delivery,
     ITS_dir = ITS_dir,
     groups = if (is.null(sample_info_groups)) NULL else stats::setNames(
@@ -928,9 +1156,28 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
     need_consensus = need_consensus,
     consensus_delivery_path = consensus_delivery_path,
     consensus_delivery_output = consensus_delivery_output,
+    consensus_steps = list(
+      run_basecalling_demux_step = run_basecalling_demux_step,
+      run_dorado_basecall_step = run_dorado_basecall_step,
+      run_dorado_demux_step = run_dorado_demux_step,
+      run_dorado_fastq_step = run_dorado_fastq_step,
+      run_QC_step = run_QC_step,
+      move_fastq_step = move_fastq_step,
+      move_fastq_mode = move_fastq_mode,
+      run_amplicon_step = run_amplicon_step,
+      trim_consensus_step = trim_consensus_step,
+      run_filtered_QC_step = run_filtered_QC_step,
+      run_igv_step = run_igv_step,
+      collect_results_step = collect_results_step,
+      make_ab1 = make_ab1
+    ),
+    ITS_steps = list(
+      run_ITS_step = run_ITS_step,
+      move_ITS_step = move_ITS_step
+    ),
     paths = list(
       path_ITS_result = path_ITS_result,
-      effective_ITS_result = if (isTRUE(need_ITS)) ITS_out_dir else path_ITS_result,
+      effective_ITS_result = if (isTRUE(need_ITS)) out_dir else path_ITS_result,
       samples = if (is.null(samples_dir)) output_dir else file.path(output_dir, samples_dir),
       abundance_table = file.path(output_dir, abundance_table),
       figures = file.path(output_dir, figure_dir),
@@ -1119,28 +1366,69 @@ subset_ITS_alignment_tables <- function(from_dir, to_dir, barcodes) {
 collect_ITS_consensus_fasta <- function(consensus_delivery_path,
                                         output_dir,
                                         trimmed_consensus_file,
-                                        consensus_file) {
-  candidates <- list.files(
+                                        consensus_file,
+                                        output_name = consensus_file) {
+  trimmed_candidates <- list.files(
     consensus_delivery_path,
     pattern = paste0("^", gsub("([.])", "\\\\\\1", trimmed_consensus_file), "$"),
     recursive = TRUE,
     full.names = TRUE
   )
-  if (length(candidates) == 0L) {
+  trimmed_candidates <- sort(trimmed_candidates[file.exists(trimmed_candidates)])
+  using_trimmed <- length(trimmed_candidates) > 0L
+  candidates <- trimmed_candidates
+  if (!isTRUE(using_trimmed)) {
     candidates <- list.files(
       consensus_delivery_path,
       pattern = paste0("^", gsub("([.])", "\\\\\\1", consensus_file), "$"),
       recursive = TRUE,
       full.names = TRUE
     )
+    candidates <- sort(candidates[file.exists(candidates)])
   }
-  candidates <- sort(candidates[file.exists(candidates)])
   if (length(candidates) == 0L) return(NA_character_)
 
-  out <- file.path(output_dir, "consensus_for_unite.fasta")
+  out <- file.path(output_dir, output_name)
+  write_or_copy_consensus_candidates(candidates, out)
+
+  if (isTRUE(using_trimmed)) {
+    trimmed_out <- file.path(output_dir, trimmed_consensus_file)
+    if (!identical(normalizePath(out, mustWork = FALSE),
+                   normalizePath(trimmed_out, mustWork = FALSE))) {
+      write_or_copy_consensus_candidates(candidates, trimmed_out)
+    }
+  }
+  normalizePath(out, mustWork = TRUE)
+}
+
+write_or_copy_consensus_candidates <- function(candidates, out) {
+  if (length(candidates) == 1L) {
+    copy_file_required(candidates[[1L]], out, overwrite = TRUE)
+    index <- paste0(candidates[[1L]], ".fai")
+    if (file.exists(index)) {
+      copy_file_required(index, paste0(out, ".fai"), overwrite = TRUE)
+    }
+    return(invisible(out))
+  }
+
   lines <- unlist(lapply(candidates, readLines, warn = FALSE), use.names = FALSE)
+  dir.create(dirname(out), recursive = TRUE, showWarnings = FALSE)
   writeLines(lines, out, useBytes = TRUE)
-  out
+  invisible(out)
+}
+
+copy_optional_sample_info_file <- function(sample_info_file,
+                                           output_dir,
+                                           overwrite) {
+  if (is.null(sample_info_file) || is.na(sample_info_file) || !nzchar(sample_info_file)) {
+    return(NA_character_)
+  }
+  check_file_arg(sample_info_file, "sample_info_file")
+  copy_file_required(
+    sample_info_file,
+    file.path(output_dir, basename(sample_info_file)),
+    overwrite = overwrite
+  )
 }
 
 copy_file_required <- function(from, to, overwrite) {
@@ -1176,6 +1464,8 @@ ITS_delivery_readme <- function(samples_dir,
     paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/: per-barcode wf-16s alignment-stat tables."),
     paste0("- ", abundance_table, ": genus-level abundance table from wf-16s ITS profiling."),
     paste0("- ", figure_dir, "/: abundance bar plots generated from the abundance table."),
+    "- all-consensus-seqs.fasta: project-level consensus FASTA copied from the consensus results and used for optional UNITE review.",
+    "- all-consensus-seqs_trimmed.fasta: trimmed project-level consensus FASTA, included when it is available in the consensus results.",
     paste0("- ", unite_top_hits_name, ": root-level copy of the recommended UNITE top-hit summary."),
     paste0("- ", unite_dir, "/: detailed consensus-vs-UNITE BLAST results, including `consensus.blast.tsv` and `consensus.top_hits.tsv`."),
     "",
@@ -1213,6 +1503,8 @@ ITS_delivery_readme_zh <- function(samples_dir,
     paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/：每个 barcode 的 wf-16s 比对统计表。"),
     paste0("- ", abundance_table, "：wf-16s ITS 分析得到的属水平丰度表。"),
     paste0("- ", figure_dir, "/：基于丰度表生成的丰度柱状图。"),
+    "- all-consensus-seqs.fasta：从共识结果复制到项目根目录的 consensus FASTA，用于可选的 UNITE 复核。",
+    "- all-consensus-seqs_trimmed.fasta：如果共识结果中存在 trimmed consensus FASTA，则按原文件名额外保留一份。",
     paste0("- ", unite_top_hits_name, "：放在根目录下的 UNITE top-hit 推荐查看汇总表。"),
     paste0("- ", unite_dir, "/：完整的 consensus vs UNITE BLAST 复核结果，包括 `consensus.blast.tsv` 和 `consensus.top_hits.tsv`。"),
     "",
