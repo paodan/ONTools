@@ -121,7 +121,7 @@ make_ITS_delivery(
 }
 \arguments{
 \item{path_ITS_result}{Path to a completed wf-16s result directory for ITS data. Default is \code{NULL}. If \code{NULL} or if the directory does not exist, \code{run_ITS()} is run first. When an existing directory is supplied, the function expects it to contain \code{abundance_table_genus.tsv} and \code{alignment_tables/}.}
-\item{path_delivery}{Final ITS delivery root. Default is \code{"/data/project_delivery"}. In grouped mode, per-group ITS deliveries are created below this directory.}
+\item{path_delivery}{Final ITS delivery root. Default is \code{"/data/project_delivery"}. In grouped mode, per-group ITS deliveries are created under \code{path_delivery/<group>/ITS/}.}
 \item{consensus_delivery_path}{Existing consensus delivery directory. If \code{NULL} or if the directory does not exist, \code{make_consensus_delivery()} is run first using \code{path_proj}, \code{path_sampleInfo_file_list}, and the consensus-related parameters in this function.}
 \item{path_proj, path_sampleInfo_file_list}{Arguments passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is missing. When \code{path_sampleInfo_file_list} is supplied, its names are also used as delivery group names, matching \code{make_consensus_delivery()}. Each sample information file is copied to the corresponding project root.}
 \item{consensus_delivery_output}{Directory used to store newly generated consensus delivery results. The default \code{NULL} creates a sibling work directory named \code{basename(path_delivery)_consensus_work}.}
@@ -214,8 +214,8 @@ normalize wf-16s outputs. Because the delivery assembly needs the completed ITS
 output files, \code{wait = TRUE} is required when ITS results must be generated.
 \item Reorganize files. When \code{path_sampleInfo_file_list} is supplied, one
 delivery directory is created for each named sample-info file:
-\code{path_delivery/<group>/}. Each group keeps only the barcode samples listed
-in its sample-info table. Without \code{path_sampleInfo_file_list},
+\code{path_delivery/<group>/ITS/}. Each group keeps only the barcode samples
+listed in its sample-info table. Without \code{path_sampleInfo_file_list},
 \code{path_delivery} itself is treated as the final ITS delivery directory.
 Per-barcode consensus outputs are copied to
 \code{samples/barcode*/consensus_results/}, per-barcode wf-16s alignment tables

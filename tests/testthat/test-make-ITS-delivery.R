@@ -220,6 +220,24 @@ test_that("make_ITS_delivery passes unified ITS workflow arguments", {
   expect_true(plan$ITS_steps$move_ITS_step)
 })
 
+test_that("make_ITS_delivery dry-run reports grouped ITS delivery path", {
+  inputs <- make_fake_grouped_ITS_inputs()
+
+  plan <- make_ITS_delivery(
+    path_ITS_result = inputs$its_result,
+    path_delivery = "delivery_root",
+    consensus_delivery_path = inputs$consensus_delivery,
+    path_sampleInfo_file_list = inputs$sample_info,
+    run_unite_annotation = FALSE,
+    dry_run = TRUE
+  )
+
+  expect_equal(
+    plan$groups$PROJECT001_ITS$ITS_delivery,
+    file.path("delivery_root", "PROJECT001_ITS", "ITS")
+  )
+})
+
 test_that("make_ITS_delivery rejects removed output_dir argument", {
   expect_error(
     make_ITS_delivery(output_dir = "old", dry_run = TRUE),
@@ -385,6 +403,7 @@ test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to IT
   expect_true(file.exists(file.path(
     path_delivery,
     "PROJECT001_ITS",
+    "ITS",
     "samples",
     "barcode303",
     "ITS_results",
@@ -432,8 +451,8 @@ test_that("make_ITS_delivery creates grouped delivery folders from sample info",
 
   expect_true(res$grouped_delivery)
   expect_true(all(c("PROJECT001_ITS", "PROJECT002_ITS") %in% names(res$delivery)))
-  group1 <- file.path(path_delivery, "PROJECT001_ITS")
-  group2 <- file.path(path_delivery, "PROJECT002_ITS")
+  group1 <- file.path(path_delivery, "PROJECT001_ITS", "ITS")
+  group2 <- file.path(path_delivery, "PROJECT002_ITS", "ITS")
   expect_true(file.exists(file.path(group1, "abundance_table_genus.tsv")))
   expect_true(file.exists(file.path(group2, "abundance_table_genus.tsv")))
   expect_true(file.exists(file.path(group1, "PROJECT001_ITS.csv")))

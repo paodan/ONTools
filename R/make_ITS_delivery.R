@@ -14,7 +14,7 @@
 #'   first. When an existing directory is supplied, the function expects it to
 #'   contain `abundance_table_genus.tsv` and `alignment_tables/`.
 #' @param path_delivery Final ITS delivery root. In grouped mode, per-group ITS
-#'   deliveries are created below this directory.
+#'   deliveries are created under `path_delivery/<group>/ITS/`.
 #' @param consensus_delivery_path Existing consensus delivery directory. If
 #'   `NULL` or if the directory does not exist, [make_consensus_delivery()] is
 #'   run first using `path_proj`, `path_sampleInfo_file_list`, and the
@@ -144,8 +144,8 @@
 #'    outputs.
 #' 3. Reorganize files. When `path_sampleInfo_file_list` is supplied, one
 #'    delivery directory is created for each named sample-info file:
-#'    `path_delivery/<group>/`. Each group keeps only the barcode samples listed
-#'    in its sample-info table. Without `path_sampleInfo_file_list`,
+#'    `path_delivery/<group>/ITS/`. Each group keeps only the barcode samples
+#'    listed in its sample-info table. Without `path_sampleInfo_file_list`,
 #'    `path_delivery` itself is treated as the final ITS delivery directory.
 #'    Per-barcode consensus outputs are copied to
 #'    `samples/barcode*/consensus_results/`, per-barcode wf-16s alignment
@@ -868,7 +868,7 @@ make_ITS_delivery_targets <- function(output_dir,
   for (group in names(sample_info_groups)) {
     targets[[group]] <- list(
       group = group,
-      output_dir = file.path(output_dir, group),
+      output_dir = file.path(output_dir, group, "ITS"),
       barcodes = sample_info_groups[[group]]$barcodes,
       sample_info_file = sample_info_groups[[group]]$sample_info_file
     )
@@ -1201,6 +1201,7 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
       lapply(names(sample_info_groups), function(group) {
         list(
           path_delivery = file.path(output_dir, group),
+          ITS_delivery = file.path(output_dir, group, "ITS"),
           barcodes = sample_info_groups[[group]]$barcodes
         )
       }),
