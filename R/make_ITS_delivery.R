@@ -31,9 +31,13 @@
 #'   demultiplexing parameters passed to [make_consensus_delivery()] when
 #'   consensus results need to be generated. Defaults match
 #'   [make_consensus_delivery()].
-#' @param fastq_out FASTQ directory or directory name passed to [run_ITS()] when
-#'   ITS results need to be generated. This matches the `fastq_out` argument in
-#'   [make_consensus_delivery()]. Default is `"fastq_pass_trim"`.
+#' @param fastq_out FASTQ output directory name created by Dorado conversion.
+#'   This matches the `fastq_out` argument in [make_consensus_delivery()].
+#'   When `make_consensus_delivery()` is run in this function, the actual
+#'   per-project FASTQ path passed to [run_ITS()] is taken from the consensus
+#'   workflow result, typically `.../fastq_pass_trim/<group>`. If consensus
+#'   results are not generated in this call, `fastq_out` may also be an existing
+#'   FASTQ directory path. Default is `"fastq_pass_trim"`.
 #' @param run_basecalling_demux_step,run_dorado_basecall_step,run_dorado_demux_step,run_dorado_fastq_step,run_QC_step,move_fastq_step,move_fastq_mode,run_amplicon_step,trim_consensus_step,run_filtered_QC_step,run_igv_step,collect_results_step,make_ab1
 #'   Consensus-delivery step controls passed to [make_consensus_delivery()] when
 #'   `consensus_delivery_path` is `NULL` or missing. Defaults match
@@ -131,10 +135,13 @@
 #'
 #' 1. Prepare consensus-delivery content. If `consensus_delivery_path` exists,
 #'    its barcode folders are copied into the final delivery. Otherwise,
-#'    `make_consensus_delivery()` is run first.
-#' 2. Prepare wf-16s ITS content. `move_ITS()` is called in a temporary
-#'    directory to generate abundance plots and normalize wf-16s outputs. If
-#'    `path_ITS_result` was not supplied, `run_ITS()` is called first.
+#'    `make_consensus_delivery()` is run first. This step also creates or
+#'    locates the grouped FASTQ directory used as input for ITS profiling.
+#' 2. Prepare wf-16s ITS content. If `path_ITS_result` was not supplied,
+#'    `run_ITS()` is called after consensus preparation, using the grouped FASTQ
+#'    path returned by [make_consensus_delivery()]. `move_ITS()` is then called
+#'    in a temporary directory to generate abundance plots and normalize wf-16s
+#'    outputs.
 #' 3. Reorganize files. When `path_sampleInfo_file_list` is supplied, one
 #'    delivery directory is created for each named sample-info file:
 #'    `path_delivery/<group>/`. Each group keeps only the barcode samples listed
@@ -535,34 +542,6 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     output_dir <- normalizePath(output_dir, mustWork = TRUE)
   }
-  ITS_result <- NULL
-  if (isTRUE(need_ITS) && isTRUE(run_ITS_step)) {
-    ITS_result <- run_ITS(
-      fastq = fastq_out,
-      out_dir = out_dir,
-      work_dir = work_dir,
-      profile = profile,
-      resume = resume,
-      database_set = database_set,
-      min_len = min_len,
-      max_len = max_len,
-      workflow = workflow,
-      nextflow = nextflow,
-      quiet = quiet,
-      extra_args = extra_args,
-      syntax_parser = syntax_parser,
-      ansi_log = ansi_log,
-      nextflow_env = nextflow_env,
-      dry_run = FALSE,
-      echo = echo,
-      wait = wait,
-      stdout = stdout,
-      stderr = stderr
-    )
-    path_ITS_result <- out_dir
-  }
-  path_ITS_result <- normalizePath(path_ITS_result, mustWork = TRUE)
-
   consensus_result <- NULL
   if (isTRUE(need_consensus)) {
     consensus_result <- make_consensus_delivery(
@@ -637,12 +616,60 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     grouped_delivery = grouped_delivery,
     sample_info_groups = sample_info_groups
   )
+  ITS_results <- list()
+  path_ITS_results <- list()
+  for (target_name in names(targets)) {
+    target <- targets[[target_name]]
+    if (isTRUE(need_ITS) && isTRUE(run_ITS_step)) {
+      group_fastq <- resolve_ITS_fastq_input(
+        target = target,
+        consensus_result = consensus_result,
+        fastq_out = fastq_out
+      )
+      target_out_dir <- if (isTRUE(grouped_delivery)) {
+        file.path(out_dir, target_name)
+      } else {
+        out_dir
+      }
+      target_work_dir <- if (isTRUE(grouped_delivery)) {
+        file.path(work_dir, target_name)
+      } else {
+        work_dir
+      }
+      ITS_results[[target_name]] <- run_ITS(
+        fastq = group_fastq,
+        out_dir = target_out_dir,
+        work_dir = target_work_dir,
+        profile = profile,
+        resume = resume,
+        database_set = database_set,
+        min_len = min_len,
+        max_len = max_len,
+        workflow = workflow,
+        nextflow = nextflow,
+        quiet = quiet,
+        extra_args = extra_args,
+        syntax_parser = syntax_parser,
+        ansi_log = ansi_log,
+        nextflow_env = nextflow_env,
+        dry_run = FALSE,
+        echo = echo,
+        wait = wait,
+        stdout = stdout,
+        stderr = stderr
+      )
+      path_ITS_results[[target_name]] <- normalizePath(target_out_dir, mustWork = TRUE)
+    } else {
+      path_ITS_results[[target_name]] <- normalizePath(path_ITS_result, mustWork = TRUE)
+    }
+  }
+
   deliveries <- list()
   for (target_name in names(targets)) {
     target <- targets[[target_name]]
     if (isTRUE(grouped_delivery)) message(target_name)
     deliveries[[target_name]] <- assemble_single_ITS_delivery(
-      path_ITS_result = path_ITS_result,
+      path_ITS_result = path_ITS_results[[target_name]],
       output_dir = target$output_dir,
       sample_info_file = target$sample_info_file,
       consensus_delivery_path = resolve_ITS_group_consensus_root(
@@ -706,7 +733,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
         consensus_generated = need_consensus,
         consensus_result = consensus_result,
         ITS_generated = need_ITS,
-        ITS_result = ITS_result,
+        ITS_result = if (length(ITS_results) == 0L) NULL else ITS_results[[1L]],
         grouped_delivery = FALSE
       )
     )))
@@ -721,7 +748,8 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     consensus_generated = need_consensus,
     consensus_result = consensus_result,
     ITS_generated = need_ITS,
-    ITS_result = ITS_result,
+    ITS_result = ITS_results,
+    path_ITS_results = path_ITS_results,
     delivery = deliveries
   ))
 }
@@ -858,6 +886,31 @@ resolve_ITS_group_consensus_root <- function(consensus_delivery_path, group) {
   if (dir.exists(grouped_root)) return(grouped_root)
 
   consensus_delivery_path
+}
+
+resolve_ITS_fastq_input <- function(target, consensus_result, fastq_out) {
+  if (!is.null(consensus_result) && !is.null(consensus_result$workflow)) {
+    workflow <- consensus_result$workflow
+    group <- target$group
+    if (!is.na(group) && nzchar(group) && group %in% names(workflow)) {
+      group_fastq <- workflow[[group]]$paths$fastq
+      if (!is.null(group_fastq) && length(group_fastq) == 1L && !is.na(group_fastq)) {
+        return(group_fastq)
+      }
+    }
+    if (length(workflow) == 1L) {
+      group_fastq <- workflow[[1L]]$paths$fastq
+      if (!is.null(group_fastq) && length(group_fastq) == 1L && !is.na(group_fastq)) {
+        return(group_fastq)
+      }
+    }
+  }
+
+  if (!is.na(target$group) && nzchar(target$group)) {
+    grouped_fastq <- file.path(fastq_out, target$group)
+    if (dir.exists(grouped_fastq)) return(normalizePath(grouped_fastq, mustWork = TRUE))
+  }
+  fastq_out
 }
 
 assemble_single_ITS_delivery <- function(path_ITS_result,

@@ -126,7 +126,7 @@ make_ITS_delivery(
 \item{path_proj, path_sampleInfo_file_list}{Arguments passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is missing. When \code{path_sampleInfo_file_list} is supplied, its names are also used as delivery group names, matching \code{make_consensus_delivery()}. Each sample information file is copied to the corresponding project root.}
 \item{consensus_delivery_output}{Directory used to store newly generated consensus delivery results. The default \code{NULL} creates a sibling work directory named \code{basename(path_delivery)_consensus_work}.}
 \item{kit_name, model, demux_out, barcode_both_ends}{Dorado basecalling and demultiplexing parameters passed to \code{make_consensus_delivery()} when consensus results need to be generated. Defaults match \code{make_consensus_delivery()}.}
-\item{fastq_out}{FASTQ directory or directory name passed to \code{run_ITS()} when ITS results need to be generated. This matches the \code{fastq_out} argument in \code{make_consensus_delivery()}. Default is \code{"fastq_pass_trim"}.}
+\item{fastq_out}{FASTQ output directory name created by Dorado conversion. This matches the \code{fastq_out} argument in \code{make_consensus_delivery()}. When \code{make_consensus_delivery()} is run in this function, the actual per-project FASTQ path passed to \code{run_ITS()} is taken from the consensus workflow result, typically \code{.../fastq_pass_trim/<group>}. If consensus results are not generated in this call, \code{fastq_out} may also be an existing FASTQ directory path. Default is \code{"fastq_pass_trim"}.}
 \item{run_basecalling_demux_step, run_dorado_basecall_step, run_dorado_demux_step, run_dorado_fastq_step, run_QC_step, move_fastq_step, move_fastq_mode, run_amplicon_step, trim_consensus_step, run_filtered_QC_step, run_igv_step, collect_results_step, make_ab1}{Consensus-delivery step controls passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is \code{NULL} or missing. Defaults match \code{make_consensus_delivery()}. They have no effect when an existing \code{consensus_delivery_path} is supplied.}
 \item{ab1_name_template, ab1_samtools, consensus_index_file, sample_length_plot_pattern, project_col, amplicon_size_col, min_read_length_col, max_read_length_col, f_primer_col, r_primer_col, min_read_qual, min_n_reads, force_spoa_length_threshold, override_basecaller_cfg, amplicon_extra_args, barcode_digits, dorado_threads, dorado_fastq_write_md5, dorado, samtools, gzip, dorado_conda_env, igv, overwrite_fastq, overwrite_delivery, include_execution}{Additional \code{make_consensus_delivery()} parameters passed through when consensus results need to be generated. Defaults match \code{make_consensus_delivery()}.}
 \item{path_work}{Shared work root used to derive default ITS workflow output and work directories. If \code{NULL}, sibling directories of \code{path_delivery} are used.}
@@ -204,12 +204,14 @@ The function performs four main tasks:
 \enumerate{
 \item Prepare consensus-delivery content. If \code{consensus_delivery_path}
 exists, its barcode folders are copied into the final delivery. Otherwise,
-\code{make_consensus_delivery()} is run first.
+\code{make_consensus_delivery()} is run first. This step also creates or locates
+the grouped FASTQ directory used as input for ITS profiling.
 \item Prepare wf-16s ITS content. If \code{path_ITS_result} is \code{NULL} or
-missing, \code{run_ITS()} is called first. \code{move_ITS()} is then called in a
-temporary directory to generate abundance plots and normalize wf-16s outputs.
-Because the delivery assembly needs the completed ITS output files,
-\code{wait = TRUE} is required when ITS results must be generated.
+missing, \code{run_ITS()} is called after consensus preparation, using the
+grouped FASTQ path returned by \code{make_consensus_delivery()}. \code{move_ITS()}
+is then called in a temporary directory to generate abundance plots and
+normalize wf-16s outputs. Because the delivery assembly needs the completed ITS
+output files, \code{wait = TRUE} is required when ITS results must be generated.
 \item Reorganize files. When \code{path_sampleInfo_file_list} is supplied, one
 delivery directory is created for each named sample-info file:
 \code{path_delivery/<group>/}. Each group keeps only the barcode samples listed

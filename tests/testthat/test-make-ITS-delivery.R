@@ -299,6 +299,100 @@ test_that("make_ITS_delivery can run ITS when path_ITS_result is missing", {
   )))
 })
 
+test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to ITS", {
+  skip_if_not(capabilities("png"))
+
+  path_proj <- tempfile("ont-proj-")
+  path_delivery <- tempfile("its-delivery-")
+  consensus_delivery_output <- tempfile("consensus-work-")
+  its_out_dir <- tempfile("wf-its-")
+  fastq_group <- file.path(path_proj, "demux_out_YS-NB576", "run01", "fastq_pass_trim", "PROJECT001_ITS")
+  sample_info <- tempfile(fileext = ".csv")
+  dir.create(path_proj, recursive = TRUE)
+  utils::write.csv(
+    data.frame(Barcode_ID = "PBC001-303", Sample_ID = "sample303"),
+    sample_info,
+    row.names = FALSE
+  )
+
+  seen <- new.env(parent = emptyenv())
+  seen$run_ITS_fastq <- NA_character_
+  testthat::local_mocked_bindings(
+    make_consensus_delivery = function(path_proj,
+                                       path_sampleInfo_file_list,
+                                       path_delivery,
+                                       ...) {
+      dir.create(file.path(path_delivery, "PROJECT001_ITS", "consensus_results", "barcode303"), recursive = TRUE)
+      writeLines(
+        "consensus summary",
+        file.path(path_delivery, "PROJECT001_ITS", "consensus_results", "barcode303", "summary.txt")
+      )
+      writeLines(
+        c(">barcode303_trimmed_consensus", "ACGT"),
+        file.path(path_delivery, "PROJECT001_ITS", "consensus_results", "all-consensus-seqs_trimmed.fasta")
+      )
+      list(
+        workflow = list(
+          PROJECT001_ITS = list(paths = list(fastq = fastq_group, out_dir = "wf_amplicon"))
+        ),
+        path_delivery = path_delivery
+      )
+    },
+    run_ITS = function(fastq,
+                       out_dir,
+                       work_dir,
+                       ...) {
+      seen$run_ITS_fastq <- fastq
+      dir.create(file.path(out_dir, "alignment_tables"), recursive = TRUE)
+      writeLines(c(
+        "tax\tbarcode303\ttotal",
+        "Eukaryota;Fungi;Unknown;Unknown;Unknown;Unknown;Unknown\t1\t1"
+      ), file.path(out_dir, "abundance_table_genus.tsv"))
+      writeLines(
+        paste(
+          "reference", "startpos", "ref length", "number of reads", "covbases",
+          "% coverage", "meandepth", "meanbaseq", "meanmapq", "taxid",
+          "superkingdom", "kingdom", "phylum", "class", "order", "family",
+          "genus", "species", "mean", "sd", "Coefficient of Variance", "pcreads",
+          sep = "\t"
+        ),
+        file.path(out_dir, "alignment_tables", "barcode303-alignment-stats.tsv")
+      )
+      list(status = 0L, paths = list(fastq = fastq, out_dir = out_dir))
+    },
+    .package = "ONTools"
+  )
+
+  expect_warning(
+    res <- make_ITS_delivery(
+      path_ITS_result = NULL,
+      path_delivery = path_delivery,
+      consensus_delivery_path = NULL,
+      consensus_delivery_output = consensus_delivery_output,
+      path_proj = path_proj,
+      path_sampleInfo_file_list = c(PROJECT001_ITS = sample_info),
+      out_dir = its_out_dir,
+      tax_levels = "Genus",
+      run_unite_annotation = FALSE,
+      echo = FALSE
+    ),
+    NA
+  )
+
+  expect_equal(seen$run_ITS_fastq, fastq_group)
+  expect_true(res$consensus_generated)
+  expect_true(res$ITS_generated)
+  expect_true(file.exists(file.path(
+    path_delivery,
+    "PROJECT001_ITS",
+    "samples",
+    "barcode303",
+    "ITS_results",
+    "identification_tables",
+    "barcode303-alignment-stats.tsv"
+  )))
+})
+
 test_that("make_ITS_delivery requires wait when ITS must be generated", {
   inputs <- make_fake_ITS_inputs()
 
