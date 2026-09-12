@@ -180,6 +180,7 @@ test_that("make_ITS_delivery can run ITS when path_ITS_result is missing", {
     path_delivery,
     "samples",
     "barcode303",
+    "ITS_results",
     "identification_tables",
     "barcode303-alignment-stats.tsv"
   )))
@@ -224,8 +225,8 @@ test_that("make_ITS_delivery creates grouped delivery folders from sample info",
 
   expect_true(res$grouped_delivery)
   expect_true(all(c("PROJECT001_ITS", "PROJECT002_ITS") %in% names(res$delivery)))
-  group1 <- file.path(path_delivery, "PROJECT001_ITS", "ITS_results")
-  group2 <- file.path(path_delivery, "PROJECT002_ITS", "ITS_results")
+  group1 <- file.path(path_delivery, "PROJECT001_ITS")
+  group2 <- file.path(path_delivery, "PROJECT002_ITS")
   expect_true(file.exists(file.path(group1, "abundance_table_genus.tsv")))
   expect_true(file.exists(file.path(group2, "abundance_table_genus.tsv")))
   expect_true(file.exists(file.path(
@@ -240,6 +241,7 @@ test_that("make_ITS_delivery creates grouped delivery folders from sample info",
     group1,
     "samples",
     "barcode303",
+    "ITS_results",
     "identification_tables",
     "barcode303-alignment-stats.tsv"
   )))
@@ -247,6 +249,7 @@ test_that("make_ITS_delivery creates grouped delivery folders from sample info",
     group1,
     "samples",
     "barcode304",
+    "ITS_results",
     "identification_tables",
     "barcode304-alignment-stats.tsv"
   )))
@@ -293,6 +296,7 @@ test_that("make_ITS_delivery organizes consensus and ITS results under samples",
     path_delivery,
     "samples",
     "barcode303",
+    "ITS_results",
     "identification_tables",
     "barcode303-alignment-stats.tsv"
   )))

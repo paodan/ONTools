@@ -30,9 +30,11 @@
 #'   missing. Defaults mirror [run_ITS()] except that `ITS_out_dir` and
 #'   `ITS_work_dir` default to sibling work directories derived from
 #'   `path_delivery`.
-#' @param group_delivery_dir Directory name created under each sample-info
-#'   group when `path_sampleInfo_file_list` is supplied. Default is
-#'   `"ITS_results"`, producing `path_delivery/<group>/ITS_results/`.
+#' @param ITS_dir Directory name created under each barcode sample directory
+#'   for ITS-specific per-sample evidence. Default is `"ITS_results"`,
+#'   producing `path_delivery/samples/barcode*/ITS_results/` in single-project
+#'   mode and `path_delivery/<group>/samples/barcode*/ITS_results/` in grouped
+#'   mode.
 #' @param barcode_col Column name in each sample information file used to infer
 #'   barcode directory names. Default is `"Barcode_ID"`, matching
 #'   [make_consensus_delivery()]. Values like `PBC001-097` are converted to
@@ -46,9 +48,9 @@
 #'   File/directory names used by [move_ITS()] and the final delivery layout.
 #'   Defaults are `"abundance_table_genus.tsv"`, `"alignment_tables"`,
 #'   `"figures"`, and `"identification_tables"`. In the final delivery,
-#'   `abundance_table` and `figure_dir` are written at the root, while each
-#'   barcode alignment table is copied to
-#'   `samples/barcode*/identification_tables/`.
+#'   `abundance_table` and `figure_dir` are written at the project root, while
+#'   each barcode alignment table is copied to
+#'   `samples/barcode*/ITS_results/identification_tables/`.
 #' @param tax_levels,cutoff,width,height Plotting parameters passed to
 #'   [move_ITS()]. By default, plots are generated for Kingdom, Phylum, Class,
 #'   Order, Family, and Genus; taxa below `cutoff = 0.01` relative abundance
@@ -108,13 +110,14 @@
 #'    `path_ITS_result` was not supplied, `run_ITS()` is called first.
 #' 3. Reorganize files. When `path_sampleInfo_file_list` is supplied, one
 #'    delivery directory is created for each named sample-info file:
-#'    `path_delivery/<group>/ITS_results/`. Each group keeps only the barcode
-#'    samples listed in its sample-info table. Without `path_sampleInfo_file_list`,
+#'    `path_delivery/<group>/`. Each group keeps only the barcode samples listed
+#'    in its sample-info table. Without `path_sampleInfo_file_list`,
 #'    `path_delivery` itself is treated as the final ITS delivery directory.
 #'    Per-barcode consensus outputs are copied to
 #'    `samples/barcode*/consensus_results/`, per-barcode wf-16s alignment
-#'    tables are copied to `samples/barcode*/identification_tables/`, and
-#'    project-level abundance files and figures are copied to `path_delivery`.
+#'    tables are copied to
+#'    `samples/barcode*/ITS_results/identification_tables/`, and project-level
+#'    abundance files and figures are copied to the project root.
 #' 4. Optionally run consensus-vs-UNITE review. Consensus FASTA files are
 #'    collected into `consensus_for_unite.fasta`, BLAST output is written to
 #'    `unite_consensus_annotation/consensus.blast.tsv`, and the top-hit summary
@@ -165,7 +168,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
                               ITS_syntax_parser = "v1",
                               ITS_ansi_log = FALSE,
                               ITS_nextflow_env = NULL,
-                              group_delivery_dir = "ITS_results",
+                              ITS_dir = "ITS_results",
                               barcode_col = "Barcode_ID",
                               samples_dir = "samples",
                               abundance_table = "abundance_table_genus.tsv",
@@ -243,7 +246,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   if (!is.null(ITS_extra_args)) check_scalar_character(ITS_extra_args, "ITS_extra_args")
   if (!is.null(ITS_syntax_parser)) check_scalar_character(ITS_syntax_parser, "ITS_syntax_parser")
   check_logical_scalar(ITS_ansi_log, "ITS_ansi_log")
-  check_scalar_character(group_delivery_dir, "group_delivery_dir")
+  check_scalar_character(ITS_dir, "ITS_dir")
   check_scalar_character(barcode_col, "barcode_col")
   if (!is.null(samples_dir)) check_scalar_character(samples_dir, "samples_dir")
   check_scalar_character(abundance_table, "abundance_table")
@@ -368,7 +371,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       ITS_plan = ITS_plan,
       grouped_delivery = grouped_delivery,
       sample_info_groups = sample_info_groups,
-      group_delivery_dir = group_delivery_dir,
+      ITS_dir = ITS_dir,
       output_dir = output_dir,
       consensus_delivery_path = consensus_delivery_path,
       consensus_delivery_output = consensus_delivery_output,
@@ -445,7 +448,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
     output_dir = output_dir,
     grouped_delivery = grouped_delivery,
     sample_info_groups = sample_info_groups,
-    group_delivery_dir = group_delivery_dir
+    ITS_dir = ITS_dir
   )
   deliveries <- list()
   for (target_name in names(targets)) {
@@ -460,6 +463,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       ),
       barcodes = target$barcodes,
       samples_dir = samples_dir,
+      ITS_dir = ITS_dir,
       abundance_table = abundance_table,
       alignment_tables_dir = alignment_tables_dir,
       figure_dir = figure_dir,
@@ -522,7 +526,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   invisible(list(
     path_delivery = output_dir,
     grouped_delivery = TRUE,
-    group_delivery_dir = group_delivery_dir,
+    ITS_dir = ITS_dir,
     sample_info_groups = sample_info_groups,
     consensus_delivery_path = consensus_delivery_path,
     consensus_generated = need_consensus,
@@ -536,8 +540,9 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
 #' Write README files for an integrated ITS delivery folder
 #'
 #' @param output_dir Final ITS delivery directory.
-#' @param samples_dir,abundance_table,figure_dir,identification_dir,unite_dir,unite_top_hits_name
-#'   Directory and file names used in the delivery layout.
+#' @param samples_dir,ITS_dir,abundance_table,figure_dir,identification_dir,unite_dir,unite_top_hits_name
+#'   Directory and file names used in the delivery layout. `ITS_dir` is the
+#'   ITS-specific subdirectory below each barcode sample directory.
 #' @param has_unite_annotation Logical. Whether UNITE annotation files were
 #'   generated.
 #' @param readme_name,chinese_readme_name README filenames.
@@ -547,6 +552,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
 #' @export
 write_ITS_delivery_readme <- function(output_dir,
                                       samples_dir = "samples",
+                                      ITS_dir = "ITS_results",
                                       abundance_table = "abundance_table_genus.tsv",
                                       figure_dir = "figures",
                                       identification_dir = "identification_tables",
@@ -557,6 +563,7 @@ write_ITS_delivery_readme <- function(output_dir,
                                       chinese_readme_name = "README.zh-CN.txt") {
   check_dir_arg(output_dir, "output_dir")
   if (!is.null(samples_dir)) check_scalar_character(samples_dir, "samples_dir")
+  check_scalar_character(ITS_dir, "ITS_dir")
   check_scalar_character(abundance_table, "abundance_table")
   check_scalar_character(figure_dir, "figure_dir")
   check_scalar_character(identification_dir, "identification_dir")
@@ -573,6 +580,7 @@ write_ITS_delivery_readme <- function(output_dir,
   writeLines(
     ITS_delivery_readme(
       samples_dir = samples_dir,
+      ITS_dir = ITS_dir,
       abundance_table = abundance_table,
       figure_dir = figure_dir,
       identification_dir = identification_dir,
@@ -590,6 +598,7 @@ write_ITS_delivery_readme <- function(output_dir,
     writeLines(
       ITS_delivery_readme_zh(
         samples_dir = samples_dir,
+        ITS_dir = ITS_dir,
         abundance_table = abundance_table,
         figure_dir = figure_dir,
         identification_dir = identification_dir,
@@ -629,7 +638,7 @@ make_ITS_sample_info_groups <- function(path_sampleInfo_file_list,
 make_ITS_delivery_targets <- function(output_dir,
                                       grouped_delivery,
                                       sample_info_groups,
-                                      group_delivery_dir) {
+                                      ITS_dir) {
   if (!isTRUE(grouped_delivery)) {
     return(list(.single = list(
       group = NA_character_,
@@ -642,7 +651,7 @@ make_ITS_delivery_targets <- function(output_dir,
   for (group in names(sample_info_groups)) {
     targets[[group]] <- list(
       group = group,
-      output_dir = file.path(output_dir, group, group_delivery_dir),
+      output_dir = file.path(output_dir, group),
       barcodes = sample_info_groups[[group]]$barcodes
     )
   }
@@ -666,6 +675,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
                                          consensus_delivery_path,
                                          barcodes,
                                          samples_dir,
+                                         ITS_dir,
                                          abundance_table,
                                          alignment_tables_dir,
                                          figure_dir,
@@ -769,6 +779,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
   identification_copy <- distribute_ITS_identification_tables(
     identification_dir = file.path(moved_its_dir, identification_dir),
     sample_root = sample_root,
+    ITS_dir = ITS_dir,
     destination_dir_name = identification_dir,
     barcode_pattern = barcode_pattern,
     barcodes = barcodes,
@@ -845,6 +856,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
   readme_files <- write_ITS_delivery_readme(
     output_dir = output_dir,
     samples_dir = samples_dir,
+    ITS_dir = ITS_dir,
     abundance_table = abundance_table,
     figure_dir = figure_dir,
     identification_dir = identification_dir,
@@ -858,6 +870,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
   list(
     path_delivery = output_dir,
     samples_dir = sample_root,
+    ITS_dir = ITS_dir,
     barcodes = barcodes,
     consensus_copy = consensus_copy,
     its_result = its_moved,
@@ -878,7 +891,7 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
                                        ITS_plan,
                                        grouped_delivery,
                                        sample_info_groups,
-                                       group_delivery_dir,
+                                       ITS_dir,
                                        output_dir,
                                        consensus_delivery_path,
                                        consensus_delivery_output,
@@ -902,11 +915,11 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
     need_ITS = need_ITS,
     ITS_out_dir = ITS_out_dir,
     grouped_delivery = grouped_delivery,
-    group_delivery_dir = group_delivery_dir,
+    ITS_dir = ITS_dir,
     groups = if (is.null(sample_info_groups)) NULL else stats::setNames(
       lapply(names(sample_info_groups), function(group) {
         list(
-          path_delivery = file.path(output_dir, group, group_delivery_dir),
+          path_delivery = file.path(output_dir, group),
           barcodes = sample_info_groups[[group]]$barcodes
         )
       }),
@@ -924,6 +937,7 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
       identification_tables = file.path(
         if (is.null(samples_dir)) output_dir else file.path(output_dir, samples_dir),
         "<barcode>",
+        ITS_dir,
         identification_dir
       ),
       unite_dir = file.path(output_dir, unite_dir),
@@ -978,6 +992,7 @@ copy_consensus_delivery_to_ITS_samples <- function(consensus_delivery_path,
 
 distribute_ITS_identification_tables <- function(identification_dir,
                                                 sample_root,
+                                                ITS_dir,
                                                 destination_dir_name,
                                                 barcode_pattern,
                                                 barcodes = NULL,
@@ -1004,7 +1019,7 @@ distribute_ITS_identification_tables <- function(identification_dir,
     if (!is.null(barcodes) && !(barcode %in% barcodes)) {
       next
     }
-    dest_dir <- file.path(sample_root, barcode, destination_dir_name)
+    dest_dir <- file.path(sample_root, barcode, ITS_dir, destination_dir_name)
     dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
     dest <- file.path(dest_dir, basename(file))
     copied <- file.copy(file, dest, overwrite = overwrite)
@@ -1141,6 +1156,7 @@ copy_file_required <- function(from, to, overwrite) {
 }
 
 ITS_delivery_readme <- function(samples_dir,
+                                ITS_dir,
                                 abundance_table,
                                 figure_dir,
                                 identification_dir,
@@ -1156,7 +1172,8 @@ ITS_delivery_readme <- function(samples_dir,
     "",
     "Directory Contents",
     paste0("- ", sample_prefix, "consensus_results/: per-barcode consensus-analysis outputs."),
-    paste0("- ", sample_prefix, identification_dir, "/: per-barcode wf-16s alignment-stat tables."),
+    paste0("- ", sample_prefix, ITS_dir, "/: per-barcode ITS profiling evidence."),
+    paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/: per-barcode wf-16s alignment-stat tables."),
     paste0("- ", abundance_table, ": genus-level abundance table from wf-16s ITS profiling."),
     paste0("- ", figure_dir, "/: abundance bar plots generated from the abundance table."),
     paste0("- ", unite_top_hits_name, ": root-level copy of the recommended UNITE top-hit summary."),
@@ -1176,6 +1193,7 @@ ITS_delivery_readme <- function(samples_dir,
 }
 
 ITS_delivery_readme_zh <- function(samples_dir,
+                                   ITS_dir,
                                    abundance_table,
                                    figure_dir,
                                    identification_dir,
@@ -1191,7 +1209,8 @@ ITS_delivery_readme_zh <- function(samples_dir,
     "",
     "目录内容",
     paste0("- ", sample_prefix, "consensus_results/：每个 barcode 的共识序列分析结果。"),
-    paste0("- ", sample_prefix, identification_dir, "/：每个 barcode 的 wf-16s 比对统计表。"),
+    paste0("- ", sample_prefix, ITS_dir, "/：每个 barcode 的 ITS 分析证据。"),
+    paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/：每个 barcode 的 wf-16s 比对统计表。"),
     paste0("- ", abundance_table, "：wf-16s ITS 分析得到的属水平丰度表。"),
     paste0("- ", figure_dir, "/：基于丰度表生成的丰度柱状图。"),
     paste0("- ", unite_top_hits_name, "：放在根目录下的 UNITE top-hit 推荐查看汇总表。"),

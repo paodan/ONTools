@@ -25,7 +25,7 @@ make_ITS_delivery(
   ITS_syntax_parser = "v1",
   ITS_ansi_log = FALSE,
   ITS_nextflow_env = NULL,
-  group_delivery_dir = "ITS_results",
+  ITS_dir = "ITS_results",
   barcode_col = "Barcode_ID",
   samples_dir = "samples",
   abundance_table = "abundance_table_genus.tsv",
@@ -94,13 +94,13 @@ make_ITS_delivery(
 \item{ITS_syntax_parser}{Nextflow syntax parser version passed as \code{NXF_SYNTAX_PARSER}. Default is \code{"v1"}. Use \code{NULL} to leave it unchanged.}
 \item{ITS_ansi_log}{Logical. Passed as \code{NXF_ANSI_LOG}. Default is \code{FALSE}.}
 \item{ITS_nextflow_env}{Optional additional environment variables passed to \code{run_ITS()}, formatted as \code{"NAME=value"}. Default is \code{NULL}.}
-\item{group_delivery_dir}{Directory name created under each sample-info group when \code{path_sampleInfo_file_list} is supplied. Default is \code{"ITS_results"}, producing \code{path_delivery/<group>/ITS_results/}.}
+\item{ITS_dir}{Directory name created under each barcode sample directory for ITS-specific per-sample evidence. Default is \code{"ITS_results"}, producing \code{path_delivery/samples/barcode*/ITS_results/} in single-project mode and \code{path_delivery/<group>/samples/barcode*/ITS_results/} in grouped mode.}
 \item{barcode_col}{Column name in each sample information file used to infer barcode directory names. Default is \code{"Barcode_ID"}, matching \code{make_consensus_delivery()}. Values like \code{PBC001-097} are converted to \code{barcode097}; otherwise values are used as-is after resolving the barcode column.}
 \item{samples_dir}{Directory under \code{path_delivery} that stores per-barcode sample results. The default \code{"samples"} creates \code{path_delivery/samples/barcode*/}. Set to \code{NULL} to put \code{barcode*/} directly under \code{path_delivery}.}
 \item{abundance_table}{Name of the wf-16s abundance table under \code{path_ITS_result}. Default is \code{"abundance_table_genus.tsv"}. In the final delivery this file is copied to the root of \code{path_delivery}.}
 \item{alignment_tables_dir}{Name of the wf-16s per-barcode alignment table directory under \code{path_ITS_result}. Default is \code{"alignment_tables"}.}
 \item{figure_dir}{Name of the figure directory created at the final delivery root. Default is \code{"figures"}.}
-\item{identification_dir}{Name of the per-barcode directory that receives wf-16s alignment tables. Default is \code{"identification_tables"}, producing \code{samples/barcode*/identification_tables/}.}
+\item{identification_dir}{Name of the per-barcode directory that receives wf-16s alignment tables. Default is \code{"identification_tables"}, producing \code{samples/barcode*/ITS_results/identification_tables/}.}
 \item{tax_levels}{Taxonomic levels plotted from the abundance table. Default is \code{c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")}.}
 \item{cutoff}{Minimum relative abundance kept as a separate plotted taxon by \code{plot_abundance_bar()}. Default is \code{0.01}.}
 \item{width, height}{Plot size in inches. Defaults are \code{width = 12} and \code{height = 6}.}
@@ -162,13 +162,13 @@ Because the delivery assembly needs the completed ITS output files,
 \code{wait = TRUE} is required when ITS results must be generated.
 \item Reorganize files. When \code{path_sampleInfo_file_list} is supplied, one
 delivery directory is created for each named sample-info file:
-\code{path_delivery/<group>/ITS_results/}. Each group keeps only the barcode
-samples listed in its sample-info table. Without \code{path_sampleInfo_file_list},
+\code{path_delivery/<group>/}. Each group keeps only the barcode samples listed
+in its sample-info table. Without \code{path_sampleInfo_file_list},
 \code{path_delivery} itself is treated as the final ITS delivery directory.
 Per-barcode consensus outputs are copied to
 \code{samples/barcode*/consensus_results/}, per-barcode wf-16s alignment tables
-are copied to \code{samples/barcode*/identification_tables/}, and project-level
-abundance files and figures are copied to the relevant ITS delivery directory.
+are copied to \code{samples/barcode*/ITS_results/identification_tables/}, and
+project-level abundance files and figures are copied to the project root.
 \item Optionally run consensus-vs-UNITE review. Consensus FASTA files are
 collected into \code{consensus_for_unite.fasta}, BLAST output is written to
 \code{unite_consensus_annotation/consensus.blast.tsv}, and the top-hit summary

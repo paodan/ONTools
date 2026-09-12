@@ -6,6 +6,7 @@
 write_ITS_delivery_readme(
   output_dir,
   samples_dir = "samples",
+  ITS_dir = "ITS_results",
   abundance_table = "abundance_table_genus.tsv",
   figure_dir = "figures",
   identification_dir = "identification_tables",
@@ -18,7 +19,7 @@ write_ITS_delivery_readme(
 }
 \arguments{
 \item{output_dir}{Final ITS delivery directory.}
-\item{samples_dir, abundance_table, figure_dir, identification_dir, unite_dir, unite_top_hits_name}{Directory and file names used in the delivery layout.}
+\item{samples_dir, ITS_dir, abundance_table, figure_dir, identification_dir, unite_dir, unite_top_hits_name}{Directory and file names used in the delivery layout. \code{ITS_dir} is the ITS-specific subdirectory below each barcode sample directory.}
 \item{has_unite_annotation}{Logical. Whether UNITE annotation files were generated.}
 \item{readme_name, chinese_readme_name}{README filenames. Set \code{chinese_readme_name = NULL} to skip the Chinese README.}
 }
