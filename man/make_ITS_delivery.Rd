@@ -4,12 +4,27 @@
 \title{Build an integrated ITS delivery folder}
 \usage{
 make_ITS_delivery(
-  path_ITS_result,
+  path_ITS_result = NULL,
   output_dir,
   consensus_delivery_path = NULL,
   path_proj = NULL,
   path_sampleInfo_file_list = NULL,
   consensus_delivery_output = NULL,
+  ITS_fastq = "./fastq_pass_trim",
+  ITS_out_dir = NULL,
+  ITS_work_dir = NULL,
+  ITS_profile = "standard",
+  ITS_resume = TRUE,
+  ITS_database_set = "ncbi_16s_18s_28s_ITS",
+  ITS_min_len = 300,
+  ITS_max_len = 2000,
+  ITS_workflow = "epi2me-labs/wf-16s",
+  ITS_nextflow = "nextflow",
+  ITS_quiet = FALSE,
+  ITS_extra_args = "--minimap2_by_reference",
+  ITS_syntax_parser = "v1",
+  ITS_ansi_log = FALSE,
+  ITS_nextflow_env = NULL,
   samples_dir = "samples",
   abundance_table = "abundance_table_genus.tsv",
   alignment_tables_dir = "alignment_tables",
@@ -58,11 +73,25 @@ make_ITS_delivery(
 )
 }
 \arguments{
-\item{path_ITS_result}{Path to a completed wf-16s result directory for ITS data. By default the function expects this directory to contain \code{abundance_table_genus.tsv} and \code{alignment_tables/}.}
+\item{path_ITS_result}{Path to a completed wf-16s result directory for ITS data. Default is \code{NULL}. If \code{NULL} or if the directory does not exist, \code{run_ITS()} is run first. When an existing directory is supplied, the function expects it to contain \code{abundance_table_genus.tsv} and \code{alignment_tables/}.}
 \item{output_dir}{Final ITS delivery directory. The default behavior (\code{overwrite = TRUE}) replaces this directory if it already exists.}
 \item{consensus_delivery_path}{Existing consensus delivery directory. If \code{NULL} or if the directory does not exist, \code{make_consensus_delivery()} is run first using \code{path_proj}, \code{path_sampleInfo_file_list}, and \code{...}.}
 \item{path_proj, path_sampleInfo_file_list}{Arguments passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is missing. They are not required when an existing consensus delivery is supplied.}
 \item{consensus_delivery_output}{Directory used to store newly generated consensus delivery results. The default \code{NULL} creates a sibling work directory named \code{basename(output_dir)_consensus_work}.}
+\item{ITS_fastq}{FASTQ directory passed to \code{run_ITS()} when ITS results need to be generated. Default is \code{"./fastq_pass_trim"}.}
+\item{ITS_out_dir}{Output directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling directory named \code{basename(output_dir)_wf_ITS}; this directory then becomes the effective \code{path_ITS_result}.}
+\item{ITS_work_dir}{Nextflow work directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling directory named \code{basename(output_dir)_wf_ITS_work}.}
+\item{ITS_profile}{Nextflow profile passed to \code{run_ITS()}. Default is \code{"standard"}.}
+\item{ITS_resume}{Logical. If \code{TRUE} (default), pass \code{-resume} to Nextflow through \code{run_ITS()}.}
+\item{ITS_database_set}{wf-16s database set used by \code{run_ITS()}. Default is \code{"ncbi_16s_18s_28s_ITS"}.}
+\item{ITS_min_len, ITS_max_len}{Minimum and maximum read length passed to \code{run_ITS()}. Defaults are \code{300} and \code{2000}.}
+\item{ITS_workflow}{Nextflow workflow name or path passed to \code{run_ITS()}. Default is \code{"epi2me-labs/wf-16s"}.}
+\item{ITS_nextflow}{Nextflow executable name or path. Default is \code{"nextflow"}.}
+\item{ITS_quiet}{Logical. If \code{TRUE}, pass \code{-q} to Nextflow. Default is \code{FALSE}.}
+\item{ITS_extra_args}{Additional raw wf-16s command-line arguments passed through \code{run_ITS()}. Default is \code{"--minimap2_by_reference"}.}
+\item{ITS_syntax_parser}{Nextflow syntax parser version passed as \code{NXF_SYNTAX_PARSER}. Default is \code{"v1"}. Use \code{NULL} to leave it unchanged.}
+\item{ITS_ansi_log}{Logical. Passed as \code{NXF_ANSI_LOG}. Default is \code{FALSE}.}
+\item{ITS_nextflow_env}{Optional additional environment variables passed to \code{run_ITS()}, formatted as \code{"NAME=value"}. Default is \code{NULL}.}
 \item{samples_dir}{Directory under \code{output_dir} that stores per-barcode sample results. The default \code{"samples"} creates \code{output_dir/samples/barcode*/}. Set to \code{NULL} to put \code{barcode*/} directly under \code{output_dir}.}
 \item{abundance_table}{Name of the wf-16s abundance table under \code{path_ITS_result}. Default is \code{"abundance_table_genus.tsv"}. In the final delivery this file is copied to the root of \code{output_dir}.}
 \item{alignment_tables_dir}{Name of the wf-16s per-barcode alignment table directory under \code{path_ITS_result}. Default is \code{"alignment_tables"}.}
@@ -122,8 +151,11 @@ The function performs four main tasks:
 \item Prepare consensus-delivery content. If \code{consensus_delivery_path}
 exists, its barcode folders are copied into the final delivery. Otherwise,
 \code{make_consensus_delivery()} is run first.
-\item Prepare wf-16s ITS content. \code{move_ITS()} is called in a temporary
-directory to generate abundance plots and normalize wf-16s outputs.
+\item Prepare wf-16s ITS content. If \code{path_ITS_result} is \code{NULL} or
+missing, \code{run_ITS()} is called first. \code{move_ITS()} is then called in a
+temporary directory to generate abundance plots and normalize wf-16s outputs.
+Because the delivery assembly needs the completed ITS output files,
+\code{wait = TRUE} is required when ITS results must be generated.
 \item Reorganize files. Per-barcode consensus outputs are copied to
 \code{samples/barcode*/consensus_results/}, per-barcode wf-16s alignment tables
 are copied to \code{samples/barcode*/identification_tables/}, and project-level
@@ -139,16 +171,17 @@ is written both to
 \examples{
 \dontrun{
 make_ITS_delivery(
-  path_ITS_result = "results/wf_its",
   output_dir = "delivery/ITS",
+  path_ITS_result = "results/wf_its",
   consensus_delivery_path = "delivery/consensus",
   unite_db = "/data/reference/UNITE/unite_eukaryotes",
   unite_threads = 10
 )
 
 make_ITS_delivery(
-  path_ITS_result = "results/wf_its",
   output_dir = "delivery/ITS",
+  path_ITS_result = NULL,
+  ITS_fastq = "fastq_pass_trim",
   consensus_delivery_path = NULL,
   path_proj = "/data/minknow/project/run",
   path_sampleInfo_file_list = "SampleInfo.csv",

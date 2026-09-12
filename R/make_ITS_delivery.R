@@ -10,8 +10,9 @@
 #' while keeping each barcode's detailed evidence in one place.
 #'
 #' @param path_ITS_result Path to a completed wf-16s result directory for ITS
-#'   data. By default the function expects this directory to contain
-#'   `abundance_table_genus.tsv` and `alignment_tables/`.
+#'   data. If `NULL` or if the directory does not exist, [run_ITS()] is run
+#'   first. When an existing directory is supplied, the function expects it to
+#'   contain `abundance_table_genus.tsv` and `alignment_tables/`.
 #' @param output_dir Final ITS delivery directory. The default behavior
 #'   (`overwrite = TRUE`) replaces this directory if it already exists.
 #' @param consensus_delivery_path Existing consensus delivery directory. If
@@ -22,6 +23,11 @@
 #' @param consensus_delivery_output Directory used to store newly generated
 #'   consensus delivery results. The default `NULL` creates a sibling work
 #'   directory named `basename(output_dir)_consensus_work`.
+#' @param ITS_fastq,ITS_out_dir,ITS_work_dir,ITS_profile,ITS_resume,ITS_database_set,ITS_min_len,ITS_max_len,ITS_workflow,ITS_nextflow,ITS_quiet,ITS_extra_args,ITS_syntax_parser,ITS_ansi_log,ITS_nextflow_env
+#'   Parameters passed to [run_ITS()] when `path_ITS_result` is `NULL` or
+#'   missing. Defaults mirror [run_ITS()] except that `ITS_out_dir` and
+#'   `ITS_work_dir` default to sibling work directories derived from
+#'   `output_dir`.
 #' @param samples_dir Directory under `output_dir` that stores per-barcode
 #'   sample results. The default `"samples"` creates
 #'   `output_dir/samples/barcode*/`. Set to `NULL` to put `barcode*/`
@@ -88,7 +94,8 @@
 #'    its barcode folders are copied into the final delivery. Otherwise,
 #'    `make_consensus_delivery()` is run first.
 #' 2. Prepare wf-16s ITS content. `move_ITS()` is called in a temporary
-#'    directory to generate abundance plots and normalize wf-16s outputs.
+#'    directory to generate abundance plots and normalize wf-16s outputs. If
+#'    `path_ITS_result` was not supplied, `run_ITS()` is called first.
 #' 3. Reorganize files. Per-barcode consensus outputs are copied to
 #'    `samples/barcode*/consensus_results/`, per-barcode wf-16s alignment
 #'    tables are copied to `samples/barcode*/identification_tables/`, and
@@ -103,16 +110,17 @@
 #' @examples
 #' \dontrun{
 #' make_ITS_delivery(
-#'   path_ITS_result = "results/wf_its",
 #'   output_dir = "delivery/ITS",
+#'   path_ITS_result = "results/wf_its",
 #'   consensus_delivery_path = "delivery/consensus",
 #'   unite_db = "/data/reference/UNITE/unite_eukaryotes",
 #'   unite_threads = 10
 #' )
 #'
 #' make_ITS_delivery(
-#'   path_ITS_result = "results/wf_its",
 #'   output_dir = "delivery/ITS",
+#'   path_ITS_result = NULL,
+#'   ITS_fastq = "fastq_pass_trim",
 #'   consensus_delivery_path = NULL,
 #'   path_proj = "/data/minknow/project/run",
 #'   path_sampleInfo_file_list = "SampleInfo.csv",
@@ -121,12 +129,27 @@
 #' }
 #'
 #' @export
-make_ITS_delivery <- function(path_ITS_result,
+make_ITS_delivery <- function(path_ITS_result = NULL,
                               output_dir,
                               consensus_delivery_path = NULL,
                               path_proj = NULL,
                               path_sampleInfo_file_list = NULL,
                               consensus_delivery_output = NULL,
+                              ITS_fastq = "./fastq_pass_trim",
+                              ITS_out_dir = NULL,
+                              ITS_work_dir = NULL,
+                              ITS_profile = "standard",
+                              ITS_resume = TRUE,
+                              ITS_database_set = "ncbi_16s_18s_28s_ITS",
+                              ITS_min_len = 300,
+                              ITS_max_len = 2000,
+                              ITS_workflow = "epi2me-labs/wf-16s",
+                              ITS_nextflow = "nextflow",
+                              ITS_quiet = FALSE,
+                              ITS_extra_args = "--minimap2_by_reference",
+                              ITS_syntax_parser = "v1",
+                              ITS_ansi_log = FALSE,
+                              ITS_nextflow_env = NULL,
                               samples_dir = "samples",
                               abundance_table = "abundance_table_genus.tsv",
                               alignment_tables_dir = "alignment_tables",
@@ -172,12 +195,28 @@ make_ITS_delivery <- function(path_ITS_result,
                               stdout = "",
                               stderr = "",
                               ...) {
-  check_scalar_character(path_ITS_result, "path_ITS_result")
+  if (!is.null(path_ITS_result)) {
+    check_scalar_character(path_ITS_result, "path_ITS_result")
+  }
   check_scalar_character(output_dir, "output_dir")
   if (!is.null(consensus_delivery_path)) {
     check_scalar_character(consensus_delivery_path, "consensus_delivery_path")
   }
   if (!is.null(path_proj)) check_scalar_character(path_proj, "path_proj")
+  check_scalar_character(ITS_fastq, "ITS_fastq")
+  if (!is.null(ITS_out_dir)) check_scalar_character(ITS_out_dir, "ITS_out_dir")
+  if (!is.null(ITS_work_dir)) check_scalar_character(ITS_work_dir, "ITS_work_dir")
+  check_scalar_character(ITS_profile, "ITS_profile")
+  check_logical_scalar(ITS_resume, "ITS_resume")
+  check_scalar_character(ITS_database_set, "ITS_database_set")
+  ITS_min_len <- validate_positive_integer(ITS_min_len, "ITS_min_len")
+  ITS_max_len <- validate_positive_integer(ITS_max_len, "ITS_max_len")
+  check_scalar_character(ITS_workflow, "ITS_workflow")
+  check_scalar_character(ITS_nextflow, "ITS_nextflow")
+  check_logical_scalar(ITS_quiet, "ITS_quiet")
+  if (!is.null(ITS_extra_args)) check_scalar_character(ITS_extra_args, "ITS_extra_args")
+  if (!is.null(ITS_syntax_parser)) check_scalar_character(ITS_syntax_parser, "ITS_syntax_parser")
+  check_logical_scalar(ITS_ansi_log, "ITS_ansi_log")
   if (!is.null(samples_dir)) check_scalar_character(samples_dir, "samples_dir")
   check_scalar_character(abundance_table, "abundance_table")
   check_scalar_character(alignment_tables_dir, "alignment_tables_dir")
@@ -211,8 +250,18 @@ make_ITS_delivery <- function(path_ITS_result,
 
   need_consensus <- is.null(consensus_delivery_path) ||
     !dir.exists(consensus_delivery_path)
+  need_ITS <- is.null(path_ITS_result) || !dir.exists(path_ITS_result)
   if (!isTRUE(dry_run)) {
-    check_dir_arg(path_ITS_result, "path_ITS_result")
+    if (!isTRUE(need_ITS)) {
+      check_dir_arg(path_ITS_result, "path_ITS_result")
+    } else if (!isTRUE(wait)) {
+      stop(
+        "`path_ITS_result` is NULL or missing, so `run_ITS()` must be run ",
+        "before delivery assembly. Use `wait = TRUE` so the ITS workflow can ",
+        "finish before the function continues.",
+        call. = FALSE
+      )
+    }
     if (isTRUE(need_consensus)) {
       if (is.null(path_proj) || is.null(path_sampleInfo_file_list)) {
         stop(
@@ -234,10 +283,50 @@ make_ITS_delivery <- function(path_ITS_result,
   } else {
     check_scalar_character(consensus_delivery_output, "consensus_delivery_output")
   }
+  if (is.null(ITS_out_dir)) {
+    ITS_out_dir <- file.path(
+      dirname(output_dir),
+      paste0(basename(output_dir), "_wf_ITS")
+    )
+  }
+  if (is.null(ITS_work_dir)) {
+    ITS_work_dir <- file.path(
+      dirname(output_dir),
+      paste0(basename(output_dir), "_wf_ITS_work")
+    )
+  }
 
   if (isTRUE(dry_run)) {
+    ITS_plan <- NULL
+    if (isTRUE(need_ITS)) {
+      ITS_plan <- run_ITS(
+        fastq = ITS_fastq,
+        out_dir = ITS_out_dir,
+        work_dir = ITS_work_dir,
+        profile = ITS_profile,
+        resume = ITS_resume,
+        database_set = ITS_database_set,
+        min_len = ITS_min_len,
+        max_len = ITS_max_len,
+        workflow = ITS_workflow,
+        nextflow = ITS_nextflow,
+        quiet = ITS_quiet,
+        extra_args = ITS_extra_args,
+        syntax_parser = ITS_syntax_parser,
+        ansi_log = ITS_ansi_log,
+        nextflow_env = ITS_nextflow_env,
+        dry_run = TRUE,
+        echo = FALSE,
+        wait = TRUE,
+        stdout = stdout,
+        stderr = stderr
+      )
+    }
     return(invisible(make_ITS_delivery_dry_plan(
       path_ITS_result = path_ITS_result,
+      ITS_out_dir = ITS_out_dir,
+      need_ITS = need_ITS,
+      ITS_plan = ITS_plan,
       output_dir = output_dir,
       consensus_delivery_path = consensus_delivery_path,
       consensus_delivery_output = consensus_delivery_output,
@@ -263,6 +352,32 @@ make_ITS_delivery <- function(path_ITS_result,
   }
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   output_dir <- normalizePath(output_dir, mustWork = TRUE)
+  ITS_result <- NULL
+  if (isTRUE(need_ITS)) {
+    ITS_result <- run_ITS(
+      fastq = ITS_fastq,
+      out_dir = ITS_out_dir,
+      work_dir = ITS_work_dir,
+      profile = ITS_profile,
+      resume = ITS_resume,
+      database_set = ITS_database_set,
+      min_len = ITS_min_len,
+      max_len = ITS_max_len,
+      workflow = ITS_workflow,
+      nextflow = ITS_nextflow,
+      quiet = ITS_quiet,
+      extra_args = ITS_extra_args,
+      syntax_parser = ITS_syntax_parser,
+      ansi_log = ITS_ansi_log,
+      nextflow_env = ITS_nextflow_env,
+      dry_run = FALSE,
+      echo = echo,
+      wait = wait,
+      stdout = stdout,
+      stderr = stderr
+    )
+    path_ITS_result <- ITS_out_dir
+  }
   path_ITS_result <- normalizePath(path_ITS_result, mustWork = TRUE)
 
   consensus_result <- NULL
@@ -415,6 +530,8 @@ make_ITS_delivery <- function(path_ITS_result,
     consensus_delivery_path = consensus_delivery_path,
     consensus_generated = need_consensus,
     consensus_result = consensus_result,
+    ITS_generated = need_ITS,
+    ITS_result = ITS_result,
     consensus_copy = consensus_copy,
     its_result = its_moved,
     abundance_table = copied_abundance,
@@ -501,6 +618,9 @@ write_ITS_delivery_readme <- function(output_dir,
 }
 
 make_ITS_delivery_dry_plan <- function(path_ITS_result,
+                                       ITS_out_dir,
+                                       need_ITS,
+                                       ITS_plan,
                                        output_dir,
                                        consensus_delivery_path,
                                        consensus_delivery_output,
@@ -521,11 +641,14 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
   list(
     status = "dry_run",
     output_dir = output_dir,
+    need_ITS = need_ITS,
+    ITS_out_dir = ITS_out_dir,
     need_consensus = need_consensus,
     consensus_delivery_path = consensus_delivery_path,
     consensus_delivery_output = consensus_delivery_output,
     paths = list(
       path_ITS_result = path_ITS_result,
+      effective_ITS_result = if (isTRUE(need_ITS)) ITS_out_dir else path_ITS_result,
       samples = if (is.null(samples_dir)) output_dir else file.path(output_dir, samples_dir),
       abundance_table = file.path(output_dir, abundance_table),
       figures = file.path(output_dir, figure_dir),
@@ -538,6 +661,7 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
       unite_top_hits = file.path(output_dir, unite_top_hits_name),
       readme = readme_paths
     ),
+    ITS_plan = ITS_plan,
     run_unite_annotation = run_unite_annotation
   )
 }
