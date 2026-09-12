@@ -414,6 +414,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   need_consensus <- is.null(consensus_delivery_path) ||
     !dir.exists(consensus_delivery_path)
   need_ITS <- is.null(path_ITS_result) || !dir.exists(path_ITS_result)
+
   if (!isTRUE(dry_run)) {
     if (!isTRUE(need_ITS)) {
       check_dir_arg(path_ITS_result, "path_ITS_result")
