@@ -25,42 +25,64 @@ synthetic_ab1_from_bam(
 )
 }
 \arguments{
-\item{consensus}{Consensus FASTA used as the BAM reference.}
+\item{consensus}{Consensus FASTA used as the BAM reference. The sequence names
+must match the reference names in \code{bam}. If the FASTA has no \code{.fai}
+index, the function copies it to a temporary directory and runs
+\code{samtools faidx} there. A single generated AB1 file can contain one
+consensus sequence; the current writer supports sequences up to 16,000 bp.}
 
-\item{bam}{Coordinate-sorted BAM aligned to \code{consensus}.}
+\item{bam}{Coordinate-sorted BAM aligned to \code{consensus}. A standard BAM
+index (\code{.bai} or \code{.csi}) should exist next to the BAM; the function
+warns if no index is found, because \code{samtools mpileup} may fail without
+it.}
 
-\item{output_ab1}{Output \code{.ab1} file.}
+\item{output_ab1}{Output \code{.ab1} file. Parent directories are created
+automatically. Existing files are protected unless \code{overwrite = TRUE}.}
 
 \item{reference_name}{FASTA/BAM reference name. Required when \code{consensus}
-contains more than one sequence.}
+contains more than one sequence. Default \code{NULL} means the only FASTA
+record is used automatically.}
 
 \item{sample}{Sample name stored in the AB1 \code{SMPL1} tag. Defaults to the
 output filename without extension.}
 
-\item{samtools}{Command name or full path used to launch \code{samtools}.}
+\item{samtools}{Command name or full path used to launch \code{samtools}.
+Default is \code{"samtools"}.}
 
 \item{conda_env}{Optional conda environment name. If supplied, \code{samtools} is
-run with \verb{conda run -n <conda_env>}.}
+run with \verb{conda run -n <conda_env>}. Default \code{NULL} calls
+\code{samtools} from the current environment.}
 
-\item{conda}{Conda executable name or path used when \code{conda_env} is supplied.}
+\item{conda}{Conda executable name or path used when \code{conda_env} is
+supplied. Default is \code{"conda"}.}
 
-\item{min_base_quality}{Minimum base quality passed to \verb{samtools mpileup -Q}.}
+\item{min_base_quality}{Minimum base quality passed to
+\verb{samtools mpileup -Q}. Default \code{0} keeps all bases reported by
+mpileup.}
 
-\item{spacing}{Number of trace points between adjacent called bases.}
+\item{spacing}{Number of trace points between adjacent called bases. Default
+\code{12} gives separated Sanger-like peaks.}
 
-\item{sigma}{Gaussian peak width in trace points.}
+\item{sigma}{Gaussian peak width in trace points. Default is \code{2}; larger
+values make peaks wider and more overlapped.}
 
-\item{peak_height}{Main peak height.}
+\item{peak_height}{Main peak height before scaling by base-support fraction.
+Default is \code{900}.}
 
-\item{baseline}{Baseline signal added to every channel.}
+\item{baseline}{Baseline signal added to every A/C/G/T channel. Default is
+\code{15}.}
 
-\item{noise_fraction}{Minimum off-channel peak fraction.}
+\item{noise_fraction}{Minimum off-channel peak fraction. Default \code{0.03}
+keeps non-consensus channels visible at low height; must be between 0 and 1.}
 
-\item{overwrite}{Logical. If \code{FALSE}, stop when \code{output_ab1} already exists.}
+\item{overwrite}{Logical. If \code{FALSE} (default), stop when
+\code{output_ab1} already exists. Set \code{TRUE} to replace it.}
 
-\item{echo}{Logical. If \code{TRUE}, print the \verb{samtools mpileup} command.}
+\item{echo}{Logical. If \code{TRUE} (default), print the
+\verb{samtools mpileup} command.}
 
-\item{stderr}{Passed to \code{\link[=system2]{system2()}}. Defaults stream errors to the R console.}
+\item{stderr}{Passed to \code{\link[=system2]{system2()}}. Default \code{""}
+streams errors to the R console.}
 }
 \value{
 Invisibly returns a list with \code{status}, \code{paths}, \code{reference_name},
@@ -76,6 +98,24 @@ Gaussian peaks.
 This function does not reconstruct real capillary-sequencing fluorescence
 signal from the BAM. Use the result for visualization or compatibility with
 tools that require an AB1-like chromatogram, not as raw Sanger evidence.
+
+The function runs \code{samtools mpileup} with \code{-aa}, so positions with
+zero read coverage are still represented. For each consensus position, pileup
+symbols are reduced to A/C/G/T counts. The called consensus base is forced to
+have a visible major peak even when pileup support is absent, while other
+channels receive at least \code{noise_fraction} of the scaled signal.
+
+The AB1 file contains common ABIF tags used by many viewers, including sequence
+calls (\code{PBAS}), peak locations (\code{PLOC}), base qualities
+(\code{PCON}), sample name (\code{SMPL}), and four trace channels
+(\code{DATA9}-\code{DATA12}). The quality values are synthetic and are
+estimated from the pileup support for the consensus base; they are not original
+sequencer quality values.
+
+Typical use in ONTools delivery workflows is to create a Sanger-style visual
+companion for \code{barcode*/alignments/*.bam} plus the matching consensus or
+reference FASTA. The output is useful for review and customer-facing trace
+visualization, but it should be labeled as synthetic when delivered.
 }
 \examples{
 consensus <- tempfile(fileext = ".fasta")

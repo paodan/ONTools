@@ -4,48 +4,121 @@
 #' ITS taxonomic profiling results, and optional consensus-vs-UNITE BLAST
 #' review results into one customer-facing delivery folder.
 #'
+#' The default layout keeps per-sample files under `samples/barcode*/` and
+#' keeps project-level summaries, figures, and UNITE top-hit results directly
+#' under `output_dir`. This makes the root directory useful for quick review
+#' while keeping each barcode's detailed evidence in one place.
+#'
 #' @param path_ITS_result Path to a completed wf-16s result directory for ITS
-#'   data.
-#' @param output_dir Final ITS delivery directory.
+#'   data. By default the function expects this directory to contain
+#'   `abundance_table_genus.tsv` and `alignment_tables/`.
+#' @param output_dir Final ITS delivery directory. The default behavior
+#'   (`overwrite = TRUE`) replaces this directory if it already exists.
 #' @param consensus_delivery_path Existing consensus delivery directory. If
-#'   `NULL` or missing, [make_consensus_delivery()] is run first.
+#'   `NULL` or if the directory does not exist, [make_consensus_delivery()] is
+#'   run first using `path_proj`, `path_sampleInfo_file_list`, and `...`.
 #' @param path_proj,path_sampleInfo_file_list Arguments passed to
 #'   [make_consensus_delivery()] when `consensus_delivery_path` is missing.
 #' @param consensus_delivery_output Directory used to store newly generated
-#'   consensus delivery results. If `NULL`, a sibling work directory is used.
+#'   consensus delivery results. The default `NULL` creates a sibling work
+#'   directory named `basename(output_dir)_consensus_work`.
 #' @param samples_dir Directory under `output_dir` that stores per-barcode
-#'   sample results.
+#'   sample results. The default `"samples"` creates
+#'   `output_dir/samples/barcode*/`. Set to `NULL` to put `barcode*/`
+#'   directly under `output_dir`.
 #' @param abundance_table,alignment_tables_dir,figure_dir,identification_dir
 #'   File/directory names used by [move_ITS()] and the final delivery layout.
+#'   Defaults are `"abundance_table_genus.tsv"`, `"alignment_tables"`,
+#'   `"figures"`, and `"identification_tables"`. In the final delivery,
+#'   `abundance_table` and `figure_dir` are written at the root, while each
+#'   barcode alignment table is copied to
+#'   `samples/barcode*/identification_tables/`.
 #' @param tax_levels,cutoff,width,height Plotting parameters passed to
-#'   [move_ITS()].
+#'   [move_ITS()]. By default, plots are generated for Kingdom, Phylum, Class,
+#'   Order, Family, and Genus; taxa below `cutoff = 0.01` relative abundance
+#'   are grouped by the plotting helper; figures are saved at 12 x 6 inches.
 #' @param consensus_file,trimmed_consensus_file Consensus FASTA names searched
-#'   under the consensus delivery. Trimmed consensus files are preferred for
-#'   UNITE annotation.
+#'   under the consensus delivery. The default prefers
+#'   `"all-consensus-seqs_trimmed.fasta"` for UNITE review and falls back to
+#'   `"all-consensus-seqs.fasta"` when trimmed consensus files are absent.
 #' @param barcode_pattern Regular expression used to identify barcode
-#'   directories and alignment-stat files.
+#'   directories and alignment-stat files. The default `"^barcode[0-9]+$"`
+#'   matches names such as `barcode097` and `barcode303`.
 #' @param run_unite_annotation Logical. If `TRUE`, run
-#'   [annotate_consensus_blast()] on the collected consensus FASTA.
+#'   [annotate_consensus_blast()] on the collected consensus FASTA. Default is
+#'   `TRUE`; if neither `unite_db` nor `unite_db_fasta` is supplied, this step
+#'   is skipped with a warning.
 #' @param unite_db,unite_db_fasta BLAST database prefix or FASTA passed to
 #'   [annotate_consensus_blast()]. When both are `NULL`, UNITE annotation is
-#'   skipped with a warning.
+#'   skipped with a warning. Use `unite_db` for an already-built BLAST database
+#'   prefix, or `unite_db_fasta` to build a database from a FASTA file using
+#'   `makeblastdb`.
 #' @param unite_dir Directory under `output_dir` for detailed UNITE BLAST
-#'   results.
+#'   results. Default is `"unite_consensus_annotation"`.
 #' @param unite_top_hits_name Filename copied to `output_dir` for the top-hit
-#'   summary.
+#'   summary. Default is `"unite_consensus_top_hits.tsv"`, placed beside
+#'   `abundance_table_genus.tsv` for quick review.
 #' @param unite_threads,unite_max_target_seqs,unite_evalue,unite_task,unite_word_size,unite_strand,unite_dust,unite_perc_identity,unite_extra_args,unite_species_identity,unite_genus_identity,unite_family_identity,unite_min_query_coverage,unite_min_reference_coverage,unite_novel_identity,unite_blastn,unite_makeblastdb,unite_conda_env,conda
 #'   Parameters passed to [annotate_consensus_blast()] for UNITE annotation.
+#'   Defaults use `blastn`, `makeblastdb`, `threads = 10`,
+#'   `max_target_seqs = 20`, `evalue = "1e-20"`, species/genus/family identity
+#'   thresholds of 98.5/95/90 percent, minimum query/reference coverage of
+#'   80/50 percent, and `novel_identity = 97`. `unite_conda_env = NULL` means
+#'   BLAST tools are called from the current environment.
 #' @param readme_name,chinese_readme_name README filenames written under
-#'   `output_dir`. Set `chinese_readme_name = NULL` to skip the Chinese README.
-#' @param overwrite Logical. If `TRUE`, replace an existing `output_dir`.
+#'   `output_dir`. Defaults are `"README.txt"` and `"README.zh-CN.txt"`. Set
+#'   `chinese_readme_name = NULL` to skip the Chinese README.
+#' @param overwrite Logical. If `TRUE` (default), replace an existing
+#'   `output_dir`.
 #' @param dry_run Logical. If `TRUE`, return a plan without copying files or
-#'   running external tools.
+#'   running external tools. Default is `FALSE`.
 #' @param echo Logical. If `TRUE`, print commands from wrapped runners.
-#' @param wait,stdout,stderr Passed to wrapped command runners.
+#'   Default is `TRUE`.
+#' @param wait,stdout,stderr Passed to wrapped command runners. Defaults are
+#'   `wait = TRUE`, `stdout = ""`, and `stderr = ""`.
 #' @param ... Additional arguments passed to [make_consensus_delivery()] when a
 #'   new consensus delivery must be generated.
 #'
 #' @return Invisibly returns a list describing generated/copied outputs.
+#'
+#' @details
+#' The function performs four main tasks:
+#'
+#' 1. Prepare consensus-delivery content. If `consensus_delivery_path` exists,
+#'    its barcode folders are copied into the final delivery. Otherwise,
+#'    `make_consensus_delivery()` is run first.
+#' 2. Prepare wf-16s ITS content. `move_ITS()` is called in a temporary
+#'    directory to generate abundance plots and normalize wf-16s outputs.
+#' 3. Reorganize files. Per-barcode consensus outputs are copied to
+#'    `samples/barcode*/consensus_results/`, per-barcode wf-16s alignment
+#'    tables are copied to `samples/barcode*/identification_tables/`, and
+#'    project-level abundance files and figures are copied to `output_dir`.
+#' 4. Optionally run consensus-vs-UNITE review. Consensus FASTA files are
+#'    collected into `consensus_for_unite.fasta`, BLAST output is written to
+#'    `unite_consensus_annotation/consensus.blast.tsv`, and the top-hit summary
+#'    is written both to
+#'    `unite_consensus_annotation/consensus.top_hits.tsv` and to the root-level
+#'    `unite_consensus_top_hits.tsv`.
+#'
+#' @examples
+#' \dontrun{
+#' make_ITS_delivery(
+#'   path_ITS_result = "results/wf_its",
+#'   output_dir = "delivery/ITS",
+#'   consensus_delivery_path = "delivery/consensus",
+#'   unite_db = "/data/reference/UNITE/unite_eukaryotes",
+#'   unite_threads = 10
+#' )
+#'
+#' make_ITS_delivery(
+#'   path_ITS_result = "results/wf_its",
+#'   output_dir = "delivery/ITS",
+#'   consensus_delivery_path = NULL,
+#'   path_proj = "/data/minknow/project/run",
+#'   path_sampleInfo_file_list = "SampleInfo.csv",
+#'   unite_db_fasta = "/data/reference/UNITE/UNITE_eukaryotes_all.fasta"
+#' )
+#' }
 #'
 #' @export
 make_ITS_delivery <- function(path_ITS_result,

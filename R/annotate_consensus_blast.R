@@ -5,48 +5,125 @@
 #' extracts common UNITE-style taxonomy fields when present in subject titles,
 #' and assigns a conservative annotation level for each hit.
 #'
+#' This helper is intended for independent review of fungal/eukaryotic ITS
+#' consensus sequences, especially by searching consensus or representative
+#' sequences against a local UNITE Species Hypothesis (SH) FASTA database.
+#'
 #' @param consensus_fasta Query consensus/representative sequence FASTA file.
+#'   This may contain one or multiple consensus sequences. Each FASTA record is
+#'   reported separately in the BLAST table through `qseqid`.
 #' @param db BLAST database prefix passed to `blastn -db`. If `NULL`,
 #'   `db_fasta` must be supplied and a database is built under `out_dir`.
+#'   Use this when the UNITE database has already been prepared with
+#'   `makeblastdb`.
 #' @param db_fasta Optional FASTA file used to build a BLAST nucleotide database
-#'   with `makeblastdb`.
+#'   with `makeblastdb`. This is useful when you have downloaded a UNITE FASTA
+#'   file but have not yet built local BLAST index files.
 #' @param out_dir Output directory for BLAST results and optional database
-#'   files.
+#'   files. Default is `"work/consensus_annotation"`.
 #' @param output_tsv Output BLAST TSV path. If `NULL`, writes
 #'   `<out_dir>/<prefix>.blast.tsv`.
-#' @param prefix Prefix used when constructing default output paths.
-#' @param threads Positive integer thread count passed to `blastn`.
+#' @param prefix Prefix used when constructing default output paths. If `NULL`,
+#'   it is inferred from `consensus_fasta`.
+#' @param threads Positive integer thread count passed to `blastn`. Default is
+#'   `10`.
 #' @param max_target_seqs Maximum number of target sequences reported per query.
-#' @param evalue E-value cutoff passed to `blastn`.
+#'   Default is `20`.
+#' @param evalue E-value cutoff passed to `blastn`. Default is `"1e-20"`.
 #' @param task Optional BLASTN task, for example `"blastn"`, `"megablast"`, or
-#'   `"dc-megablast"`.
-#' @param word_size Optional word size passed to `blastn -word_size`.
+#'   `"dc-megablast"`. Default `NULL` lets BLAST use its own default.
+#' @param word_size Optional word size passed to `blastn -word_size`. Default is
+#'   `NULL`.
 #' @param strand Optional strand passed to `blastn -strand`, for example
-#'   `"both"`, `"plus"`, or `"minus"`.
+#'   `"both"`, `"plus"`, or `"minus"`. Default is `NULL`.
 #' @param dust Optional dust setting passed to `blastn -dust`, for example
-#'   `"yes"` or `"no"`.
+#'   `"yes"` or `"no"`. Default is `NULL`.
 #' @param perc_identity Optional minimum percent identity passed to
-#'   `blastn -perc_identity`.
+#'   `blastn -perc_identity`. Default is `NULL`.
 #' @param extra_args Optional additional `blastn` arguments as a character
-#'   vector, for example `c("-ungapped")`.
+#'   vector, for example `c("-ungapped")`. Default is `NULL`.
 #' @param species_identity,genus_identity,family_identity Percent identity
-#'   cutoffs used for the conservative `annotation_level` column.
+#'   cutoffs used for the conservative `annotation_level` column. Defaults are
+#'   `98.5`, `95`, and `90`.
 #' @param min_query_coverage,min_reference_coverage Minimum coverage cutoffs
-#'   used before assigning species/genus/family levels.
+#'   used before assigning species/genus/family levels. Defaults are `80` and
+#'   `50` percent.
 #' @param novel_identity Percent identity cutoff used to flag
 #'   `novel_candidate` when coverage is sufficient but the best hit is below
-#'   this identity.
-#' @param blastn,makeblastdb Command names or executable paths.
+#'   this identity. Default is `97`.
+#' @param blastn,makeblastdb Command names or executable paths. Defaults are
+#'   `"blastn"` and `"makeblastdb"`.
 #' @param conda_env Optional conda environment name. If supplied, external
-#'   commands are run with `conda run -n <conda_env>`.
+#'   commands are run with `conda run -n <conda_env>`. Default `NULL` calls
+#'   BLAST tools from the current environment.
 #' @param conda Conda executable name or path used when `conda_env` is supplied.
+#'   Default is `"conda"`.
 #' @param dry_run Logical. If `TRUE`, return planned commands without running.
+#'   Default is `FALSE`.
 #' @param echo Logical. If `TRUE`, print planned commands before execution.
+#'   Default is `TRUE`.
 #' @param stdout,stderr Passed to [system2()]. Defaults stream command output
 #'   and errors to the R console.
 #'
 #' @return Invisibly returns a list with `status`, `commands`, `paths`, `blast`,
 #'   `top_hits`, `thresholds`, and `conda_env`.
+#'
+#' @details
+#' `annotate_consensus_blast()` writes BLAST output in tabular format with these
+#' fields: `qseqid`, `qlen`, `qstart`, `qend`, `sseqid`, `slen`, `sstart`,
+#' `send`, `length`, `pident`, `qcovs`, `mismatch`, `gapopen`, `evalue`,
+#' `bitscore`, `salltitles`, and `staxids`.
+#'
+#' After reading the BLAST output, the function adds:
+#'
+#' * `query_coverage`: percent of the query sequence spanned by the alignment,
+#'   calculated from `qstart`, `qend`, and `qlen`.
+#' * `reference_coverage`: percent of the subject/reference sequence spanned by
+#'   the alignment, calculated from `sstart`, `send`, and `slen`.
+#' * `taxonomy_path`, `kingdom`, `phylum`, `class`, `order`, `family`, `genus`,
+#'   and `species`: parsed from UNITE-style `k__...;p__...;...;s__...`
+#'   taxonomy strings in `salltitles` when present.
+#' * `rank`: hit rank within each query, ordered by higher `bitscore`, lower
+#'   `evalue`, higher `pident`, then higher `query_coverage`.
+#' * `annotation_level`: `"species"`, `"genus"`, `"family"`, or
+#'   `"low_confidence"` based on the identity and coverage thresholds.
+#' * `novel_candidate`: `TRUE` for rank-1 hits with sufficient query/reference
+#'   coverage but identity below `novel_identity`.
+#'
+#' The default threshold logic is intentionally conservative. A hit must pass
+#' both `min_query_coverage = 80` and `min_reference_coverage = 50` before it can
+#' be labeled to family/genus/species by identity. The default identity
+#' thresholds are 90 percent for family, 95 percent for genus, and 98.5 percent
+#' for species. These labels are screening labels, not formal taxonomic
+#' decisions.
+#'
+#' For UNITE databases, ONTools expects FASTA headers that contain an SH
+#' identifier and taxonomy string. A typical header looks like:
+#'
+#' `>Claroideoglomus_sp|AM076567|SH1229972.10FU|reps|k__Fungi;p__Glomeromycota;c__Glomeromycetes;o__Entrophosporales;f__Entrophosporaceae;g__Claroideoglomus;s__Claroideoglomus_sp`
+#'
+#' `reps` indicates representative sequences chosen automatically, whereas
+#' `refs` indicates reference sequences chosen, overridden, or confirmed by
+#' users with taxonomic expertise. UNITE SH FASTA files are appropriate for
+#' local BLAST review of ITS consensus sequences.
+#'
+#' Example local UNITE database record used by the authors: downloaded from
+#' <https://unite.ut.ee/repository.php> on 2026-09-12. The all-eukaryotes file
+#' was `UNITE_eukaryotes_all.fasta`, corresponding to
+#' `sh_general_release_s_all_19.02.2025`, version 10.0, release date
+#' 2025-02-19, taxon group all eukaryotes, 20,802 RefS, 245,787 RepS, DOI
+#' <https://doi.org/10.15156/BIO/3301232>. The fungi-only file was
+#' `UNITE_fungi.fasta`, corresponding to `sh_general_release_s_19.02.2025`,
+#' version 10.0, release date 2025-02-19, taxon group Fungi, 20,295 RefS,
+#' 147,735 RepS, DOI <https://doi.org/10.15156/BIO/3301230>.
+#'
+#' To build a BLAST database manually, run for example:
+#'
+#' `makeblastdb -in UNITE_eukaryotes_all.fasta -dbtype nucl -out unite_eukaryotes`
+#'
+#' Then call this function with `db = "unite_eukaryotes"`. Alternatively, pass
+#' the FASTA directly with `db_fasta = "UNITE_eukaryotes_all.fasta"` and the
+#' function will run `makeblastdb` under `out_dir`.
 #'
 #' @examples
 #' query <- tempfile(fileext = ".fasta")
@@ -57,6 +134,21 @@
 #'   dry_run = TRUE
 #' )
 #' res$commands$blastn
+#'
+#' # Build a BLAST database from a downloaded UNITE FASTA, then annotate.
+#' # res <- annotate_consensus_blast(
+#' #   consensus_fasta = "all-consensus-seqs_trimmed.fasta",
+#' #   db_fasta = "UNITE_eukaryotes_all.fasta",
+#' #   out_dir = "work/unite_consensus_annotation"
+#' # )
+#'
+#' # Use an already-built local UNITE database.
+#' # res <- annotate_consensus_blast(
+#' #   consensus_fasta = "all-consensus-seqs_trimmed.fasta",
+#' #   db = "/data/reference/UNITE/unite_eukaryotes",
+#' #   output_tsv = "unite_consensus_annotation/consensus.blast.tsv",
+#' #   threads = 20
+#' # )
 #'
 #' @export
 annotate_consensus_blast <- function(consensus_fasta,

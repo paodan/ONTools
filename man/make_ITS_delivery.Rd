@@ -58,26 +58,49 @@ make_ITS_delivery(
 )
 }
 \arguments{
-\item{path_ITS_result}{Path to a completed wf-16s result directory for ITS data.}
-\item{output_dir}{Final ITS delivery directory.}
-\item{consensus_delivery_path}{Existing consensus delivery directory. If \code{NULL} or missing, \code{make_consensus_delivery()} is run first.}
-\item{path_proj, path_sampleInfo_file_list}{Arguments passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is missing.}
-\item{consensus_delivery_output}{Directory used to store newly generated consensus delivery results. If \code{NULL}, a sibling work directory is used.}
-\item{samples_dir}{Directory under \code{output_dir} that stores per-barcode sample results.}
-\item{abundance_table, alignment_tables_dir, figure_dir, identification_dir}{File or directory names used by \code{move_ITS()} and the final delivery layout.}
-\item{tax_levels, cutoff, width, height}{Plotting parameters passed to \code{move_ITS()}.}
-\item{consensus_file, trimmed_consensus_file}{Consensus FASTA names searched under the consensus delivery. Trimmed consensus files are preferred for UNITE annotation.}
-\item{barcode_pattern}{Regular expression used to identify barcode directories and alignment-stat files.}
-\item{run_unite_annotation}{Logical. If \code{TRUE}, run \code{annotate_consensus_blast()} on the collected consensus FASTA.}
-\item{unite_db, unite_db_fasta}{BLAST database prefix or FASTA passed to \code{annotate_consensus_blast()}. When both are \code{NULL}, UNITE annotation is skipped with a warning.}
-\item{unite_dir}{Directory under \code{output_dir} for detailed UNITE BLAST results.}
-\item{unite_top_hits_name}{Filename copied to \code{output_dir} for the top-hit summary.}
-\item{unite_threads, unite_max_target_seqs, unite_evalue, unite_task, unite_word_size, unite_strand, unite_dust, unite_perc_identity, unite_extra_args, unite_species_identity, unite_genus_identity, unite_family_identity, unite_min_query_coverage, unite_min_reference_coverage, unite_novel_identity, unite_blastn, unite_makeblastdb, unite_conda_env, conda}{Parameters passed to \code{annotate_consensus_blast()} for UNITE annotation.}
-\item{readme_name, chinese_readme_name}{README filenames written under \code{output_dir}. Set \code{chinese_readme_name = NULL} to skip the Chinese README.}
-\item{overwrite}{Logical. If \code{TRUE}, replace an existing \code{output_dir}.}
-\item{dry_run}{Logical. If \code{TRUE}, return a plan without copying files or running external tools.}
-\item{echo}{Logical. If \code{TRUE}, print commands from wrapped runners.}
-\item{wait, stdout, stderr}{Passed to wrapped command runners.}
+\item{path_ITS_result}{Path to a completed wf-16s result directory for ITS data. By default the function expects this directory to contain \code{abundance_table_genus.tsv} and \code{alignment_tables/}.}
+\item{output_dir}{Final ITS delivery directory. The default behavior (\code{overwrite = TRUE}) replaces this directory if it already exists.}
+\item{consensus_delivery_path}{Existing consensus delivery directory. If \code{NULL} or if the directory does not exist, \code{make_consensus_delivery()} is run first using \code{path_proj}, \code{path_sampleInfo_file_list}, and \code{...}.}
+\item{path_proj, path_sampleInfo_file_list}{Arguments passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is missing. They are not required when an existing consensus delivery is supplied.}
+\item{consensus_delivery_output}{Directory used to store newly generated consensus delivery results. The default \code{NULL} creates a sibling work directory named \code{basename(output_dir)_consensus_work}.}
+\item{samples_dir}{Directory under \code{output_dir} that stores per-barcode sample results. The default \code{"samples"} creates \code{output_dir/samples/barcode*/}. Set to \code{NULL} to put \code{barcode*/} directly under \code{output_dir}.}
+\item{abundance_table}{Name of the wf-16s abundance table under \code{path_ITS_result}. Default is \code{"abundance_table_genus.tsv"}. In the final delivery this file is copied to the root of \code{output_dir}.}
+\item{alignment_tables_dir}{Name of the wf-16s per-barcode alignment table directory under \code{path_ITS_result}. Default is \code{"alignment_tables"}.}
+\item{figure_dir}{Name of the figure directory created at the final delivery root. Default is \code{"figures"}.}
+\item{identification_dir}{Name of the per-barcode directory that receives wf-16s alignment tables. Default is \code{"identification_tables"}, producing \code{samples/barcode*/identification_tables/}.}
+\item{tax_levels}{Taxonomic levels plotted from the abundance table. Default is \code{c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")}.}
+\item{cutoff}{Minimum relative abundance kept as a separate plotted taxon by \code{plot_abundance_bar()}. Default is \code{0.01}.}
+\item{width, height}{Plot size in inches. Defaults are \code{width = 12} and \code{height = 6}.}
+\item{consensus_file}{Fallback consensus FASTA filename searched under the consensus delivery. Default is \code{"all-consensus-seqs.fasta"}.}
+\item{trimmed_consensus_file}{Preferred consensus FASTA filename for UNITE review. Default is \code{"all-consensus-seqs_trimmed.fasta"}.}
+\item{barcode_pattern}{Regular expression used to identify barcode directories and alignment-stat files. The default \code{"^barcode[0-9]+$"} matches names such as \code{barcode097} and \code{barcode303}.}
+\item{run_unite_annotation}{Logical. If \code{TRUE}, run \code{annotate_consensus_blast()} on the collected consensus FASTA. Default is \code{TRUE}; if neither \code{unite_db} nor \code{unite_db_fasta} is supplied, this step is skipped with a warning.}
+\item{unite_db}{Prefix of an already-built nucleotide BLAST database, for example \code{"/data/reference/UNITE/unite_eukaryotes"}. Default is \code{NULL}.}
+\item{unite_db_fasta}{FASTA file used to build a BLAST database with \code{makeblastdb}. Default is \code{NULL}. Use this when the UNITE FASTA has been downloaded but a BLAST database has not yet been built.}
+\item{unite_dir}{Directory under \code{output_dir} for detailed UNITE BLAST results. Default is \code{"unite_consensus_annotation"}.}
+\item{unite_top_hits_name}{Filename copied to \code{output_dir} for the UNITE top-hit summary. Default is \code{"unite_consensus_top_hits.tsv"}, placed beside \code{abundance_table_genus.tsv} for quick review.}
+\item{unite_threads}{Number of BLAST threads. Default is \code{10}.}
+\item{unite_max_target_seqs}{Maximum number of target hits retained per consensus sequence. Default is \code{20}.}
+\item{unite_evalue}{BLAST E-value cutoff. Default is \code{"1e-20"}.}
+\item{unite_task}{Optional BLAST task, such as \code{"blastn"} or \code{"megablast"}. Default \code{NULL} lets BLAST choose its default.}
+\item{unite_word_size}{Optional BLAST word size. Default is \code{NULL}.}
+\item{unite_strand}{Optional BLAST strand argument, such as \code{"both"}, \code{"plus"}, or \code{"minus"}. Default is \code{NULL}.}
+\item{unite_dust}{Optional BLAST low-complexity filtering setting, such as \code{"yes"} or \code{"no"}. Default is \code{NULL}.}
+\item{unite_perc_identity}{Optional minimum BLAST percent identity. Default is \code{NULL}.}
+\item{unite_extra_args}{Additional command-line arguments passed to \code{blastn}. Default is \code{NULL}.}
+\item{unite_species_identity, unite_genus_identity, unite_family_identity}{Percent identity thresholds used by \code{annotate_consensus_blast()} to label the suggested annotation level. Defaults are \code{98.5}, \code{95}, and \code{90}.}
+\item{unite_min_query_coverage}{Minimum query coverage percentage used for confident annotation-level assignment. Default is \code{80}.}
+\item{unite_min_reference_coverage}{Minimum reference coverage percentage used for confident annotation-level assignment. Default is \code{50}.}
+\item{unite_novel_identity}{Identity threshold below which a sufficiently covered top hit is flagged as a possible novel-candidate signal. Default is \code{97}.}
+\item{unite_blastn}{Executable name or path for \code{blastn}. Default is \code{"blastn"}.}
+\item{unite_makeblastdb}{Executable name or path for \code{makeblastdb}. Default is \code{"makeblastdb"}.}
+\item{unite_conda_env}{Optional conda environment used for BLAST commands. Default \code{NULL} calls tools from the current environment.}
+\item{conda}{Conda executable used when \code{unite_conda_env} is not \code{NULL}. Default is \code{"conda"}.}
+\item{readme_name, chinese_readme_name}{README filenames written under \code{output_dir}. Defaults are \code{"README.txt"} and \code{"README.zh-CN.txt"}. Set \code{chinese_readme_name = NULL} to skip the Chinese README.}
+\item{overwrite}{Logical. If \code{TRUE} (default), replace an existing \code{output_dir}.}
+\item{dry_run}{Logical. If \code{TRUE}, return a plan without copying files or running external tools. Default is \code{FALSE}.}
+\item{echo}{Logical. If \code{TRUE}, print commands from wrapped runners. Default is \code{TRUE}.}
+\item{wait, stdout, stderr}{Passed to wrapped command runners. Defaults are \code{wait = TRUE}, \code{stdout = ""}, and \code{stderr = ""}.}
 \item{...}{Additional arguments passed to \code{make_consensus_delivery()} when a new consensus delivery must be generated.}
 }
 \value{
@@ -87,13 +110,49 @@ Invisibly returns a list describing generated and copied outputs.
 \code{make_ITS_delivery()} combines amplicon consensus delivery results,
 wf-16s ITS taxonomic profiling results, and optional consensus-vs-UNITE BLAST
 review results into one customer-facing delivery folder.
+
+The default layout keeps per-sample files under \code{samples/barcode*/} and
+keeps project-level summaries, figures, and UNITE top-hit results directly
+under \code{output_dir}. This makes the root directory useful for quick review
+while keeping each barcode's detailed evidence in one place.
 }
 \details{
-The final delivery puts per-barcode results under \code{samples/barcode*/}.
-Consensus results are copied to \code{samples/barcode*/consensus_results/};
-wf-16s alignment tables are copied to
-\code{samples/barcode*/identification_tables/}. The abundance table and
-figures are kept at the delivery root. When UNITE annotation is enabled, the
-detailed BLAST table remains under \code{unite_consensus_annotation/}, and the
-top-hit table is also copied to \code{unite_consensus_top_hits.tsv} at the root.
+The function performs four main tasks:
+\enumerate{
+\item Prepare consensus-delivery content. If \code{consensus_delivery_path}
+exists, its barcode folders are copied into the final delivery. Otherwise,
+\code{make_consensus_delivery()} is run first.
+\item Prepare wf-16s ITS content. \code{move_ITS()} is called in a temporary
+directory to generate abundance plots and normalize wf-16s outputs.
+\item Reorganize files. Per-barcode consensus outputs are copied to
+\code{samples/barcode*/consensus_results/}, per-barcode wf-16s alignment tables
+are copied to \code{samples/barcode*/identification_tables/}, and project-level
+abundance files and figures are copied to \code{output_dir}.
+\item Optionally run consensus-vs-UNITE review. Consensus FASTA files are
+collected into \code{consensus_for_unite.fasta}, BLAST output is written to
+\code{unite_consensus_annotation/consensus.blast.tsv}, and the top-hit summary
+is written both to
+\code{unite_consensus_annotation/consensus.top_hits.tsv} and to the root-level
+\code{unite_consensus_top_hits.tsv}.
+}
+}
+\examples{
+\dontrun{
+make_ITS_delivery(
+  path_ITS_result = "results/wf_its",
+  output_dir = "delivery/ITS",
+  consensus_delivery_path = "delivery/consensus",
+  unite_db = "/data/reference/UNITE/unite_eukaryotes",
+  unite_threads = 10
+)
+
+make_ITS_delivery(
+  path_ITS_result = "results/wf_its",
+  output_dir = "delivery/ITS",
+  consensus_delivery_path = NULL,
+  path_proj = "/data/minknow/project/run",
+  path_sampleInfo_file_list = "SampleInfo.csv",
+  unite_db_fasta = "/data/reference/UNITE/UNITE_eukaryotes_all.fasta"
+)
+}
 }

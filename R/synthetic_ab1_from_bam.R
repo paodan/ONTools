@@ -9,29 +9,68 @@
 #' signal from the BAM. Use the result for visualization or compatibility with
 #' tools that require an AB1-like chromatogram, not as raw Sanger evidence.
 #'
-#' @param consensus Consensus FASTA used as the BAM reference.
-#' @param bam Coordinate-sorted BAM aligned to `consensus`.
-#' @param output_ab1 Output `.ab1` file.
+#' @param consensus Consensus FASTA used as the BAM reference. The sequence
+#'   names must match the reference names in `bam`. If the FASTA has no `.fai`
+#'   index, the function copies it to a temporary directory and runs
+#'   `samtools faidx` there. A single generated AB1 file can contain one
+#'   consensus sequence; the current writer supports sequences up to 16,000 bp.
+#' @param bam Coordinate-sorted BAM aligned to `consensus`. A standard BAM
+#'   index (`.bai` or `.csi`) should exist next to the BAM; the function warns
+#'   if no index is found, because `samtools mpileup` may fail without it.
+#' @param output_ab1 Output `.ab1` file. Parent directories are created
+#'   automatically. Existing files are protected unless `overwrite = TRUE`.
 #' @param reference_name FASTA/BAM reference name. Required when `consensus`
-#'   contains more than one sequence.
+#'   contains more than one sequence. Default `NULL` means the only FASTA record
+#'   is used automatically.
 #' @param sample Sample name stored in the AB1 `SMPL1` tag. Defaults to the
 #'   output filename without extension.
-#' @param samtools Command name or full path used to launch `samtools`.
+#' @param samtools Command name or full path used to launch `samtools`. Default
+#'   is `"samtools"`.
 #' @param conda_env Optional conda environment name. If supplied, `samtools` is
-#'   run with `conda run -n <conda_env>`.
+#'   run with `conda run -n <conda_env>`. Default `NULL` calls `samtools` from
+#'   the current environment.
 #' @param conda Conda executable name or path used when `conda_env` is supplied.
+#'   Default is `"conda"`.
 #' @param min_base_quality Minimum base quality passed to `samtools mpileup -Q`.
-#' @param spacing Number of trace points between adjacent called bases.
-#' @param sigma Gaussian peak width in trace points.
-#' @param peak_height Main peak height.
-#' @param baseline Baseline signal added to every channel.
-#' @param noise_fraction Minimum off-channel peak fraction.
-#' @param overwrite Logical. If `FALSE`, stop when `output_ab1` already exists.
-#' @param echo Logical. If `TRUE`, print the `samtools mpileup` command.
-#' @param stderr Passed to [system2()]. Defaults stream errors to the R console.
+#'   Default `0` keeps all bases reported by mpileup.
+#' @param spacing Number of trace points between adjacent called bases. Default
+#'   `12` gives separated Sanger-like peaks.
+#' @param sigma Gaussian peak width in trace points. Default is `2`; larger
+#'   values make peaks wider and more overlapped.
+#' @param peak_height Main peak height before scaling by base-support fraction.
+#'   Default is `900`.
+#' @param baseline Baseline signal added to every A/C/G/T channel. Default is
+#'   `15`.
+#' @param noise_fraction Minimum off-channel peak fraction. Default `0.03`
+#'   keeps non-consensus channels visible at low height; must be between 0 and
+#'   1.
+#' @param overwrite Logical. If `FALSE` (default), stop when `output_ab1`
+#'   already exists. Set `TRUE` to replace it.
+#' @param echo Logical. If `TRUE` (default), print the `samtools mpileup`
+#'   command.
+#' @param stderr Passed to [system2()]. Default `""` streams errors to the R
+#'   console.
 #'
 #' @return Invisibly returns a list with `status`, `paths`, `reference_name`,
 #'   `sequence_length`, `trace_length`, and `command`.
+#'
+#' @details
+#' The function runs `samtools mpileup` with `-aa`, so positions with zero read
+#' coverage are still represented. For each consensus position, pileup symbols
+#' are reduced to A/C/G/T counts. The called consensus base is forced to have a
+#' visible major peak even when pileup support is absent, while other channels
+#' receive at least `noise_fraction` of the scaled signal.
+#'
+#' The AB1 file contains common ABIF tags used by many viewers, including
+#' sequence calls (`PBAS`), peak locations (`PLOC`), base qualities (`PCON`),
+#' sample name (`SMPL`), and four trace channels (`DATA9`-`DATA12`). The quality
+#' values are synthetic and are estimated from the pileup support for the
+#' consensus base; they are not original sequencer quality values.
+#'
+#' Typical use in ONTools delivery workflows is to create a Sanger-style visual
+#' companion for `barcode*/alignments/*.bam` plus the matching consensus or
+#' reference FASTA. The output is useful for review and customer-facing trace
+#' visualization, but it should be labeled as synthetic when delivered.
 #'
 #' @examples
 #' consensus <- tempfile(fileext = ".fasta")
