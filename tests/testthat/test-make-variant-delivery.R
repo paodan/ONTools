@@ -66,7 +66,9 @@ test_that("make_variant_delivery writes per-barcode and merged variant tables", 
   dir.create(vcf_dir, recursive = TRUE)
 
   reference <- tempfile(fileext = ".fasta")
-  writeLines(c(">amp1", "ACGTACGTACGTACGTACGTACGTACGT"), reference)
+  writeLines(c(">amp 1", "ACGTACGTACGTACGTACGTACGTACGT"), reference)
+  sanitized_reference <- file.path(result_dir, "reference_sanitized_seqID.fasta")
+  writeLines(c(">amp_1", "ACGTACGTACGTACGTACGTACGTACGT"), sanitized_reference)
 
   vcf <- file.path(vcf_dir, "medaka.annotated.vcf.gz")
   con <- gzfile(vcf, open = "wt")
@@ -74,7 +76,7 @@ test_that("make_variant_delivery writes per-barcode and merged variant tables", 
   writeLines(c(
     "##fileformat=VCFv4.2",
     "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tbarcode001",
-    "amp1\t5\t.\tA\tG\t60\tPASS\tDP=30;SR=1,2,3,4;AR=0,1\tGT:GQ\t1:20"
+    "amp_1\t5\t.\tA\tG\t60\tPASS\tDP=30;SR=1,2,3,4;AR=0,1\tGT:GQ\t1:20"
   ), con)
   close(con)
   on.exit(NULL)
@@ -111,7 +113,8 @@ test_that("make_variant_delivery writes per-barcode and merged variant tables", 
   )
 
   selected_cols <- c(
-    "CHROM", "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
+    "CHROM", "reference_name_original", "reference_name_sanitized",
+    "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
     "ref_depth_downsampled", "alt_depth_downsampled",
     "variant_percent", "sampleID", "ref_upstream_20bp", "ref_downstream_20bp"
   )
@@ -143,11 +146,18 @@ test_that("make_variant_delivery writes per-barcode and merged variant tables", 
   expect_true(file.exists(delivered_readme_zh))
   expect_equal(res$variant_tables$PROJECT001_1600$status, "written")
   expect_equal(res$variant_tables$PROJECT001_1600$files$status, "written")
+  expect_equal(
+    res$variant_references$PROJECT001_1600,
+    normalizePath(sanitized_reference)
+  )
 
   variant <- utils::read.delim(barcode_tsv, check.names = FALSE)
   merged <- utils::read.delim(merged_tsv, check.names = FALSE)
   expect_equal(names(variant), selected_cols)
   expect_equal(names(merged), selected_cols)
+  expect_equal(variant$CHROM, "amp_1")
+  expect_equal(variant$reference_name_original, "amp 1")
+  expect_equal(variant$reference_name_sanitized, "amp_1")
   expect_equal(variant$Type, "SNP")
   expect_equal(variant$ref_depth_downsampled, 3)
   expect_equal(variant$alt_depth_downsampled, 7)
@@ -179,7 +189,8 @@ test_that("make_variant_delivery writes empty variant tables for empty VCFs", {
   on.exit(NULL)
 
   selected_cols <- c(
-    "CHROM", "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
+    "CHROM", "reference_name_original", "reference_name_sanitized",
+    "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
     "ref_depth_downsampled", "alt_depth_downsampled",
     "variant_percent", "sampleID", "ref_upstream_20bp", "ref_downstream_20bp"
   )
@@ -264,7 +275,7 @@ test_that("collect_variant_results documents IGV snapshots and AB1 files", {
   dir.create(file.path(barcode_dir, "IGV"), recursive = TRUE)
   dir.create(file.path(barcode_dir, "AB1"), recursive = TRUE)
   writeLines(
-    "CHROM\tPOS\tREF\tALT\tQUAL\tFILTER\tType\tref_depth_downsampled\talt_depth_downsampled\tvariant_percent\tsampleID\tref_upstream_20bp\tref_downstream_20bp",
+    "CHROM\treference_name_original\treference_name_sanitized\tPOS\tREF\tALT\tQUAL\tFILTER\tType\tref_depth_downsampled\talt_depth_downsampled\tvariant_percent\tsampleID\tref_upstream_20bp\tref_downstream_20bp",
     file.path(result_dir, "variant_all.tsv")
   )
   writeLines("x", file.path(barcode_dir, "IGV", "barcode001.amp1.png"))

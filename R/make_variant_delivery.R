@@ -12,7 +12,10 @@
 #' @param path_sampleInfo_file_list Named character vector or list of sample
 #'   information CSV files. Names are used as grouped FASTQ folder names.
 #' @param reference Reference FASTA file passed to [run_wf_amplicon()] and
-#'   [read_vcf()]. FASTA record names must match VCF `CHROM` values.
+#'   used for downstream variant tables, IGV snapshots, and AB1 traces. After
+#'   [run_wf_amplicon()] finishes, downstream steps first try to use the
+#'   workflow-generated `reference_sanitized_seqID.*` file under each `out_dir`
+#'   so reference record names match VCF `CHROM` and BAM contig names.
 #' @param path_delivery Root directory where per-group final results are copied.
 #' @param kit_name Dorado barcode kit name.
 #' @param model Dorado basecalling model or model alias.
@@ -95,8 +98,9 @@
 #'
 #' @return Invisibly returns a list with run-level QC (`g1`), per-group QC
 #'   (`g2`), Dorado/basecalling status (`stat`), FASTQ move plans, amplicon
-#'   workflow results, variant table summaries, delivery copy summaries, and
-#'   important output paths.
+#'   workflow results, sanitized reference paths used for downstream variant
+#'   outputs, variant table summaries, IGV snapshot summaries, synthetic AB1
+#'   summaries, delivery copy summaries, and important output paths.
 #'
 #' @export
 make_variant_delivery <- function(path_proj,
@@ -129,7 +133,10 @@ make_variant_delivery <- function(path_proj,
                                   variant_tsv_name = "variant.tsv",
                                   variant_all_name = "variant_all.tsv",
                                   variant_columns = c(
-                                    "CHROM", "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
+                                    "CHROM",
+                                    "reference_name_original",
+                                    "reference_name_sanitized",
+                                    "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
                                     "ref_depth_downsampled", "alt_depth_downsampled",
                                     "variant_percent", "sampleID",
                                     "ref_upstream_20bp", "ref_downstream_20bp"
@@ -360,6 +367,7 @@ make_variant_delivery <- function(path_proj,
   move_plans <- list()
   workflow <- list()
   variant_tables <- list()
+  variant_references <- list()
   g2 <- list()
   igv_results <- list()
   ab1_results <- list()
@@ -473,12 +481,19 @@ make_variant_delivery <- function(path_proj,
         paths = list(fastq = group_fastq, out_dir = group_out_dir, reference = reference)
       )
     }
+    variant_reference <- resolve_wf_amplicon_variant_reference(
+      result_dir = workflow[[folder]]$paths$out_dir,
+      reference = reference,
+      dry_run = dry_run
+    )
+    variant_references[[folder]] <- variant_reference
 
     if (isTRUE(make_variant_table_step)) {
       message("Step 5: Generate variant tables")
       variant_tables[[folder]] <- make_wf_amplicon_variant_tables(
         result_dir = workflow[[folder]]$paths$out_dir,
-        reference = reference,
+        reference = variant_reference,
+        original_reference = reference,
         variant_vcf_name = variant_vcf_name,
         variant_tsv_name = variant_tsv_name,
         variant_all_name = variant_all_name,
@@ -542,7 +557,7 @@ make_variant_delivery <- function(path_proj,
       message("Step 7: Generate IGV plots")
       igv_results[[folder]] <- generate_variant_igv_snapshots(
         result_dir = workflow[[folder]]$paths$out_dir,
-        reference = reference,
+        reference = variant_reference,
         barcode_pattern = "^barcode[0-9]+$",
         format = igv_format,
         igv = igv,
@@ -562,7 +577,7 @@ make_variant_delivery <- function(path_proj,
       message("Step 8: Generate synthetic AB1 files")
       ab1_results[[folder]] <- generate_variant_ab1_files(
         result_dir = workflow[[folder]]$paths$out_dir,
-        reference = reference,
+        reference = variant_reference,
         barcode_pattern = "^barcode[0-9]+$",
         ab1_name_template = ab1_name_template,
         ab1_dir_name = ab1_dir_name,
@@ -625,6 +640,7 @@ make_variant_delivery <- function(path_proj,
     move_plans = move_plans,
     workflow = workflow,
     variant_tables = variant_tables,
+    variant_references = variant_references,
     igv = igv_results,
     ab1 = ab1_results,
     delivery = delivery,
@@ -854,6 +870,7 @@ run_variant_source_qc <- function(path_seq_summary,
 
 make_wf_amplicon_variant_tables <- function(result_dir,
                                             reference,
+                                            original_reference = reference,
                                             variant_vcf_name,
                                             variant_tsv_name,
                                             variant_all_name,
@@ -868,6 +885,10 @@ make_wf_amplicon_variant_tables <- function(result_dir,
   }
   barcode_dirs <- barcode_dirs[grepl("^barcode[0-9]+$", basename(barcode_dirs))]
   barcode_dirs <- sort(barcode_dirs)
+  reference_map <- make_variant_reference_name_map(
+    original_reference = original_reference,
+    sanitized_reference = reference
+  )
 
   rows <- data.frame(
     barcode = basename(barcode_dirs),
@@ -931,6 +952,7 @@ make_wf_amplicon_variant_tables <- function(result_dir,
       variant <- empty_variant_table(variant_columns)
       rows$status[[i]] <- "no_variants"
     } else {
+      variant <- add_variant_reference_name_columns(variant, reference_map)
       variant <- subset_variant_columns(variant, variant_columns)
       rows$status[[i]] <- "written"
     }
@@ -983,6 +1005,108 @@ empty_variant_table <- function(variant_columns) {
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
+}
+
+make_variant_reference_name_map <- function(original_reference, sanitized_reference) {
+  check_file_arg(original_reference, "original_reference")
+  check_file_arg(sanitized_reference, "sanitized_reference")
+  original <- Biostrings::readDNAStringSet(original_reference)
+  sanitized <- Biostrings::readDNAStringSet(sanitized_reference)
+  original_names <- names(original)
+  sanitized_names <- names(sanitized)
+  if (is.null(original_names) || any(!nzchar(original_names))) {
+    stop("All FASTA records in `original_reference` must have names.",
+         call. = FALSE)
+  }
+  if (is.null(sanitized_names) || any(!nzchar(sanitized_names))) {
+    stop("All FASTA records in `sanitized_reference` must have names.",
+         call. = FALSE)
+  }
+  if (length(original) != length(sanitized)) {
+    warning(
+      "`original_reference` and `sanitized_reference` contain different numbers of records; ",
+      "reference name mapping may be incomplete.",
+      call. = FALSE
+    )
+  }
+
+  n <- min(length(original), length(sanitized))
+  if (n == 0L) {
+    return(data.frame(
+      reference_name_sanitized = character(),
+      reference_name_original = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  data.frame(
+    reference_name_sanitized = sanitized_names[seq_len(n)],
+    reference_name_original = original_names[seq_len(n)],
+    stringsAsFactors = FALSE
+  )
+}
+
+add_variant_reference_name_columns <- function(variant, reference_map) {
+  variant$reference_name_sanitized <- variant$CHROM
+  variant$reference_name_original <- variant$CHROM
+  if (nrow(reference_map) == 0L || !"CHROM" %in% names(variant)) {
+    return(variant)
+  }
+
+  idx <- match(variant$CHROM, reference_map$reference_name_sanitized)
+  matched <- !is.na(idx)
+  variant$reference_name_original[matched] <- reference_map$reference_name_original[idx[matched]]
+  variant
+}
+
+resolve_wf_amplicon_variant_reference <- function(result_dir, reference, dry_run) {
+  check_file_arg(reference, "reference")
+  reference <- normalizePath(reference, mustWork = TRUE)
+  if (isTRUE(dry_run) || !dir.exists(result_dir)) {
+    return(reference)
+  }
+
+  direct_candidates <- list.files(
+    result_dir,
+    pattern = "^reference_sanitized_seqID[.](fa|fasta|fq|fastq)([.]gz)?$",
+    full.names = TRUE,
+    ignore.case = TRUE
+  )
+  candidates <- direct_candidates
+  if (length(candidates) == 0L) {
+    candidates <- list.files(
+      result_dir,
+      pattern = "^reference_sanitized_seqID[.](fa|fasta|fq|fastq)([.]gz)?$",
+      full.names = TRUE,
+      recursive = TRUE,
+      ignore.case = TRUE
+    )
+  }
+  candidates <- sort(candidates[file.exists(candidates)])
+
+  if (length(candidates) > 0L) {
+    if (length(candidates) > 1L) {
+      warning(
+        "Multiple sanitized reference files were found under `result_dir`; using the first: ",
+        candidates[[1]],
+        call. = FALSE
+      )
+    }
+    return(normalizePath(candidates[[1]], mustWork = TRUE))
+  }
+
+  original_names <- names(Biostrings::readDNAStringSet(reference))
+  if (length(original_names) > 0L &&
+      any(grepl("[[:space:]]", original_names))) {
+    warning(
+      "No `reference_sanitized_seqID.*` file was found under `result_dir`, ",
+      "but the original reference contains whitespace in sequence names. ",
+      "Variant table/IGV/AB1 generation may fail if VCF/BAM sequence names were sanitized by wf-amplicon.",
+      call. = FALSE
+    )
+  }
+
+  reference
 }
 
 generate_variant_igv_snapshots <- function(result_dir,
@@ -1430,7 +1554,9 @@ variant_results_readme <- function(variant_all_name,
     "",
     "Variant table columns",
     "---------------------",
-    "- CHROM: reference sequence name.",
+    "- CHROM: reference sequence name used by VCF/BAM/IGV, usually the sanitized wf-amplicon name.",
+    "- reference_name_original: original FASTA record name from the user-supplied reference.",
+    "- reference_name_sanitized: sanitized FASTA record name used by wf-amplicon, VCF, BAM, and IGV.",
     "- POS: 1-based variant position on the reference.",
     "- REF: reference allele.",
     "- ALT: alternative allele.",
@@ -1531,7 +1657,9 @@ variant_results_readme_zh <- function(variant_all_name,
     "",
     "变异表字段说明",
     "--------------",
-    "- CHROM：参考序列名称。",
+    "- CHROM：VCF/BAM/IGV 实际使用的参考序列名称，通常是 wf-amplicon 校正后的名称。",
+    "- reference_name_original：用户提供的原始参考 FASTA record 名称。",
+    "- reference_name_sanitized：wf-amplicon、VCF、BAM 和 IGV 实际使用的校正后参考序列名称。",
     "- POS：变异在参考序列上的 1-based 位置。",
     "- REF：参考等位基因。",
     "- ALT：替代等位基因。",

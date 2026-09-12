@@ -10,6 +10,10 @@
 #' @param work_dir Nextflow work directory passed with `-work-dir`.
 #' @param profile Nextflow profile passed with `-profile`.
 #' @param resume Logical. If `TRUE`, append `-resume`.
+#' @param database_set wf-16s database set passed to `--database_set`.
+#'   Defaults to `"ncbi_16s_18s"`, matching the wf-16s default.
+#' @param min_len,max_len Minimum and maximum read length passed to
+#'   `--min_len` and `--max_len`. Defaults match wf-16s (`800` and `2000`).
 #' @param workflow Nextflow workflow name or path.
 #' @param nextflow Nextflow executable name or path.
 #' @param quiet Logical. If `TRUE`, pass `-q` to Nextflow to reduce its log
@@ -53,6 +57,9 @@ run_wf_16s <- function(fastq = "./fastq_pass_trim",
                        work_dir = "./work/wf_16s",
                        profile = "standard",
                        resume = TRUE,
+                       database_set = "ncbi_16s_18s",
+                       min_len = 800,
+                       max_len = 2000,
                        workflow = "epi2me-labs/wf-16s",
                        nextflow = "nextflow",
                        quiet = FALSE,
@@ -69,6 +76,7 @@ run_wf_16s <- function(fastq = "./fastq_pass_trim",
   check_scalar_character(out_dir, "out_dir")
   check_scalar_character(work_dir, "work_dir")
   check_scalar_character(profile, "profile")
+  check_scalar_character(database_set, "database_set")
   check_scalar_character(workflow, "workflow")
   check_scalar_character(nextflow, "nextflow")
   check_logical_scalar(resume, "resume")
@@ -84,6 +92,8 @@ run_wf_16s <- function(fastq = "./fastq_pass_trim",
   if (!is.null(syntax_parser)) {
     check_scalar_character(syntax_parser, "syntax_parser")
   }
+  min_len <- validate_positive_integer(min_len, "min_len")
+  max_len <- validate_positive_integer(max_len, "max_len")
   nextflow_env <- build_nextflow_env(syntax_parser, ansi_log, nextflow_env)
 
   args <- character()
@@ -96,6 +106,9 @@ run_wf_16s <- function(fastq = "./fastq_pass_trim",
     "run", workflow,
     "--fastq", fastq,
     "--out_dir", out_dir,
+    "--database_set", database_set,
+    "--min_len", as.character(min_len),
+    "--max_len", as.character(max_len),
     "-work-dir", work_dir,
     "-profile", profile
   )
@@ -145,7 +158,10 @@ run_wf_16s <- function(fastq = "./fastq_pass_trim",
       env = nextflow_env,
       shell_script = shell_script,
       status = NA_integer_,
-      paths = paths
+      paths = paths,
+      database_set = database_set,
+      min_len = min_len,
+      max_len = max_len
     )))
   }
 
@@ -179,6 +195,73 @@ run_wf_16s <- function(fastq = "./fastq_pass_trim",
     env = nextflow_env,
     shell_script = shell_script,
     status = status,
-    paths = paths
+    paths = paths,
+    database_set = database_set,
+    min_len = min_len,
+    max_len = max_len
   ))
+}
+
+#' Run the wf-16s workflow with ITS-friendly defaults
+#'
+#' `run_ITS()` is a small wrapper around [run_wf_16s()] for ITS amplicon
+#' profiling. It uses the same core arguments as `run_wf_16s()`, but defaults to
+#' the mixed NCBI marker database and a broader ITS read-length range.
+#'
+#' @inheritParams run_wf_16s
+#'
+#' @return Invisibly returns the result from [run_wf_16s()].
+#'
+#' @examples
+#' res <- run_ITS(
+#'   fastq = "./fastq_pass_trim",
+#'   out_dir = "./results/wf_ITS",
+#'   work_dir = "./work/wf_ITS",
+#'   dry_run = TRUE
+#' )
+#' res$command_string
+#'
+#' @export
+run_ITS <- function(fastq = "./fastq_pass_trim",
+                    out_dir = "./results/wf_ITS",
+                    work_dir = "./work/wf_ITS",
+                    profile = "standard",
+                    resume = TRUE,
+                    database_set = "ncbi_16s_18s_28s_ITS",
+                    min_len = 300,
+                    max_len = 2000,
+                    workflow = "epi2me-labs/wf-16s",
+                    nextflow = "nextflow",
+                    quiet = FALSE,
+                    extra_args = "--minimap2_by_reference",
+                    syntax_parser = "v1",
+                    ansi_log = FALSE,
+                    nextflow_env = NULL,
+                    dry_run = FALSE,
+                    echo = TRUE,
+                    wait = TRUE,
+                    stdout = "",
+                    stderr = "") {
+  run_wf_16s(
+    fastq = fastq,
+    out_dir = out_dir,
+    work_dir = work_dir,
+    profile = profile,
+    resume = resume,
+    database_set = database_set,
+    min_len = min_len,
+    max_len = max_len,
+    workflow = workflow,
+    nextflow = nextflow,
+    quiet = quiet,
+    extra_args = extra_args,
+    syntax_parser = syntax_parser,
+    ansi_log = ansi_log,
+    nextflow_env = nextflow_env,
+    dry_run = dry_run,
+    echo = echo,
+    wait = wait,
+    stdout = stdout,
+    stderr = stderr
+  )
 }

@@ -15,7 +15,9 @@ move_16s(
   identification_dir = "identification_tables",
   cutoff = 0.01,
   width = 12,
-  height = 6
+  height = 6,
+  readme_name = "README.txt",
+  chinese_readme_name = "README.zh-CN.txt"
 )
 }
 \arguments{
@@ -44,6 +46,12 @@ the \verb{16s/} delivery directory.}
 \item{cutoff}{Minimum relative abundance kept in abundance plots.}
 
 \item{width, height}{Plot width and height in inches.}
+
+\item{readme_name}{English README filename written under the \verb{16s/}
+delivery directory.}
+
+\item{chinese_readme_name}{Chinese README filename written under the \verb{16s/}
+delivery directory. Set to \code{NULL} to skip writing it.}
 }
 \value{
 Invisibly returns a list with input paths, output paths, and generated

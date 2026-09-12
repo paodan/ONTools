@@ -34,9 +34,10 @@ make_variant_delivery(
   variant_vcf_name = "medaka.annotated.vcf.gz",
   variant_tsv_name = "variant.tsv",
   variant_all_name = "variant_all.tsv",
-  variant_columns = c("CHROM", "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
-    "ref_depth_downsampled", "alt_depth_downsampled", "variant_percent", "sampleID",
-    "ref_upstream_20bp", "ref_downstream_20bp"),
+  variant_columns = c("CHROM", "reference_name_original",
+    "reference_name_sanitized", "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
+    "ref_depth_downsampled", "alt_depth_downsampled", "variant_percent",
+    "sampleID", "ref_upstream_20bp", "ref_downstream_20bp"),
   flank_width = 20,
   project_col = "Project_ID",
   amplicon_size_col = "Expected_Size_bp",
@@ -81,7 +82,10 @@ make_variant_delivery(
 information CSV files. Names are used as grouped FASTQ folder names.}
 
 \item{reference}{Reference FASTA file passed to \code{\link[=run_wf_amplicon]{run_wf_amplicon()}} and
-\code{\link[=read_vcf]{read_vcf()}}. FASTA record names must match VCF \code{CHROM} values.}
+used for downstream variant tables, IGV snapshots, and AB1 traces. After
+\code{\link[=run_wf_amplicon]{run_wf_amplicon()}} finishes, downstream steps first try to use the
+workflow-generated \code{reference_sanitized_seqID.*} file under each \code{out_dir}
+so reference record names match VCF \code{CHROM} and BAM contig names.}
 
 \item{path_delivery}{Root directory where per-group final results are copied.}
 
@@ -212,8 +216,9 @@ external analysis steps or copying final deliverables.}
 \value{
 Invisibly returns a list with run-level QC (\code{g1}), per-group QC
 (\code{g2}), Dorado/basecalling status (\code{stat}), FASTQ move plans, amplicon
-workflow results, variant table summaries, IGV snapshot summaries, synthetic
-AB1 summaries, delivery copy summaries, and important output paths.
+workflow results, sanitized reference paths used for downstream variant outputs,
+variant table summaries, IGV snapshot summaries, synthetic AB1 summaries,
+delivery copy summaries, and important output paths.
 }
 \description{
 \code{make_variant_delivery()} runs the ONT amplicon variant-calling delivery

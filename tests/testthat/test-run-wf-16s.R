@@ -13,6 +13,9 @@ test_that("run_wf_16s builds expected dry-run command", {
     "run", "epi2me-labs/wf-16s",
     "--fastq", "reads",
     "--out_dir", "results",
+    "--database_set", "ncbi_16s_18s",
+    "--min_len", "800",
+    "--max_len", "2000",
     "-work-dir", "work",
     "-profile", "standard",
     "-resume"
@@ -21,6 +24,9 @@ test_that("run_wf_16s builds expected dry-run command", {
   expect_true("NXF_SYNTAX_PARSER=v1" %in% res$env)
   expect_true("NXF_ANSI_LOG=false" %in% res$env)
   expect_equal(res$paths, list(fastq = "reads", out_dir = "results", work_dir = "work"))
+  expect_equal(res$database_set, "ncbi_16s_18s")
+  expect_equal(res$min_len, 800L)
+  expect_equal(res$max_len, 2000L)
 })
 
 test_that("run_wf_16s supports quiet, env, and extra args", {
@@ -49,10 +55,51 @@ test_that("run_wf_16s supports quiet, env, and extra args", {
   expect_match(res$command_string, "--minimap2_by_reference", fixed = TRUE)
 })
 
+test_that("run_wf_16s supports database and length overrides", {
+  res <- run_wf_16s(
+    fastq = "reads",
+    out_dir = "results",
+    work_dir = "work",
+    database_set = "ncbi_16s_18s_28s_ITS",
+    min_len = 300,
+    max_len = 2000,
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_match(res$command_string, "'--database_set' 'ncbi_16s_18s_28s_ITS'", fixed = TRUE)
+  expect_match(res$command_string, "'--min_len' '300'", fixed = TRUE)
+  expect_match(res$command_string, "'--max_len' '2000'", fixed = TRUE)
+  expect_equal(res$database_set, "ncbi_16s_18s_28s_ITS")
+  expect_equal(res$min_len, 300L)
+})
+
+test_that("run_ITS uses ITS defaults", {
+  res <- run_ITS(
+    fastq = "reads",
+    out_dir = "results_its",
+    work_dir = "work_its",
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_match(res$command_string, "'--database_set' 'ncbi_16s_18s_28s_ITS'", fixed = TRUE)
+  expect_match(res$command_string, "'--min_len' '300'", fixed = TRUE)
+  expect_match(res$command_string, "'--max_len' '2000'", fixed = TRUE)
+  expect_match(res$command_string, "--minimap2_by_reference", fixed = TRUE)
+  expect_equal(res$paths, list(fastq = "reads", out_dir = "results_its", work_dir = "work_its"))
+  expect_equal(res$database_set, "ncbi_16s_18s_28s_ITS")
+  expect_equal(res$min_len, 300L)
+  expect_equal(res$max_len, 2000L)
+})
+
 test_that("run_wf_16s validates arguments", {
   expect_error(run_wf_16s(fastq = "", dry_run = TRUE, echo = FALSE), "fastq")
   expect_error(run_wf_16s(work_dir = "", dry_run = TRUE, echo = FALSE), "work_dir")
   expect_error(run_wf_16s(resume = NA, dry_run = TRUE, echo = FALSE), "resume")
+  expect_error(run_wf_16s(database_set = "", dry_run = TRUE, echo = FALSE), "database_set")
+  expect_error(run_wf_16s(min_len = 0, dry_run = TRUE, echo = FALSE), "min_len")
+  expect_error(run_wf_16s(max_len = 0, dry_run = TRUE, echo = FALSE), "max_len")
   expect_error(run_wf_16s(extra_args = character(), dry_run = TRUE, echo = FALSE), "extra_args")
   expect_error(run_wf_16s(nextflow_env = "BAD", dry_run = TRUE, echo = FALSE), "nextflow_env")
 })
