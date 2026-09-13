@@ -46,6 +46,60 @@ test_that("make_variant_delivery builds dry-run variant workflow plans", {
   )
 })
 
+test_that("make_variant_delivery skips filtered-read QC in dry-run mode", {
+  proj <- tempfile("ont-project-")
+  delivery_dir <- tempfile("variant-delivery-")
+  run_root <- file.path(proj, "demux_out_YS-NB576", "run01")
+  fastq_root <- file.path(run_root, "fastq_pass_trim")
+  result_dir <- file.path(run_root, "results", "wf_amplicon_variant", "PROJECT001_1600")
+
+  dir.create(file.path(run_root, "bam_pass", "barcode001"), recursive = TRUE)
+  dir.create(file.path(fastq_root, "PROJECT001_1600", "barcode001"), recursive = TRUE)
+  dir.create(result_dir, recursive = TRUE)
+  writeLines("placeholder sequencing summary", file.path(proj, "demux_out_YS-NB576", "sequencing_summary.txt"))
+
+  reference <- tempfile(fileext = ".fasta")
+  writeLines(c(">amp1", "ACGTACGTACGTACGTACGTACGT"), reference)
+
+  sample_info <- tempfile(fileext = ".csv")
+  utils::write.csv(
+    data.frame(
+      Barcode_ID = "PBC001-001",
+      Project_ID = "PROJECT001",
+      Expected_Size_bp = "1600",
+      Min_Read_Length = 1200,
+      Max_Read_Length = 1800
+    ),
+    sample_info,
+    row.names = FALSE
+  )
+
+  res <- make_variant_delivery(
+    path_proj = proj,
+    path_sampleInfo_file_list = c(PROJECT001_1600 = sample_info),
+    reference = reference,
+    path_delivery = delivery_dir,
+    run_basecalling_demux_step = FALSE,
+    run_QC_step = FALSE,
+    move_fastq_step = TRUE,
+    move_fastq_mode = "reuse",
+    run_amplicon_step = FALSE,
+    make_variant_table_step = FALSE,
+    run_filtered_QC_step = TRUE,
+    run_igv_step = FALSE,
+    make_ab1 = FALSE,
+    collect_results_step = FALSE,
+    dry_run = TRUE,
+    echo = FALSE,
+    stderr = FALSE
+  )
+
+  expect_null(res$g2$PROJECT001_1600)
+  expect_false(file.exists(file.path(result_dir, "numRead_perSample.png")))
+  expect_false(file.exists(file.path(result_dir, "lenReadDistribution.png")))
+  expect_false(file.exists(file.path(result_dir, "numRead_perSample.csv")))
+})
+
 test_that("make_variant_delivery writes per-barcode and merged variant tables", {
   proj <- tempfile("ont-project-")
   delivery_dir <- tempfile("variant-delivery-")

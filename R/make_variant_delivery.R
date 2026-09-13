@@ -507,13 +507,11 @@ make_variant_delivery <- function(path_proj,
     }
 
     if (isTRUE(run_filtered_QC_step)) {
-      if (!file.exists(path_seq_summary)) {
-        if (isTRUE(dry_run)) {
-          message("Step 6: Run QC plots for filtered reads (dry-run; sequencing summary not found)")
-          g2[[folder]] <- NULL
-        } else {
-          stop("Sequencing summary file not found: ", path_seq_summary, call. = FALSE)
-        }
+      if (isTRUE(dry_run)) {
+        message("Step 6: Run QC plots for filtered reads (dry-run)")
+        g2[[folder]] <- NULL
+      } else if (!file.exists(path_seq_summary)) {
+        stop("Sequencing summary file not found: ", path_seq_summary, call. = FALSE)
       } else {
         message("Step 6: Run QC plots for filtered reads")
         barcode_numbers <- barcode_ids_to_numbers(sample_info[[sample_barcode_col]])
