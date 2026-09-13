@@ -244,7 +244,7 @@ plot_seqQC <- function(filePath,
   seq_len_df <- data.frame(
     seq_len = seq_summary[[length_col]],
     # sample = seq_summary$sample,
-    sample = factor(seq_summary$sample, levels = sort(unique(seq_summary$sample))),
+    sample = factor(seq_summary$sample, levels = sort(as.character(unique(seq_summary$sample)))),
     stringsAsFactors = FALSE
   )
   seq_len_df <- seq_len_df[is.finite(seq_len_df$seq_len) & seq_len_df$seq_len > 0, ]
