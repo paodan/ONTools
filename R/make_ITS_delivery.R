@@ -47,14 +47,18 @@
 #'   Additional [make_consensus_delivery()] parameters passed through when
 #'   consensus results need to be generated. Defaults match
 #'   [make_consensus_delivery()].
-#' @param path_work Shared work root used to derive default ITS workflow output
-#'   and work directories. If `NULL`, sibling directories of `path_delivery` are
-#'   used.
+#' @param path_work Fallback work root used to derive default ITS workflow
+#'   output and work directories when the Dorado run directory cannot be found.
+#'   If `NULL`, sibling directories of `path_delivery` are used as the fallback.
 #' @param out_dir,work_dir,profile,resume,database_set,min_len,max_len,workflow,nextflow,quiet,extra_args,syntax_parser,ansi_log,nextflow_env
 #'   Parameters passed to [run_ITS()] when `path_ITS_result` is `NULL` or
 #'   missing. Defaults mirror [run_ITS()] for ITS use: `database_set =
-#'   "ncbi_16s_18s_28s_ITS"`, `min_len = 300`, `max_len = 2000`, and
-#'   `extra_args = "--minimap2_by_reference"`.
+#'   "ncbi_16s_18s_28s_ITS"`, `min_len = 300`, `max_len = 900`, and
+#'   `extra_args = "--minimap2_by_reference"`. When `out_dir` and `work_dir`
+#'   are `NULL`, the default follows [make_consensus_delivery()] and writes
+#'   workflow outputs under the Dorado run directory:
+#'   `<path_proj>/<demux_out>/<run_dir>/results/wf_ITS/<group>/` and
+#'   `<path_proj>/<demux_out>/<run_dir>/work/wf_ITS/<group>/`.
 #' @param run_ITS_step Logical. If `TRUE`, run [run_ITS()] when
 #'   `path_ITS_result` is `NULL` or missing. Default is `TRUE`.
 #' @param move_ITS_step Logical. If `TRUE`, organize wf-16s ITS results into
@@ -339,6 +343,8 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   )
   check_scalar_character(override_basecaller_cfg, "override_basecaller_cfg")
   if (!is.null(path_work)) check_scalar_character(path_work, "path_work")
+  out_dir_was_null <- is.null(out_dir)
+  work_dir_was_null <- is.null(work_dir)
   if (!is.null(out_dir)) check_scalar_character(out_dir, "out_dir")
   if (!is.null(work_dir)) check_scalar_character(work_dir, "work_dir")
   check_scalar_character(profile, "profile")
@@ -405,6 +411,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   need_consensus <- is.null(consensus_delivery_path) ||
     !dir.exists(consensus_delivery_path)
   need_ITS <- is.null(path_ITS_result) || !dir.exists(path_ITS_result)
+  demux_out_name <- if (is.null(demux_out)) paste0("demux_out_", kit_name) else demux_out
 
   if (!isTRUE(dry_run)) {
     if (!isTRUE(need_ITS)) {
@@ -444,18 +451,19 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   } else {
     check_scalar_character(consensus_delivery_output, "consensus_delivery_output")
   }
-  default_work_root <- if (is.null(path_work)) dirname(output_dir) else path_work
+  default_ITS_roots <- make_ITS_default_workflow_roots(
+    path_proj = path_proj,
+    demux_out = demux_out_name,
+    model = model,
+    fastq_out = fastq_out,
+    path_work = path_work,
+    output_dir = output_dir
+  )
   if (is.null(out_dir)) {
-    out_dir <- file.path(
-      default_work_root,
-      paste0(basename(output_dir), "_wf_ITS")
-    )
+    out_dir <- default_ITS_roots$out_dir
   }
   if (is.null(work_dir)) {
-    work_dir <- file.path(
-      default_work_root,
-      paste0(basename(output_dir), "_wf_ITS_work")
-    )
+    work_dir <- default_ITS_roots$work_dir
   }
   targets <- make_ITS_delivery_targets(
     output_dir = output_dir,
@@ -622,16 +630,17 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
         consensus_result = consensus_result,
         fastq_out = fastq_out
       )
-      target_out_dir <- if (isTRUE(grouped_delivery)) {
-        file.path(out_dir, target_name)
-      } else {
-        out_dir
-      }
-      target_work_dir <- if (isTRUE(grouped_delivery)) {
-        file.path(work_dir, target_name)
-      } else {
-        work_dir
-      }
+      target_roots <- make_ITS_target_workflow_roots(
+        target_name = target_name,
+        grouped_delivery = grouped_delivery,
+        out_dir = out_dir,
+        work_dir = work_dir,
+        out_dir_was_null = out_dir_was_null,
+        work_dir_was_null = work_dir_was_null,
+        consensus_result = consensus_result
+      )
+      target_out_dir <- target_roots$out_dir
+      target_work_dir <- target_roots$work_dir
       ITS_results[[target_name]] <- run_ITS(
         fastq = group_fastq,
         out_dir = target_out_dir,
@@ -1210,6 +1219,88 @@ format_unite_top_hits <- function(top_hits) {
   ordered <- intersect(key_cols, names(top_hits))
   remaining <- setdiff(names(top_hits), ordered)
   top_hits[, c(ordered, remaining), drop = FALSE]
+}
+
+make_ITS_default_workflow_roots <- function(path_proj,
+                                            demux_out,
+                                            model,
+                                            fastq_out,
+                                            path_work,
+                                            output_dir) {
+  fallback_root <- if (is.null(path_work)) dirname(output_dir) else path_work
+  fallback <- list(
+    out_dir = file.path(fallback_root, paste0(basename(output_dir), "_wf_ITS")),
+    work_dir = file.path(fallback_root, paste0(basename(output_dir), "_wf_ITS_work"))
+  )
+
+  if (is.null(path_proj) || !dir.exists(path_proj)) {
+    return(fallback)
+  }
+
+  paths <- dorado_demux_to_fastq_paths(
+    proj = path_proj,
+    model = model,
+    demux_out = demux_out,
+    fastq_out = fastq_out,
+    scan_dynamic = TRUE
+  )
+  run_root <- select_single_path(paths$run_dirs, "Dorado run directory", fallback = NA_character_)
+  if (is.na(run_root) || !nzchar(run_root)) {
+    return(fallback)
+  }
+
+  list(
+    out_dir = file.path(run_root, "results", "wf_ITS"),
+    work_dir = file.path(run_root, "work", "wf_ITS")
+  )
+}
+
+make_ITS_target_workflow_roots <- function(target_name,
+                                           grouped_delivery,
+                                           out_dir,
+                                           work_dir,
+                                           out_dir_was_null,
+                                           work_dir_was_null,
+                                           consensus_result) {
+  target_out_dir <- if (isTRUE(grouped_delivery)) file.path(out_dir, target_name) else out_dir
+  target_work_dir <- if (isTRUE(grouped_delivery)) file.path(work_dir, target_name) else work_dir
+
+  run_root <- infer_ITS_run_root_from_consensus(consensus_result, target_name)
+  if (!is.na(run_root) && nzchar(run_root)) {
+    if (isTRUE(out_dir_was_null)) {
+      target_out_dir <- file.path(run_root, "results", "wf_ITS")
+      if (isTRUE(grouped_delivery)) target_out_dir <- file.path(target_out_dir, target_name)
+    }
+    if (isTRUE(work_dir_was_null)) {
+      target_work_dir <- file.path(run_root, "work", "wf_ITS")
+      if (isTRUE(grouped_delivery)) target_work_dir <- file.path(target_work_dir, target_name)
+    }
+  }
+
+  list(out_dir = target_out_dir, work_dir = target_work_dir)
+}
+
+infer_ITS_run_root_from_consensus <- function(consensus_result, target_name) {
+  if (is.null(consensus_result) ||
+      is.null(consensus_result$workflow) ||
+      is.null(consensus_result$workflow[[target_name]]) ||
+      is.null(consensus_result$workflow[[target_name]]$paths$out_dir)) {
+    return(NA_character_)
+  }
+
+  consensus_out_dir <- consensus_result$workflow[[target_name]]$paths$out_dir
+  if (is.null(consensus_out_dir) || is.na(consensus_out_dir) || !nzchar(consensus_out_dir)) {
+    return(NA_character_)
+  }
+
+  normalized <- normalizePath(consensus_out_dir, mustWork = FALSE)
+  parts <- strsplit(normalized, .Platform$file.sep, fixed = TRUE)[[1]]
+  marker <- match("results", parts)
+  if (is.na(marker) || marker <= 1L) {
+    return(NA_character_)
+  }
+
+  paste(parts[seq_len(marker - 1L)], collapse = .Platform$file.sep)
 }
 
 make_ITS_delivery_dry_plan <- function(path_ITS_result,

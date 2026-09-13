@@ -39,13 +39,13 @@ Ignored when \code{value} is supplied.}
 \code{percent_col}.}
 
 \item{species_col}{Column containing species names. If \code{NULL}, common wf-16s
-names such as \code{species}, \code{genuspecies}, and \code{genus species} are detected.}
+names such as \code{species}, \code{genuspecies}, and \verb{genus species} are detected.}
 
 \item{reads_col}{Column containing read counts. If \code{NULL}, common names such
-as \code{number of reads} and \code{number.of.reads} are detected.}
+as \verb{number of reads} and \code{number.of.reads} are detected.}
 
 \item{percent_col}{Column containing per-reference read percentage. If
-\code{NULL}, common names such as \code{pcreads} and \code{pc reads} are detected.}
+\code{NULL}, common names such as \code{pcreads} and \verb{pc reads} are detected.}
 
 \item{top_n}{Optional maximum number of species to show before grouping the
 rest into \code{"Others"}.}

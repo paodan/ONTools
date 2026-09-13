@@ -47,8 +47,8 @@ alleles without a shared anchor are \code{OTHER}, and reference/missing calls ar
 
 \item{add_allele_depth}{Logical. If \code{TRUE}, add allele-depth summary columns
 from medaka/wf-amplicon \code{SR} and \code{AR} INFO fields when available. \code{SR} is
-interpreted as \code{ref_fwd,ref_rev,alt1_fwd,alt1_rev,...}; \code{AR} is interpreted
-as ambiguous spanning reads by strand, \code{ambiguous_fwd,ambiguous_rev}.}
+interpreted as \verb{ref_fwd,ref_rev,alt1_fwd,alt1_rev,...}; \code{AR} is interpreted
+as ambiguous spanning reads by strand, \verb{ambiguous_fwd,ambiguous_rev}.}
 
 \item{reference_fasta}{Optional reference FASTA file. When supplied,
 \code{read_vcf()} adds reference sequence flanks around each variant position.
@@ -70,7 +70,7 @@ numeric columns when possible.}
 
 \item{genotype_prefix}{Prefix added to parsed genotype field names. When
 \code{NULL}, single-sample wide output uses bare names such as \code{GT} and \code{DP};
-multi-sample wide output uses \code{<sample>_<field>}.}
+multi-sample wide output uses \verb{<sample>_<field>}.}
 }
 \value{
 A data frame, or \code{NULL} for VCF files with no variant records. When
@@ -80,17 +80,16 @@ additional columns are added:
 \item \code{ref_fwd_depth}, \code{ref_rev_depth}: forward/reverse spanning reads
 best aligned to the reference allele.
 \item \code{alt_fwd_depth}, \code{alt_rev_depth}: forward/reverse spanning reads
-best aligned to ALT allele(s). For multi-allelic records, all ALT alleles are
-summed.
+best aligned to ALT allele(s). For multi-allelic records, all ALT
+alleles are summed.
 \item \code{ref_depth_downsampled}, \code{alt_depth_downsampled}: strand-summed
 REF and ALT support from downsampled medaka spanning reads.
-\item \code{variant_percent}: \code{alt_depth_downsampled /
-(ref_depth_downsampled + alt_depth_downsampled) * 100}.
+\item \code{variant_percent}: \code{alt_depth_downsampled / (ref_depth_downsampled + alt_depth_downsampled) * 100}.
 \item \code{ambiguous_fwd_depth}, \code{ambiguous_rev_depth}, \code{ambiguous_depth}:
 ambiguous spanning reads from \code{AR}.
 }
 When \code{reference_fasta} is supplied, two columns named
-\code{ref_upstream_<flank_width>bp} and \code{ref_downstream_<flank_width>bp} are
+\verb{ref_upstream_<flank_width>bp} and \verb{ref_downstream_<flank_width>bp} are
 added. Upstream sequence is taken before \code{POS}; downstream sequence is taken
 after the \code{REF} interval.
 }
@@ -109,4 +108,5 @@ writeLines(c(
 ), vcf)
 
 read_vcf(vcf)
+
 }

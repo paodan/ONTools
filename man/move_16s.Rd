@@ -13,6 +13,7 @@ move_16s(
   alignment_tables_dir = "alignment_tables",
   figure_dir = "figures",
   identification_dir = "identification_tables",
+  database_set = "ncbi_16s_18s",
   cutoff = 0.01,
   width = 12,
   height = 6,
@@ -42,6 +43,9 @@ directory.}
 
 \item{identification_dir}{Name of the copied alignment-table directory under
 the \verb{16s/} delivery directory.}
+
+\item{database_set}{wf-16s database set used to generate the delivered
+taxonomic profiling results.}
 
 \item{cutoff}{Minimum relative abundance kept in abundance plots.}
 

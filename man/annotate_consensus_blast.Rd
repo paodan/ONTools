@@ -20,12 +20,6 @@ annotate_consensus_blast(
   dust = NULL,
   perc_identity = NULL,
   extra_args = NULL,
-  species_identity = 98.5,
-  genus_identity = 95,
-  family_identity = 90,
-  min_query_coverage = 80,
-  min_reference_coverage = 50,
-  novel_identity = 97,
   blastn = "blastn",
   makeblastdb = "makeblastdb",
   conda_env = NULL,
@@ -56,23 +50,22 @@ files. Default is \code{"work/consensus_annotation"}.}
 \item{output_tsv}{Output BLAST TSV path. If \code{NULL}, writes
 \verb{<out_dir>/<prefix>.blast.tsv}.}
 
-\item{prefix}{Prefix used when constructing default output paths. If
-\code{NULL}, it is inferred from \code{consensus_fasta}.}
+\item{prefix}{Prefix used when constructing default output paths. If \code{NULL},
+it is inferred from \code{consensus_fasta}.}
 
-\item{threads}{Positive integer thread count passed to \code{blastn}. Default
-is \code{10}.}
+\item{threads}{Positive integer thread count passed to \code{blastn}. Default is
+\code{10}.}
 
 \item{max_target_seqs}{Maximum number of target sequences reported per query.
 Default is \code{20}.}
 
-\item{evalue}{E-value cutoff passed to \code{blastn}. Default is
-\code{"1e-20"}.}
+\item{evalue}{E-value cutoff passed to \code{blastn}. Default is \code{"1e-20"}.}
 
 \item{task}{Optional BLASTN task, for example \code{"blastn"}, \code{"megablast"}, or
 \code{"dc-megablast"}. Default \code{NULL} lets BLAST use its own default.}
 
-\item{word_size}{Optional word size passed to \code{blastn -word_size}.
-Default is \code{NULL}.}
+\item{word_size}{Optional word size passed to \code{blastn -word_size}. Default is
+\code{NULL}.}
 
 \item{strand}{Optional strand passed to \code{blastn -strand}, for example
 \code{"both"}, \code{"plus"}, or \code{"minus"}. Default is \code{NULL}.}
@@ -86,95 +79,73 @@ Default is \code{NULL}.}
 \item{extra_args}{Optional additional \code{blastn} arguments as a character
 vector, for example \code{c("-ungapped")}. Default is \code{NULL}.}
 
-\item{species_identity, genus_identity, family_identity}{Percent identity
-cutoffs used for the conservative \code{annotation_level} column. Defaults are
-\code{98.5}, \code{95}, and \code{90}.}
-
-\item{min_query_coverage, min_reference_coverage}{Minimum coverage cutoffs
-used before assigning species/genus/family levels. Defaults are \code{80} and
-\code{50} percent.}
-
-\item{novel_identity}{Percent identity cutoff used to flag
-\code{novel_candidate} when coverage is sufficient but the best hit is below
-this identity. Default is \code{97}.}
-
 \item{blastn, makeblastdb}{Command names or executable paths. Defaults are
 \code{"blastn"} and \code{"makeblastdb"}.}
 
 \item{conda_env}{Optional conda environment name. If supplied, external
-commands are run with \code{conda run -n <conda_env>}. Default \code{NULL}
-calls BLAST tools from the current environment.}
+commands are run with \verb{conda run -n <conda_env>}. Default \code{NULL} calls
+BLAST tools from the current environment.}
 
-\item{conda}{Conda executable name or path used when \code{conda_env} is
-supplied. Default is \code{"conda"}.}
+\item{conda}{Conda executable name or path used when \code{conda_env} is supplied.
+Default is \code{"conda"}.}
 
-\item{dry_run}{Logical. If \code{TRUE}, return planned commands without
-running. Default is \code{FALSE}.}
+\item{dry_run}{Logical. If \code{TRUE}, return planned commands without running.
+Default is \code{FALSE}.}
 
 \item{echo}{Logical. If \code{TRUE}, print planned commands before execution.
 Default is \code{TRUE}.}
 
-\item{stdout, stderr}{Passed to \code{\link[base:system2]{system2()}}. Defaults stream command output
+\item{stdout, stderr}{Passed to \code{\link[=system2]{system2()}}. Defaults stream command output
 and errors to the R console.}
 }
 \value{
 Invisibly returns a list with \code{status}, \code{commands}, \code{paths}, \code{blast},
-\code{top_hits}, \code{thresholds}, and \code{conda_env}.
+\code{top_hits}, and \code{conda_env}.
 }
 \description{
 \code{annotate_consensus_blast()} runs \code{blastn} against a local nucleotide BLAST
 database, parses the tabular result, calculates query/reference coverage,
 extracts common UNITE-style taxonomy fields when present in subject titles,
 and assigns a conservative annotation level for each hit.
-
+}
+\details{
 This helper is intended for independent review of fungal/eukaryotic ITS
 consensus sequences, especially by searching consensus or representative
 sequences against a local UNITE Species Hypothesis (SH) FASTA database.
-}
-\details{
-\code{annotate_consensus_blast()} writes BLAST output in tabular format with
-these fields: \code{qseqid}, \code{qlen}, \code{qstart}, \code{qend},
-\code{sseqid}, \code{slen}, \code{sstart}, \code{send}, \code{length},
-\code{pident}, \code{qcovs}, \code{mismatch}, \code{gapopen}, \code{evalue},
-\code{bitscore}, \code{salltitles}, and \code{staxids}.
+
+\code{annotate_consensus_blast()} runs BLAST in tabular format, then rewrites the
+output TSV with column headers. The BLAST-derived fields are: \code{qseqid},
+\code{qlen}, \code{qstart}, \code{qend}, \code{sseqid}, \code{slen}, \code{sstart}, \code{send}, \code{length},
+\code{pident}, \code{qcovs}, \code{mismatch}, \code{gapopen}, \code{evalue}, \code{bitscore},
+\code{salltitles}, and \code{staxids}.
 
 After reading the BLAST output, the function adds:
 \itemize{
-\item \code{query_coverage}: percent of the query sequence spanned by the
-alignment, calculated from \code{qstart}, \code{qend}, and \code{qlen}.
-\item \code{reference_coverage}: percent of the subject/reference sequence
-spanned by the alignment, calculated from \code{sstart}, \code{send}, and
-\code{slen}.
-\item \code{taxonomy_path}, \code{kingdom}, \code{phylum}, \code{class},
-\code{order}, \code{family}, \code{genus}, and \code{species}: parsed from
-UNITE-style \code{k__...;p__...;...;s__...} taxonomy strings in
-\code{salltitles} when present.
-\item \code{rank}: hit rank within each query, ordered by higher
-\code{bitscore}, lower \code{evalue}, higher \code{pident}, then higher
-\code{query_coverage}.
-\item \code{annotation_level}: \code{"species"}, \code{"genus"},
-\code{"family"}, or \code{"low_confidence"} based on the identity and coverage
-thresholds.
-\item \code{novel_candidate}: \code{TRUE} for rank-1 hits with sufficient
-query/reference coverage but identity below \code{novel_identity}.
+\item \code{query_coverage}: percent of the query sequence spanned by the alignment,
+calculated from \code{qstart}, \code{qend}, and \code{qlen}.
+\item \code{reference_coverage}: percent of the subject/reference sequence spanned by
+the alignment, calculated from \code{sstart}, \code{send}, and \code{slen}.
+\item \code{taxonomy_path}, \code{kingdom}, \code{phylum}, \code{class}, \code{order}, \code{family}, \code{genus},
+and \code{species}: parsed from UNITE-style \verb{k__...;p__...;...;s__...}
+taxonomy strings in \code{salltitles} when present.
+\item \code{rank}: hit rank within each query, ordered by higher \code{bitscore}, lower
+\code{evalue}, higher \code{pident}, then higher \code{query_coverage}.
 }
 
-The default threshold logic is intentionally conservative. A hit must pass both
-\code{min_query_coverage = 80} and \code{min_reference_coverage = 50} before it
-can be labeled to family/genus/species by identity. The default identity
-thresholds are 90 percent for family, 95 percent for genus, and 98.5 percent
-for species. These labels are screening labels, not formal taxonomic decisions.
+The function intentionally reports the BLAST metrics and parsed taxonomy
+fields without assigning species/genus/family calls or novel-candidate flags.
+Users should interpret the result from identity, query/reference coverage,
+hit separation, and database metadata.
 
-For UNITE databases, ONTools expects FASTA headers that contain an SH identifier
-and taxonomy string. A typical header looks like:
-\preformatted{
->Claroideoglomus_sp|AM076567|SH1229972.10FU|reps|k__Fungi;p__Glomeromycota;c__Glomeromycetes;o__Entrophosporales;f__Entrophosporaceae;g__Claroideoglomus;s__Claroideoglomus_sp
-}
+For UNITE databases, ONTools expects FASTA headers that contain an SH
+identifier and taxonomy string. A typical header looks like:
+
+\verb{>Claroideoglomus_sp|AM076567|SH1229972.10FU|reps|k__Fungi;p__Glomeromycota;c__Glomeromycetes;o__Entrophosporales;f__Entrophosporaceae;g__Claroideoglomus;s__Claroideoglomus_sp}
 
 \code{reps} indicates representative sequences chosen automatically, whereas
 \code{refs} indicates reference sequences chosen, overridden, or confirmed by
-users with taxonomic expertise. UNITE SH FASTA files are appropriate for local
-BLAST review of ITS consensus sequences.
+users with taxonomic expertise. UNITE SH FASTA files are appropriate for
+local BLAST review of ITS consensus sequences.
 
 Example local UNITE database record used by the authors: downloaded from
 \url{https://unite.ut.ee/repository.php} on 2026-09-12. The all-eukaryotes file
@@ -182,19 +153,17 @@ was \code{UNITE_eukaryotes_all.fasta}, corresponding to
 \code{sh_general_release_s_all_19.02.2025}, version 10.0, release date
 2025-02-19, taxon group all eukaryotes, 20,802 RefS, 245,787 RepS, DOI
 \url{https://doi.org/10.15156/BIO/3301232}. The fungi-only file was
-\code{UNITE_fungi.fasta}, corresponding to
-\code{sh_general_release_s_19.02.2025}, version 10.0, release date 2025-02-19,
-taxon group Fungi, 20,295 RefS, 147,735 RepS, DOI
-\url{https://doi.org/10.15156/BIO/3301230}.
+\code{UNITE_fungi.fasta}, corresponding to \code{sh_general_release_s_19.02.2025},
+version 10.0, release date 2025-02-19, taxon group Fungi, 20,295 RefS,
+147,735 RepS, DOI \url{https://doi.org/10.15156/BIO/3301230}.
 
 To build a BLAST database manually, run for example:
-\preformatted{
-makeblastdb -in UNITE_eukaryotes_all.fasta -dbtype nucl -out unite_eukaryotes
-}
 
-Then call this function with \code{db = "unite_eukaryotes"}. Alternatively,
-pass the FASTA directly with \code{db_fasta = "UNITE_eukaryotes_all.fasta"} and
-the function will run \code{makeblastdb} under \code{out_dir}.
+\verb{makeblastdb -in UNITE_eukaryotes_all.fasta -dbtype nucl -out unite_eukaryotes}
+
+Then call this function with \code{db = "unite_eukaryotes"}. Alternatively, pass
+the FASTA directly with \code{db_fasta = "UNITE_eukaryotes_all.fasta"} and the
+function will run \code{makeblastdb} under \code{out_dir}.
 }
 \examples{
 query <- tempfile(fileext = ".fasta")
@@ -220,4 +189,5 @@ res$commands$blastn
 #   output_tsv = "unite_consensus_annotation/consensus.blast.tsv",
 #   threads = 20
 # )
+
 }

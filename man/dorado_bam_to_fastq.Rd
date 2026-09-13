@@ -56,8 +56,8 @@ with \verb{conda run -n <conda_env>}.}
 \value{
 Invisibly returns a list with \code{status}, \code{commands}, \code{conversions},
 \code{paths}, and \code{conda_env}. \code{conversions} is a data frame with barcode BAM
-directories, output FASTQ paths, MD5 file paths, and the number of BAM files
-converted.
+directories, output FASTQ paths, MD5 file paths, and the number of BAM
+files converted.
 }
 \description{
 \code{dorado_bam_to_fastq()} searches for Dorado \verb{bam_pass/} directories under a

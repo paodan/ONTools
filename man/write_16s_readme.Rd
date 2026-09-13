@@ -9,6 +9,7 @@ write_16s_readme(
   abundance_table = "abundance_table_genus.tsv",
   figure_dir = "figures",
   identification_dir = "identification_tables",
+  database_set = "ncbi_16s_18s",
   readme_name = "README.txt",
   chinese_readme_name = "README.zh-CN.txt"
 )
@@ -22,6 +23,9 @@ write_16s_readme(
 
 \item{identification_dir}{Name of the per-barcode identification table
 directory under \code{path_16s}.}
+
+\item{database_set}{wf-16s database set used to generate the delivered
+taxonomic profiling results.}
 
 \item{readme_name}{English README filename written under \code{path_16s}.}
 

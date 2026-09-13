@@ -344,8 +344,9 @@ test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to IT
   path_proj <- tempfile("ont-proj-")
   path_delivery <- tempfile("its-delivery-")
   consensus_delivery_output <- tempfile("consensus-work-")
-  its_out_dir <- tempfile("wf-its-")
+  run_root <- file.path(path_proj, "demux_out_YS-NB576", "run01")
   fastq_group <- file.path(path_proj, "demux_out_YS-NB576", "run01", "fastq_pass_trim", "PROJECT001_ITS")
+  consensus_out_dir <- file.path(run_root, "results", "wf_amplicon_denovo", "PROJECT001_ITS")
   sample_info <- tempfile(fileext = ".csv")
   dir.create(path_proj, recursive = TRUE)
   utils::write.csv(
@@ -356,6 +357,8 @@ test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to IT
 
   seen <- new.env(parent = emptyenv())
   seen$run_ITS_fastq <- NA_character_
+  seen$run_ITS_out_dir <- NA_character_
+  seen$run_ITS_work_dir <- NA_character_
   testthat::local_mocked_bindings(
     make_consensus_delivery = function(path_proj,
                                        path_sampleInfo_file_list,
@@ -372,7 +375,7 @@ test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to IT
       )
       list(
         workflow = list(
-          PROJECT001_ITS = list(paths = list(fastq = fastq_group, out_dir = "wf_amplicon"))
+          PROJECT001_ITS = list(paths = list(fastq = fastq_group, out_dir = consensus_out_dir))
         ),
         path_delivery = path_delivery
       )
@@ -382,6 +385,8 @@ test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to IT
                        work_dir,
                        ...) {
       seen$run_ITS_fastq <- fastq
+      seen$run_ITS_out_dir <- out_dir
+      seen$run_ITS_work_dir <- work_dir
       dir.create(file.path(out_dir, "alignment_tables"), recursive = TRUE)
       writeLines(c(
         "tax\tbarcode303\ttotal",
@@ -410,7 +415,6 @@ test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to IT
       consensus_delivery_output = consensus_delivery_output,
       path_proj = path_proj,
       path_sampleInfo_file_list = c(PROJECT001_ITS = sample_info),
-      out_dir = its_out_dir,
       tax_levels = "Genus",
       run_unite_annotation = FALSE,
       echo = FALSE
@@ -419,6 +423,8 @@ test_that("make_ITS_delivery runs consensus first and passes grouped FASTQ to IT
   )
 
   expect_equal(seen$run_ITS_fastq, fastq_group)
+  expect_equal(seen$run_ITS_out_dir, file.path(run_root, "results", "wf_ITS", "PROJECT001_ITS"))
+  expect_equal(seen$run_ITS_work_dir, file.path(run_root, "work", "wf_ITS", "PROJECT001_ITS"))
   expect_true(res$consensus_generated)
   expect_true(res$ITS_generated)
   expect_true(file.exists(file.path(

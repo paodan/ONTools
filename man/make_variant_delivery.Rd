@@ -34,10 +34,10 @@ make_variant_delivery(
   variant_vcf_name = "medaka.annotated.vcf.gz",
   variant_tsv_name = "variant.tsv",
   variant_all_name = "variant_all.tsv",
-  variant_columns = c("CHROM", "reference_name_original",
-    "reference_name_sanitized", "POS", "REF", "ALT", "QUAL", "FILTER", "Type",
-    "ref_depth_downsampled", "alt_depth_downsampled", "variant_percent",
-    "sampleID", "ref_upstream_20bp", "ref_downstream_20bp"),
+  variant_columns = c("CHROM", "reference_name_original", "reference_name_sanitized",
+    "POS", "REF", "ALT", "QUAL", "FILTER", "Type", "ref_depth_downsampled",
+    "alt_depth_downsampled", "variant_percent", "sampleID", "ref_upstream_20bp",
+    "ref_downstream_20bp"),
   flank_width = 20,
   project_col = "Project_ID",
   amplicon_size_col = "Expected_Size_bp",
@@ -84,7 +84,7 @@ information CSV files. Names are used as grouped FASTQ folder names.}
 \item{reference}{Reference FASTA file passed to \code{\link[=run_wf_amplicon]{run_wf_amplicon()}} and
 used for downstream variant tables, IGV snapshots, and AB1 traces. After
 \code{\link[=run_wf_amplicon]{run_wf_amplicon()}} finishes, downstream steps first try to use the
-workflow-generated \code{reference_sanitized_seqID.*} file under each \code{out_dir}
+workflow-generated \verb{reference_sanitized_seqID.*} file under each \code{out_dir}
 so reference record names match VCF \code{CHROM} and BAM contig names.}
 
 \item{path_delivery}{Root directory where per-group final results are copied.}
@@ -94,7 +94,7 @@ so reference record names match VCF \code{CHROM} and BAM contig names.}
 \item{model}{Dorado basecalling model or model alias.}
 
 \item{demux_out}{Demux output directory name under \code{path_proj}. If \code{NULL},
-defaults to \code{demux_out_<kit_name>}.}
+defaults to \verb{demux_out_<kit_name>}.}
 
 \item{fastq_out}{FASTQ output directory name created by Dorado conversion.}
 
@@ -128,10 +128,10 @@ files and group-level \code{variant_all.tsv}.}
 each group.}
 
 \item{run_igv_step}{Logical. Generate IGV snapshots from
-\code{barcode*/alignments/*.bam} against \code{reference}.}
+\verb{barcode*/alignments/*.bam} against \code{reference}.}
 
 \item{make_ab1}{Logical. If \code{TRUE}, create synthetic AB1 chromatogram files
-from \code{barcode*/alignments/*.bam} and \code{reference}.}
+from \verb{barcode*/alignments/*.bam} and \code{reference}.}
 
 \item{ab1_name_template}{Output AB1 filename template. \code{{barcode}} is
 replaced by the barcode folder name and \code{{reference}} is replaced by the
@@ -143,19 +143,19 @@ FASTA record name.}
 \item{igv_dir_name}{Directory name under each barcode folder for IGV
 snapshots.}
 
-\item{ab1_dir_name}{Directory name under each barcode folder for synthetic AB1
-files.}
+\item{ab1_dir_name}{Directory name under each barcode folder for synthetic
+AB1 files.}
 
 \item{collect_results_step}{Logical. Copy final deliverables into
 \code{path_delivery}.}
 
-\item{variant_vcf_name}{VCF filename under each \code{barcode*/variants/}
+\item{variant_vcf_name}{VCF filename under each \verb{barcode*/variants/}
 directory.}
 
 \item{variant_tsv_name}{Per-barcode variant TSV filename to write.}
 
 \item{variant_all_name}{Group-level merged variant TSV filename to write next
-to the \code{barcode*} directories.}
+to the \verb{barcode*} directories.}
 
 \item{variant_columns}{Columns kept in \code{variant.tsv} and \code{variant_all.tsv}.}
 
@@ -216,9 +216,9 @@ external analysis steps or copying final deliverables.}
 \value{
 Invisibly returns a list with run-level QC (\code{g1}), per-group QC
 (\code{g2}), Dorado/basecalling status (\code{stat}), FASTQ move plans, amplicon
-workflow results, sanitized reference paths used for downstream variant outputs,
-variant table summaries, IGV snapshot summaries, synthetic AB1 summaries,
-delivery copy summaries, and important output paths.
+workflow results, sanitized reference paths used for downstream variant
+outputs, variant table summaries, IGV snapshot summaries, synthetic AB1
+summaries, delivery copy summaries, and important output paths.
 }
 \description{
 \code{make_variant_delivery()} runs the ONT amplicon variant-calling delivery

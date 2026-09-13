@@ -109,6 +109,7 @@ test_that("move_16s protects existing output and supports overwrite", {
       path_delivery = path_delivery,
       overwrite = TRUE,
       tax_levels = "Genus",
+      database_set = "custom_16s_db",
       width = 4,
       height = 3
     ),
@@ -138,6 +139,7 @@ test_that("move_16s writes English and Chinese README files", {
       path_delivery = path_delivery,
       overwrite = TRUE,
       tax_levels = "Genus",
+      database_set = "custom_16s_db",
       width = 4,
       height = 3
     ),
@@ -152,12 +154,16 @@ test_that("move_16s writes English and Chinese README files", {
   expect_true(any(grepl("16S Taxonomic Profiling Delivery", readme, fixed = TRUE)))
   expect_true(any(grepl("abundance_table_genus.tsv", readme, fixed = TRUE)))
   expect_true(any(grepl("alignment tables", readme, fixed = TRUE)))
-  expect_true(any(grepl("ncbi_16s_18s", readme, fixed = TRUE)))
-  expect_true(any(grepl("novel-species assessment", readme, fixed = TRUE)))
+  expect_true(any(grepl("custom_16s_db", readme, fixed = TRUE)))
+  expect_false(any(grepl("default epi2me-labs/wf-16s settings", readme, fixed = TRUE)))
+  expect_false(any(grepl("novel-species assessment", readme, fixed = TRUE)))
+  expect_false(any(grepl("only evidence for strict species confirmation", readme, fixed = TRUE)))
   expect_true(any(grepl("16S 物种注释结果说明", readme_zh, fixed = TRUE)))
   expect_true(any(grepl("丰度表说明", readme_zh, fixed = TRUE)))
-  expect_true(any(grepl("ncbi_16s_18s", readme_zh, fixed = TRUE)))
-  expect_true(any(grepl("新物种判断", readme_zh, fixed = TRUE)))
+  expect_true(any(grepl("custom_16s_db", readme_zh, fixed = TRUE)))
+  expect_false(any(grepl("如果该结果来自 epi2me-labs/wf-16s 的默认设置", readme_zh, fixed = TRUE)))
+  expect_false(any(grepl("新物种判断", readme_zh, fixed = TRUE)))
+  expect_false(any(grepl("唯一证据", readme_zh, fixed = TRUE)))
   expect_true(any(grepl("种水平注释需要谨慎", readme_zh, fixed = TRUE)))
 })
 

@@ -17,6 +17,8 @@
 #'   directory.
 #' @param identification_dir Name of the copied alignment-table directory under
 #'   the `16s/` delivery directory.
+#' @param database_set wf-16s database set used to generate the delivered
+#'   taxonomic profiling results.
 #' @param cutoff Minimum relative abundance kept in abundance plots.
 #' @param width,height Plot width and height in inches.
 #' @param readme_name English README filename written under the `16s/`
@@ -36,6 +38,7 @@ move_16s <- function(path_result,
                      alignment_tables_dir = "alignment_tables",
                      figure_dir = "figures",
                      identification_dir = "identification_tables",
+                     database_set = "ncbi_16s_18s",
                      cutoff = 0.01,
                      width = 12,
                      height = 6,
@@ -51,6 +54,7 @@ move_16s <- function(path_result,
   check_scalar_character(alignment_tables_dir, "alignment_tables_dir")
   check_scalar_character(figure_dir, "figure_dir")
   check_scalar_character(identification_dir, "identification_dir")
+  check_scalar_character(database_set, "database_set")
   cutoff <- validate_fraction(cutoff, "cutoff")
   width <- validate_positive_number(width, "width")
   height <- validate_positive_number(height, "height")
@@ -135,6 +139,7 @@ move_16s <- function(path_result,
     abundance_table = basename(abun),
     figure_dir = figure_dir,
     identification_dir = identification_dir,
+    database_set = database_set,
     readme_name = readme_name,
     chinese_readme_name = chinese_readme_name
   )
@@ -161,6 +166,8 @@ move_16s <- function(path_result,
 #' @param figure_dir Name of the figure directory under `path_16s`.
 #' @param identification_dir Name of the per-barcode identification table
 #'   directory under `path_16s`.
+#' @param database_set wf-16s database set used to generate the delivered
+#'   taxonomic profiling results.
 #' @param readme_name English README filename written under `path_16s`.
 #' @param chinese_readme_name Chinese README filename written under `path_16s`.
 #'   Set to `NULL` to skip writing it.
@@ -172,12 +179,14 @@ write_16s_readme <- function(path_16s,
                              abundance_table = "abundance_table_genus.tsv",
                              figure_dir = "figures",
                              identification_dir = "identification_tables",
+                             database_set = "ncbi_16s_18s",
                              readme_name = "README.txt",
                              chinese_readme_name = "README.zh-CN.txt") {
   check_dir_arg(path_16s, "path_16s")
   check_scalar_character(abundance_table, "abundance_table")
   check_scalar_character(figure_dir, "figure_dir")
   check_scalar_character(identification_dir, "identification_dir")
+  check_scalar_character(database_set, "database_set")
   check_scalar_character(readme_name, "readme_name")
   if (!is.null(chinese_readme_name)) {
     check_scalar_character(chinese_readme_name, "chinese_readme_name")
@@ -189,7 +198,8 @@ write_16s_readme <- function(path_16s,
     s16_results_readme(
       abundance_table = abundance_table,
       figure_dir = figure_dir,
-      identification_dir = identification_dir
+      identification_dir = identification_dir,
+      database_set = database_set
     ),
     output,
     useBytes = TRUE
@@ -202,7 +212,8 @@ write_16s_readme <- function(path_16s,
       s16_results_readme_zh(
         abundance_table = abundance_table,
         figure_dir = figure_dir,
-        identification_dir = identification_dir
+        identification_dir = identification_dir,
+        database_set = database_set
       ),
       output_zh,
       useBytes = TRUE
@@ -624,7 +635,8 @@ stack_abundance_table <- function(abun_data, sample_cols) {
 
 s16_results_readme <- function(abundance_table,
                               figure_dir,
-                              identification_dir) {
+                              identification_dir,
+                              database_set) {
   c(
     "16S Taxonomic Profiling Delivery",
     "",
@@ -653,13 +665,11 @@ s16_results_readme <- function(abundance_table,
     "- pcreads: percentage of sample reads represented by that reference hit.",
     "",
     "Reference Database",
-    "When this delivery is generated from the default epi2me-labs/wf-16s settings, the workflow commonly uses the `ncbi_16s_18s` database. This database is suitable for routine 16S/18S composition profiling, initial taxonomic screening, and results that need to remain compatible with wf-16s outputs.",
-    "`ncbi_16s_18s` should not be treated as the only evidence for strict species confirmation or novel-species assessment. For species-level confirmation, review the consensus/representative sequence independently against curated 16S resources, type-strain/type-material records, or other validated databases, and inspect the top 10-20 hits rather than only the single best hit.",
+    paste0("The reference database used for this 16S taxonomic profiling delivery is `", database_set, "`. This database is suitable for routine composition profiling, initial taxonomic screening, and results that need to remain compatible with wf-16s outputs when its marker scope matches the sample type."),
     "",
     "Notes for 16S Interpretation",
     "The abundance table is the main file for sample-level composition summaries. The alignment tables help with manual review, but they should not be interpreted as abundance tables because they summarize reference hits rather than final per-read taxonomic assignments.",
     "Species-level calls from 16S should be interpreted cautiously, especially when several closely related species have similar 16S sequences, coverage is low, or mapping quality is poor.",
-    "For potential novel-species assessment, useful evidence includes a high-quality consensus sequence, high query and reference coverage, percent identity to the closest known references, whether multiple near-identical species are tied among top hits, and whether the closest hits are from type strains or curated reference material.",
     "",
     "Recommended Use",
     "Use the abundance table and figures for routine reporting. Use the per-barcode identification tables to review candidate taxa, low-abundance hits, high `Unknown` samples, and references with low coverage or low mapping quality."
@@ -668,7 +678,8 @@ s16_results_readme <- function(abundance_table,
 
 s16_results_readme_zh <- function(abundance_table,
                                  figure_dir,
-                                 identification_dir) {
+                                 identification_dir,
+                                 database_set) {
   c(
     "16S 物种注释结果说明",
     "",
@@ -697,13 +708,11 @@ s16_results_readme_zh <- function(abundance_table,
     "- pcreads：该参考命中的 reads 在样本中的占比。",
     "",
     "参考数据库说明",
-    "如果该结果来自 epi2me-labs/wf-16s 的默认设置，流程通常使用 `ncbi_16s_18s` 数据库。该数据库适合常规 16S/18S 组成分析、分类初筛，以及保持结果与 wf-16s 输出格式兼容。",
-    "`ncbi_16s_18s` 不建议作为严格种水平确认或新物种判断的唯一证据。如果需要确认到种，建议把共识序列或代表序列单独与 curated 16S 数据库、type strain/type material 相关记录，或其他经过验证的数据库进行复核，并查看 top 10-20 hits，而不是只看单个 best hit。",
+    paste0("本次 16S 物种注释结果使用的参考数据库为 `", database_set, "`。当该数据库的 marker 范围与样本类型匹配时，适合用于常规组成分析、分类初筛，以及保持结果与 wf-16s 输出格式兼容。"),
     "",
     "16S 结果解读注意事项",
     "丰度表是样本整体组成分析的主要结果。注释表适合人工复核候选分类，但不能直接当作丰度表使用，因为它汇总的是参考序列命中情况，而不是最终逐条 read 分类后的丰度。",
     "16S 的种水平注释需要谨慎解释，尤其是在近缘物种 16S 序列非常相似、覆盖度较低或 mapping quality 较低的情况下。",
-    "如果需要评估潜在新物种，建议重点查看：共识序列质量、query coverage、reference coverage、与最接近已知参考序列的 percent identity、top hits 中是否有多个近缘种并列，以及最近命中是否来自 type strain 或高质量 curated reference。",
     "",
     "推荐使用方式",
     "常规报告建议使用丰度表和图片；当样本 Unknown 比例较高、存在低丰度命中，或某些参考序列覆盖度和比对质量较低时，再结合每个 barcode 的注释表进行人工复核。"

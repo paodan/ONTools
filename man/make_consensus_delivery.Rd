@@ -147,8 +147,8 @@ filter column names in each sample information file.}
 \item{min_read_qual, min_n_reads, force_spoa_length_threshold, override_basecaller_cfg, profile, resume}{Parameters passed to \code{\link[=run_wf_amplicon]{run_wf_amplicon()}}.}
 
 \item{amplicon_extra_args}{Optional raw command-line string appended to each
-\code{\link[=run_wf_amplicon]{run_wf_amplicon()}} call. Use this for extra wf-amplicon parameters
-exactly as you would type them in the shell.}
+\code{\link[=run_wf_amplicon]{run_wf_amplicon()}} call. Use this for extra wf-amplicon parameters exactly
+as you would type them in the shell.}
 
 \item{barcode_digits}{Number of barcode digits used by \code{\link[=plot_seqQC]{plot_seqQC()}} for
 filtered-read QC.}

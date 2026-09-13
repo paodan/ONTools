@@ -31,4 +31,5 @@ missing calls are \code{REF} or \code{NA}.
 }
 \examples{
 vcf_variant_type(c("A", "AT", "A", "AC"), c("G", "A", "AT", "GT"))
+
 }

@@ -70,7 +70,7 @@ make_ITS_delivery(
   move_ITS_step = TRUE,
   database_set = "ncbi_16s_18s_28s_ITS",
   min_len = 300,
-  max_len = 2000,
+  max_len = 900,
   workflow = "epi2me-labs/wf-16s",
   nextflow = "nextflow",
   quiet = FALSE,
@@ -102,12 +102,6 @@ make_ITS_delivery(
   unite_dust = NULL,
   unite_perc_identity = NULL,
   unite_extra_args = NULL,
-  unite_species_identity = 98.5,
-  unite_genus_identity = 95,
-  unite_family_identity = 90,
-  unite_min_query_coverage = 80,
-  unite_min_reference_coverage = 50,
-  unite_novel_identity = 97,
   unite_blastn = "blastn",
   unite_makeblastdb = "makeblastdb",
   unite_conda_env = NULL,
@@ -129,13 +123,13 @@ make_ITS_delivery(
 \item{fastq_out}{FASTQ output directory name created by Dorado conversion. This matches the \code{fastq_out} argument in \code{make_consensus_delivery()}. When \code{make_consensus_delivery()} is run in this function, the actual per-project FASTQ path passed to \code{run_ITS()} is taken from the consensus workflow result, typically \code{.../fastq_pass_trim/<group>}. If consensus results are not generated in this call, \code{fastq_out} may also be an existing FASTQ directory path. Default is \code{"fastq_pass_trim"}.}
 \item{run_basecalling_demux_step, run_dorado_basecall_step, run_dorado_demux_step, run_dorado_fastq_step, run_QC_step, move_fastq_step, move_fastq_mode, run_amplicon_step, trim_consensus_step, run_filtered_QC_step, run_igv_step, collect_results_step, make_ab1}{Consensus-delivery step controls passed to \code{make_consensus_delivery()} when \code{consensus_delivery_path} is \code{NULL} or missing. Defaults match \code{make_consensus_delivery()}. They have no effect when an existing \code{consensus_delivery_path} is supplied.}
 \item{ab1_name_template, ab1_samtools, consensus_index_file, sample_length_plot_pattern, project_col, amplicon_size_col, min_read_length_col, max_read_length_col, f_primer_col, r_primer_col, min_read_qual, min_n_reads, force_spoa_length_threshold, override_basecaller_cfg, amplicon_extra_args, barcode_digits, dorado_threads, dorado_fastq_write_md5, dorado, samtools, gzip, dorado_conda_env, igv, overwrite_fastq, overwrite_delivery, include_execution}{Additional \code{make_consensus_delivery()} parameters passed through when consensus results need to be generated. Defaults match \code{make_consensus_delivery()}.}
-\item{path_work}{Shared work root used to derive default ITS workflow output and work directories. If \code{NULL}, sibling directories of \code{path_delivery} are used.}
-\item{out_dir}{Output directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling/work directory named \code{basename(path_delivery)_wf_ITS}; this directory then becomes the effective \code{path_ITS_result}.}
-\item{work_dir}{Nextflow work directory passed to \code{run_ITS()}. Default \code{NULL} creates a sibling/work directory named \code{basename(path_delivery)_wf_ITS_work}.}
+\item{path_work}{Fallback work root used to derive default ITS workflow output and work directories when the Dorado run directory cannot be found. If \code{NULL}, sibling directories of \code{path_delivery} are used as the fallback.}
+\item{out_dir}{Output directory passed to \code{run_ITS()}. Default \code{NULL} follows \code{make_consensus_delivery()} and writes workflow outputs under \code{<path_proj>/<demux_out>/<run_dir>/results/wf_ITS/<group>/} when the Dorado run directory can be found. If the run directory cannot be found, a fallback sibling/work directory named \code{basename(path_delivery)_wf_ITS} is used.}
+\item{work_dir}{Nextflow work directory passed to \code{run_ITS()}. Default \code{NULL} writes under \code{<path_proj>/<demux_out>/<run_dir>/work/wf_ITS/<group>/} when the Dorado run directory can be found. If the run directory cannot be found, a fallback sibling/work directory named \code{basename(path_delivery)_wf_ITS_work} is used.}
 \item{profile}{Nextflow profile passed to \code{run_ITS()}. Default is \code{"standard"}.}
 \item{resume}{Logical. If \code{TRUE} (default), pass \code{-resume} to Nextflow through \code{run_ITS()}.}
 \item{database_set}{wf-16s database set used by \code{run_ITS()}. Default is \code{"ncbi_16s_18s_28s_ITS"}.}
-\item{min_len, max_len}{Minimum and maximum read length passed to \code{run_ITS()}. Defaults are \code{300} and \code{2000}.}
+\item{min_len, max_len}{Minimum and maximum read length passed to \code{run_ITS()}. Defaults are \code{300} and \code{900}.}
 \item{workflow}{Nextflow workflow name or path passed to \code{run_ITS()}. Default is \code{"epi2me-labs/wf-16s"}.}
 \item{nextflow}{Nextflow executable name or path. Default is \code{"nextflow"}.}
 \item{quiet}{Logical. If \code{TRUE}, pass \code{-q} to Nextflow. Default is \code{FALSE}.}
@@ -155,8 +149,8 @@ make_ITS_delivery(
 \item{tax_levels}{Taxonomic levels plotted from the abundance table. Default is \code{c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")}.}
 \item{cutoff}{Minimum relative abundance kept as a separate plotted taxon by \code{plot_abundance_bar()}. Default is \code{0.01}.}
 \item{width, height}{Plot size in inches. Defaults are \code{width = 12} and \code{height = 6}.}
-\item{consensus_file}{Fallback consensus FASTA filename searched under the consensus delivery. Default is \code{"all-consensus-seqs.fasta"}. The selected consensus sequences are copied or collected at the project root as this filename and used for optional UNITE review.}
-\item{trimmed_consensus_file}{Preferred consensus FASTA filename used before falling back to \code{consensus_file}. Default is \code{"all-consensus-seqs_trimmed.fasta"}. When this file is available, it is also preserved under this original filename in the project root. Matching FASTA indexes are copied when available.}
+\item{consensus_file}{Original consensus FASTA filename searched under the consensus delivery. Default is \code{"all-consensus-seqs.fasta"}. This file is copied or collected at the project root under the same filename.}
+\item{trimmed_consensus_file}{Primer-trimmed consensus FASTA filename searched under the consensus delivery. Default is \code{"all-consensus-seqs_trimmed.fasta"}. When this file is available, it is copied or collected separately under its own filename and preferred for optional UNITE review. Matching FASTA indexes are copied when available.}
 \item{barcode_pattern}{Regular expression used to identify barcode directories and alignment-stat files. The default \code{"^barcode[0-9]+$"} matches names such as \code{barcode097} and \code{barcode303}.}
 \item{run_unite_annotation}{Logical. If \code{TRUE}, run \code{annotate_consensus_blast()} on the collected consensus FASTA. Default is \code{TRUE}; if neither \code{unite_db} nor \code{unite_db_fasta} is supplied, this step is skipped with a warning.}
 \item{unite_db}{Prefix of an already-built nucleotide BLAST database, for example \code{"/data/reference/UNITE/unite_eukaryotes"}. Default is \code{NULL}.}
@@ -172,10 +166,6 @@ make_ITS_delivery(
 \item{unite_dust}{Optional BLAST low-complexity filtering setting, such as \code{"yes"} or \code{"no"}. Default is \code{NULL}.}
 \item{unite_perc_identity}{Optional minimum BLAST percent identity. Default is \code{NULL}.}
 \item{unite_extra_args}{Additional command-line arguments passed to \code{blastn}. Default is \code{NULL}.}
-\item{unite_species_identity, unite_genus_identity, unite_family_identity}{Percent identity thresholds used by \code{annotate_consensus_blast()} to label the suggested annotation level. Defaults are \code{98.5}, \code{95}, and \code{90}.}
-\item{unite_min_query_coverage}{Minimum query coverage percentage used for confident annotation-level assignment. Default is \code{80}.}
-\item{unite_min_reference_coverage}{Minimum reference coverage percentage used for confident annotation-level assignment. Default is \code{50}.}
-\item{unite_novel_identity}{Identity threshold below which a sufficiently covered top hit is flagged as a possible novel-candidate signal. Default is \code{97}.}
 \item{unite_blastn}{Executable name or path for \code{blastn}. Default is \code{"blastn"}.}
 \item{unite_makeblastdb}{Executable name or path for \code{makeblastdb}. Default is \code{"makeblastdb"}.}
 \item{unite_conda_env}{Optional conda environment used for BLAST commands. Default \code{NULL} calls tools from the current environment.}
@@ -222,10 +212,14 @@ Per-barcode consensus outputs are copied to
 are copied to \code{samples/barcode*/ITS_results/identification_tables/}, and
 project-level abundance files, figures, sample information, and consensus FASTA
 are copied to the project root.
-\item Optionally run consensus-vs-UNITE review. Consensus FASTA files are
-collected into the project-root \code{all-consensus-seqs.fasta}, BLAST output is
-written to \code{unite_consensus_annotation/consensus.blast.tsv} with column
-headers, and the top-hit summary is written to the root-level
+\item Optionally run consensus-vs-UNITE review. The original project consensus
+FASTA is kept as \code{all-consensus-seqs.fasta}; primer-trimmed consensus,
+when present, is kept separately as \code{all-consensus-seqs_trimmed.fasta}.
+UNITE review uses the trimmed FASTA first and falls back to
+\code{all-consensus-seqs.fasta}; if neither file exists, the review step is
+skipped with a warning. BLAST output is written to
+\code{unite_consensus_annotation/consensus.blast.tsv} with column headers, and
+the top-hit summary is written to the root-level
 \code{unite_consensus_top_hits.tsv}. The detailed UNITE directory does not
 duplicate the root-level top-hit table.
 }

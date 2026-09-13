@@ -39,11 +39,10 @@ run_ITS(
 \item{resume}{Logical. If \code{TRUE}, append \code{-resume}.}
 
 \item{database_set}{wf-16s database set passed to \code{--database_set}.
-Defaults to \code{"ncbi_16s_18s_28s_ITS"} for ITS analysis.}
+Defaults to \code{"ncbi_16s_18s"}, matching the wf-16s default.}
 
 \item{min_len, max_len}{Minimum and maximum read length passed to
-\code{--min_len} and \code{--max_len}. Defaults to \code{300} and \code{2000} for ITS
-analysis.}
+\code{--min_len} and \code{--max_len}. Defaults match wf-16s (\code{800} and \code{2000}).}
 
 \item{workflow}{Nextflow workflow name or path.}
 
