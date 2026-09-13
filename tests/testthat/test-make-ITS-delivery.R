@@ -483,7 +483,7 @@ test_that("make_ITS_delivery creates grouped delivery folders from sample info",
   expect_true(file.exists(file.path(group1, "all-consensus-seqs_trimmed.fasta.fai")))
   expect_match(
     paste(readLines(file.path(group1, "all-consensus-seqs.fasta")), collapse = "\n"),
-    "barcode303_trimmed_consensus"
+    "barcode303_original_consensus"
   )
   expect_match(
     paste(readLines(file.path(group1, "all-consensus-seqs_trimmed.fasta")), collapse = "\n"),
@@ -566,7 +566,7 @@ test_that("make_ITS_delivery organizes consensus and ITS results under samples",
   expect_true(file.exists(file.path(path_delivery, "all-consensus-seqs_trimmed.fasta.fai")))
   expect_match(
     paste(readLines(file.path(path_delivery, "all-consensus-seqs.fasta")), collapse = "\n"),
-    "barcode303_trimmed_consensus"
+    "barcode303_original_consensus"
   )
   expect_match(
     paste(readLines(file.path(path_delivery, "all-consensus-seqs_trimmed.fasta")), collapse = "\n"),
@@ -578,14 +578,16 @@ test_that("make_ITS_delivery organizes consensus and ITS results under samples",
   readme_zh <- paste(readLines(file.path(path_delivery, "README.zh-CN.txt")), collapse = "\n")
   expect_match(readme, "Table: abundance_table_genus.tsv", fixed = TRUE)
   expect_match(readme, "Table: barcode*-alignment-stats.tsv", fixed = TRUE)
-  expect_match(readme, "Table: unite_consensus_top_hits.tsv", fixed = TRUE)
-  expect_match(readme, "https://unite.ut.ee/repository.php", fixed = TRUE)
-  expect_match(readme, "pident < 97, query_coverage >= 80, and reference_coverage >= 50", fixed = TRUE)
+  expect_false(grepl("https://unite.ut.ee/repository.php", readme, fixed = TRUE))
+  expect_false(grepl("Table: unite_consensus_top_hits.tsv", readme, fixed = TRUE))
+  expect_false(grepl("synthetic.ab1", readme, fixed = TRUE))
+  expect_false(grepl("consensus_results/alignments/", readme, fixed = TRUE))
   expect_match(readme_zh, "表格说明：abundance_table_genus.tsv", fixed = TRUE)
   expect_match(readme_zh, "表格说明：barcode*-alignment-stats.tsv", fixed = TRUE)
-  expect_match(readme_zh, "表格说明：unite_consensus_top_hits.tsv", fixed = TRUE)
-  expect_match(readme_zh, "https://unite.ut.ee/repository.php", fixed = TRUE)
-  expect_match(readme_zh, "pident < 97、query_coverage >= 80 且 reference_coverage >= 50", fixed = TRUE)
+  expect_false(grepl("https://unite.ut.ee/repository.php", readme_zh, fixed = TRUE))
+  expect_false(grepl("表格说明：unite_consensus_top_hits.tsv", readme_zh, fixed = TRUE))
+  expect_false(grepl("synthetic.ab1", readme_zh, fixed = TRUE))
+  expect_false(grepl("consensus_results/alignments/", readme_zh, fixed = TRUE))
   expect_null(res$unite_annotation)
 })
 
@@ -667,6 +669,40 @@ test_that("make_ITS_delivery writes headed UNITE BLAST and root top-hit tables",
     "send", "length", "pident", "qcovs", "query_coverage",
     "reference_coverage"
   ))
+})
+
+test_that("make_ITS_delivery skips UNITE annotation when no consensus FASTA exists", {
+  skip_if_not(capabilities("png"))
+
+  inputs <- make_fake_ITS_inputs()
+  unlink(file.path(inputs$consensus_delivery, "project", "all-consensus-seqs.fasta"))
+  unlink(file.path(inputs$consensus_delivery, "project", "all-consensus-seqs.fasta.fai"))
+  unlink(file.path(inputs$consensus_delivery, "project", "all-consensus-seqs_trimmed.fasta"))
+  unlink(file.path(inputs$consensus_delivery, "project", "all-consensus-seqs_trimmed.fasta.fai"))
+  path_delivery <- tempfile("its-delivery-")
+
+  res <- NULL
+  expect_warning(
+    res <- make_ITS_delivery(
+      path_ITS_result = inputs$its_result,
+      path_delivery = path_delivery,
+      consensus_delivery_path = inputs$consensus_delivery,
+      tax_levels = "Genus",
+      unite_db = "unite_eukaryotes",
+      width = 4,
+      height = 3,
+      echo = FALSE
+    ),
+    "Skipping UNITE annotation because no consensus FASTA was found."
+  )
+
+  expect_true(is.na(res$consensus_fasta))
+  expect_true(is.na(res$trimmed_consensus_fasta))
+  expect_true(is.na(res$unite_consensus_fasta))
+  expect_null(res$unite_annotation)
+  expect_true(is.na(res$unite_top_hits))
+  expect_false(dir.exists(file.path(path_delivery, "unite_consensus_annotation")))
+  expect_false(file.exists(file.path(path_delivery, "unite_consensus_top_hits.tsv")))
 })
 
 test_that("write_ITS_delivery_readme can skip Chinese README", {

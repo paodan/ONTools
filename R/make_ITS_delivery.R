@@ -85,13 +85,12 @@
 #'   Order, Family, and Genus; taxa below `cutoff = 0.01` relative abundance
 #'   are grouped by the plotting helper; figures are saved at 12 x 6 inches.
 #' @param consensus_file,trimmed_consensus_file Consensus FASTA names searched
-#'   under the consensus delivery. The default prefers
-#'   `"all-consensus-seqs_trimmed.fasta"` and falls back to
-#'   `"all-consensus-seqs.fasta"` when the trimmed file is absent. The selected
-#'   consensus sequences are copied or collected at the project root as
-#'   `consensus_file` and used for optional UNITE review. When trimmed consensus
-#'   is available, it is also preserved under `trimmed_consensus_file`; matching
-#'   FASTA indexes are copied when available.
+#'   under the consensus delivery. `consensus_file` is copied or collected from
+#'   the original consensus output and kept under the same filename at the ITS
+#'   delivery root. When `trimmed_consensus_file` exists, it is copied or
+#'   collected separately under its own filename; it is preferred as the input
+#'   for optional UNITE review, but it is not renamed to `consensus_file`.
+#'   Matching FASTA indexes are copied when available.
 #' @param barcode_pattern Regular expression used to identify barcode
 #'   directories and alignment-stat files. The default `"^barcode[0-9]+$"`
 #'   matches names such as `barcode097` and `barcode303`.
@@ -797,6 +796,15 @@ write_ITS_delivery_readme <- function(output_dir,
   }
 
   output_dir <- normalizePath(output_dir, mustWork = TRUE)
+  delivery_files <- inspect_ITS_delivery_files(
+    output_dir = output_dir,
+    samples_dir = samples_dir,
+    abundance_table = abundance_table,
+    figure_dir = figure_dir,
+    identification_dir = identification_dir,
+    unite_dir = unite_dir,
+    unite_top_hits_name = unite_top_hits_name
+  )
   readme <- file.path(output_dir, readme_name)
   writeLines(
     ITS_delivery_readme(
@@ -807,7 +815,8 @@ write_ITS_delivery_readme <- function(output_dir,
       identification_dir = identification_dir,
       unite_dir = unite_dir,
       unite_top_hits_name = unite_top_hits_name,
-      has_unite_annotation = has_unite_annotation
+      has_unite_annotation = has_unite_annotation,
+      delivery_files = delivery_files
     ),
     readme,
     useBytes = TRUE
@@ -825,7 +834,8 @@ write_ITS_delivery_readme <- function(output_dir,
         identification_dir = identification_dir,
         unite_dir = unite_dir,
         unite_top_hits_name = unite_top_hits_name,
-        has_unite_annotation = has_unite_annotation
+        has_unite_annotation = has_unite_annotation,
+        delivery_files = delivery_files
       ),
       readme_zh,
       useBytes = TRUE
@@ -834,6 +844,48 @@ write_ITS_delivery_readme <- function(output_dir,
   }
 
   invisible(files)
+}
+
+inspect_ITS_delivery_files <- function(output_dir,
+                                       samples_dir,
+                                       abundance_table,
+                                       figure_dir,
+                                       identification_dir,
+                                       unite_dir,
+                                       unite_top_hits_name) {
+  sample_root <- if (is.null(samples_dir)) output_dir else file.path(output_dir, samples_dir)
+  sample_files <- if (dir.exists(sample_root)) {
+    list.files(sample_root, recursive = TRUE, full.names = TRUE, all.files = FALSE)
+  } else {
+    character()
+  }
+  sample_dirs <- if (dir.exists(sample_root)) {
+    list.dirs(sample_root, recursive = TRUE, full.names = TRUE)
+  } else {
+    character()
+  }
+
+  list(
+    has_sample_root = dir.exists(sample_root),
+    has_consensus_results = any(basename(sample_dirs) == "consensus_results"),
+    has_consensus_fastq = any(basename(sample_files) == "consensus.fastq"),
+    has_alignments = any(basename(sample_dirs) == "alignments"),
+    has_ab1 = any(grepl("[.]synthetic[.]ab1$", basename(sample_files))),
+    has_distribution_plots = any(grepl("^Distribution_seqLength__.*[.]png$", basename(sample_files))),
+    has_ITS_results = any(basename(sample_dirs) == "ITS_results"),
+    has_identification_tables = any(basename(sample_dirs) == identification_dir) ||
+      any(grepl("-alignment-stats[.]tsv$", basename(sample_files))),
+    has_abundance_table = file.exists(file.path(output_dir, abundance_table)),
+    has_figures = dir.exists(file.path(output_dir, figure_dir)) &&
+      length(list.files(file.path(output_dir, figure_dir), pattern = "[.]png$", full.names = TRUE)) > 0L,
+    has_consensus_fasta = file.exists(file.path(output_dir, "all-consensus-seqs.fasta")),
+    has_consensus_index = file.exists(file.path(output_dir, "all-consensus-seqs.fasta.fai")),
+    has_trimmed_consensus = file.exists(file.path(output_dir, "all-consensus-seqs_trimmed.fasta")),
+    has_trimmed_consensus_index = file.exists(file.path(output_dir, "all-consensus-seqs_trimmed.fasta.fai")),
+    has_sample_info = length(list.files(output_dir, pattern = "[.]csv$", full.names = TRUE)) > 0L,
+    has_unite_top_hits = file.exists(file.path(output_dir, unite_top_hits_name)),
+    has_unite_blast = file.exists(file.path(output_dir, unite_dir, "consensus.blast.tsv"))
+  )
 }
 
 make_ITS_sample_info_groups <- function(path_sampleInfo_file_list,
@@ -1068,13 +1120,14 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
     )
   }
 
-  consensus_fasta <- collect_ITS_consensus_fasta(
+  consensus_fastas <- collect_ITS_consensus_fasta(
     consensus_delivery_path = consensus_delivery_path,
     output_dir = output_dir,
     trimmed_consensus_file = trimmed_consensus_file,
-    consensus_file = consensus_file,
-    output_name = consensus_file
+    consensus_file = consensus_file
   )
+  consensus_fasta <- consensus_fastas$consensus_fasta
+  unite_consensus_fasta <- consensus_fastas$unite_consensus_fasta
 
   unite_annotation <- NULL
   unite_top_hits <- NA_character_
@@ -1085,7 +1138,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
         "`unite_db_fasta` was supplied.",
         call. = FALSE
       )
-    } else if (is.na(consensus_fasta) || !file.exists(consensus_fasta)) {
+    } else if (is.na(unite_consensus_fasta) || !file.exists(unite_consensus_fasta)) {
       warning(
         "Skipping UNITE annotation because no consensus FASTA was found.",
         call. = FALSE
@@ -1093,7 +1146,7 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
     } else {
       unite_output_dir <- file.path(output_dir, unite_dir)
       unite_annotation <- annotate_consensus_blast(
-        consensus_fasta = consensus_fasta,
+        consensus_fasta = unite_consensus_fasta,
         db = unite_db,
         db_fasta = unite_db_fasta,
         out_dir = unite_output_dir,
@@ -1161,6 +1214,8 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
     figures = copied_figures,
     identification_tables = identification_copy,
     consensus_fasta = consensus_fasta,
+    trimmed_consensus_fasta = consensus_fastas$trimmed_consensus_fasta,
+    unite_consensus_fasta = unite_consensus_fasta,
     unite_annotation = unite_annotation,
     unite_top_hits = unite_top_hits,
     readme_files = readme_files
@@ -1451,39 +1506,45 @@ subset_ITS_alignment_tables <- function(from_dir, to_dir, barcodes) {
 collect_ITS_consensus_fasta <- function(consensus_delivery_path,
                                         output_dir,
                                         trimmed_consensus_file,
-                                        consensus_file,
-                                        output_name = consensus_file) {
-  trimmed_candidates <- list.files(
+                                        consensus_file) {
+  consensus_candidates <- find_consensus_candidates(consensus_delivery_path, consensus_file)
+  trimmed_candidates <- find_consensus_candidates(consensus_delivery_path, trimmed_consensus_file)
+
+  consensus_out <- NA_character_
+  if (length(consensus_candidates) > 0L) {
+    consensus_out <- file.path(output_dir, consensus_file)
+    write_or_copy_consensus_candidates(consensus_candidates, consensus_out)
+    consensus_out <- normalizePath(consensus_out, mustWork = TRUE)
+  }
+
+  trimmed_out <- NA_character_
+  if (length(trimmed_candidates) > 0L) {
+    trimmed_out <- file.path(output_dir, trimmed_consensus_file)
+    write_or_copy_consensus_candidates(trimmed_candidates, trimmed_out)
+    trimmed_out <- normalizePath(trimmed_out, mustWork = TRUE)
+  }
+
+  unite_consensus <- if (!is.na(trimmed_out) && file.exists(trimmed_out)) {
+    trimmed_out
+  } else {
+    consensus_out
+  }
+
+  list(
+    consensus_fasta = consensus_out,
+    trimmed_consensus_fasta = trimmed_out,
+    unite_consensus_fasta = unite_consensus
+  )
+}
+
+find_consensus_candidates <- function(consensus_delivery_path, filename) {
+  candidates <- list.files(
     consensus_delivery_path,
-    pattern = paste0("^", gsub("([.])", "\\\\\\1", trimmed_consensus_file), "$"),
+    pattern = paste0("^", gsub("([.])", "\\\\\\1", filename), "$"),
     recursive = TRUE,
     full.names = TRUE
   )
-  trimmed_candidates <- sort(trimmed_candidates[file.exists(trimmed_candidates)])
-  using_trimmed <- length(trimmed_candidates) > 0L
-  candidates <- trimmed_candidates
-  if (!isTRUE(using_trimmed)) {
-    candidates <- list.files(
-      consensus_delivery_path,
-      pattern = paste0("^", gsub("([.])", "\\\\\\1", consensus_file), "$"),
-      recursive = TRUE,
-      full.names = TRUE
-    )
-    candidates <- sort(candidates[file.exists(candidates)])
-  }
-  if (length(candidates) == 0L) return(NA_character_)
-
-  out <- file.path(output_dir, output_name)
-  write_or_copy_consensus_candidates(candidates, out)
-
-  if (isTRUE(using_trimmed)) {
-    trimmed_out <- file.path(output_dir, trimmed_consensus_file)
-    if (!identical(normalizePath(out, mustWork = FALSE),
-                   normalizePath(trimmed_out, mustWork = FALSE))) {
-      write_or_copy_consensus_candidates(candidates, trimmed_out)
-    }
-  }
-  normalizePath(out, mustWork = TRUE)
+  sort(candidates[file.exists(candidates)])
 }
 
 write_or_copy_consensus_candidates <- function(candidates, out) {
@@ -1528,6 +1589,12 @@ copy_file_required <- function(from, to, overwrite) {
   normalizePath(to, mustWork = TRUE)
 }
 
+numbered_readme_lines <- function(items) {
+  items <- unlist(items, use.names = FALSE)
+  items <- items[nzchar(items)]
+  paste0(seq_along(items), ". ", items)
+}
+
 ITS_delivery_readme <- function(samples_dir,
                                 ITS_dir,
                                 abundance_table,
@@ -1535,62 +1602,107 @@ ITS_delivery_readme <- function(samples_dir,
                                 identification_dir,
                                 unite_dir,
                                 unite_top_hits_name,
-                                has_unite_annotation) {
+                                has_unite_annotation,
+                                delivery_files) {
   sample_prefix <- if (is.null(samples_dir)) "barcode*/" else paste0(samples_dir, "/barcode*/")
+  has_read_profile <- isTRUE(delivery_files$has_abundance_table) ||
+    isTRUE(delivery_files$has_figures) ||
+    isTRUE(delivery_files$has_identification_tables)
+  has_unite <- isTRUE(delivery_files$has_unite_blast) ||
+    isTRUE(delivery_files$has_unite_top_hits)
   c(
     "Integrated ITS Delivery",
     "",
     "Overview",
-    "This delivery combines three complementary ITS result types:",
-    "1. Amplicon consensus results generated for each barcode/sample.",
-    "2. EPI2ME-like ITS taxonomic profiling results generated from the demultiplexed FASTQ reads.",
-    "3. Project-level consensus-vs-UNITE BLAST review results generated by aligning the project consensus sequences against the UNITE database (https://unite.ut.ee/repository.php).",
+    "This delivery contains the following ITS result types:",
+    numbered_readme_lines(c(
+      if (isTRUE(delivery_files$has_consensus_results) ||
+          isTRUE(delivery_files$has_consensus_fasta) ||
+          isTRUE(delivery_files$has_trimmed_consensus)) {
+        "Amplicon consensus results generated for each barcode/sample."
+      },
+      if (has_read_profile) {
+        "EPI2ME-like ITS taxonomic profiling results generated from the demultiplexed FASTQ reads."
+      },
+      if (has_unite) {
+        "Project-level consensus-vs-UNITE BLAST review results generated by aligning the project consensus sequences against the UNITE database (https://unite.ut.ee/repository.php)."
+      }
+    )),
     "",
-    "These result types answer related but different questions. The abundance table and figures summarize read-level taxonomic composition. The per-barcode alignment-stat tables show which reference records were supported by reads. The UNITE BLAST tables review the final consensus sequences against a curated ITS database.",
+    paste(
+      c(
+        "These result types answer related but different questions.",
+        if (isTRUE(delivery_files$has_abundance_table) || isTRUE(delivery_files$has_figures)) "The abundance table and figures summarize read-level taxonomic composition.",
+        if (isTRUE(delivery_files$has_identification_tables)) "The per-barcode alignment-stat tables show which reference records were supported by reads.",
+        if (has_unite) "The UNITE BLAST tables review the final consensus sequences against a curated ITS database."
+      ),
+      collapse = " "
+    ),
     "",
     "Suggested Review Order",
-    paste0("1. Start with ", abundance_table, " and ", figure_dir, "/ to understand the overall sample composition."),
-    "2. For each important sample, inspect the corresponding barcode alignment-stat table to see which reference records support the call.",
-    paste0("3. If consensus sequences were generated, review ", unite_top_hits_name, " for an independent UNITE-based consensus check."),
-    "4. For possible novel species or unexpected taxa, inspect the full BLAST hits, the consensus sequence, alignment coverage, read depth, and database metadata rather than relying only on the best hit.",
+    numbered_readme_lines(c(
+      if (isTRUE(delivery_files$has_abundance_table) && isTRUE(delivery_files$has_figures)) {
+        paste0("Start with ", abundance_table, " and ", figure_dir, "/ to understand the overall sample composition.")
+      },
+      if (isTRUE(delivery_files$has_identification_tables)) {
+        "For each important sample, inspect the corresponding barcode alignment-stat table to see which reference records support the call."
+      },
+      if (isTRUE(delivery_files$has_unite_top_hits)) {
+        paste0("Review ", unite_top_hits_name, " for an independent UNITE-based consensus check.")
+      },
+      if (has_unite) {
+        "For possible novel species or unexpected taxa, inspect the full BLAST hits, the consensus sequence, alignment coverage, read depth, and database metadata rather than relying only on the best hit."
+      }
+    )),
     "",
     "Directory Contents",
-    paste0("- ", sample_prefix, "consensus_results/: per-barcode consensus-analysis outputs copied from the amplicon consensus delivery."),
-    paste0("- ", sample_prefix, "consensus_results/consensus/consensus.fastq: consensus sequence for this barcode/sample, when available."),
-    paste0("- ", sample_prefix, "consensus_results/alignments/: read-to-consensus alignment files, BAM indexes, and IGV snapshot PNGs, when generated."),
-    paste0("- ", sample_prefix, "consensus_results/*.synthetic.ab1: synthetic Sanger-like trace generated from the read pileup against the consensus, when AB1 generation was enabled."),
-    paste0("- ", sample_prefix, "consensus_results/Distribution_seqLength__*.png: read-length distribution plots before and/or after filtering."),
-    paste0("- ", sample_prefix, ITS_dir, "/: per-barcode ITS profiling evidence."),
-    paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/: per-barcode wf-16s alignment-stat tables. Each `barcode*-alignment-stats.tsv` file summarizes database reference hits for one barcode."),
-    paste0("- ", abundance_table, ": genus-level abundance table from wf-16s ITS profiling. This is the main table for sample-level composition summaries."),
-    paste0("- ", figure_dir, "/: abundance bar plots generated from the abundance table. Files ending in `_percentage.png` show relative abundance; files ending in `_count.png` show read counts."),
-    "- all-consensus-seqs.fasta: project-level consensus FASTA used for optional UNITE BLAST review. If a trimmed consensus FASTA was available, the trimmed sequences are preferred and also written under this filename.",
-    "- all-consensus-seqs.fasta.fai: FASTA index for all-consensus-seqs.fasta, when available.",
-    "- all-consensus-seqs_trimmed.fasta: trimmed project-level consensus FASTA, included when it is available in the consensus results.",
-    "- all-consensus-seqs_trimmed.fasta.fai: FASTA index for the trimmed consensus FASTA, when available.",
-    "- <project>.csv: sample information table used to define barcode/sample grouping for this delivery.",
-    paste0("- ", unite_top_hits_name, ": root-level copy of the top UNITE BLAST hit per consensus sequence. This is the most convenient UNITE review table."),
-    paste0("- ", unite_dir, "/consensus.blast.tsv: full consensus-vs-UNITE BLAST table with column headers and ONTools-derived coverage/taxonomy fields."),
+    if (isTRUE(delivery_files$has_consensus_results)) paste0("- ", sample_prefix, "consensus_results/: per-barcode consensus-analysis outputs copied from the amplicon consensus delivery."),
+    if (isTRUE(delivery_files$has_consensus_fastq)) paste0("- ", sample_prefix, "consensus_results/consensus/consensus.fastq: consensus sequence for this barcode/sample."),
+    if (isTRUE(delivery_files$has_alignments)) paste0("- ", sample_prefix, "consensus_results/alignments/: read-to-consensus alignment files, BAM indexes, and IGV snapshot PNGs."),
+    if (isTRUE(delivery_files$has_ab1)) paste0("- ", sample_prefix, "consensus_results/*.synthetic.ab1: synthetic Sanger-like trace generated from the read pileup against the consensus."),
+    if (isTRUE(delivery_files$has_distribution_plots)) paste0("- ", sample_prefix, "consensus_results/Distribution_seqLength__*.png: read-length distribution plots before and/or after filtering."),
+    if (isTRUE(delivery_files$has_ITS_results)) paste0("- ", sample_prefix, ITS_dir, "/: per-barcode ITS profiling evidence."),
+    if (isTRUE(delivery_files$has_identification_tables)) paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/: per-barcode wf-16s alignment-stat tables. Each `barcode*-alignment-stats.tsv` file summarizes database reference hits for one barcode."),
+    if (isTRUE(delivery_files$has_abundance_table)) paste0("- ", abundance_table, ": genus-level abundance table from wf-16s ITS profiling. This is the main table for sample-level composition summaries."),
+    if (isTRUE(delivery_files$has_figures)) paste0("- ", figure_dir, "/: abundance bar plots generated from the abundance table. Files ending in `_percentage.png` show relative abundance; files ending in `_count.png` show read counts."),
+    if (isTRUE(delivery_files$has_consensus_fasta)) "- all-consensus-seqs.fasta: project-level consensus FASTA generated by the amplicon consensus workflow and kept under its original filename.",
+    if (isTRUE(delivery_files$has_consensus_index)) "- all-consensus-seqs.fasta.fai: FASTA index for all-consensus-seqs.fasta.",
+    if (isTRUE(delivery_files$has_trimmed_consensus)) "- all-consensus-seqs_trimmed.fasta: primer-trimmed project-level consensus FASTA. When primer sequence information is available, extra A/T bases introduced by DNA library preparation are removed from both ends according to the primer positions, and reverse-complement consensus sequences are corrected to the forward orientation.",
+    if (isTRUE(delivery_files$has_trimmed_consensus_index)) "- all-consensus-seqs_trimmed.fasta.fai: FASTA index for `all-consensus-seqs_trimmed.fasta`.",
+    if (isTRUE(delivery_files$has_sample_info)) "- <project>.csv: sample information table used to define barcode/sample grouping for this delivery.",
+    if (isTRUE(delivery_files$has_unite_top_hits)) paste0("- ", unite_top_hits_name, ": root-level copy of the top UNITE BLAST hit per consensus sequence. This is the most convenient UNITE review table."),
+    if (isTRUE(delivery_files$has_unite_blast)) paste0("- ", unite_dir, "/consensus.blast.tsv: full consensus-vs-UNITE BLAST table with column headers and ONTools-derived coverage/taxonomy fields."),
     "- README.txt and README.zh-CN.txt: English and Chinese descriptions of this delivery.",
     "",
     "How To Interpret The Main Results",
-    "Use the abundance table and figures for routine sample-level composition summaries. Use the per-barcode alignment-stat tables to review reference-level evidence from wf-16s. Use the UNITE BLAST top-hit table as an independent consensus-sequence review.",
+    paste(
+      c(
+        if (isTRUE(delivery_files$has_abundance_table) || isTRUE(delivery_files$has_figures)) "Use the abundance table and figures for routine sample-level composition summaries.",
+        if (isTRUE(delivery_files$has_identification_tables)) "Use the per-barcode alignment-stat tables to review reference-level evidence from wf-16s.",
+        if (isTRUE(delivery_files$has_unite_top_hits)) "Use the UNITE BLAST top-hit table as an independent consensus-sequence review."
+      ),
+      collapse = " "
+    ),
     "The wf-16s ITS results are suitable for routine composition analysis and candidate taxon screening. Strict species confirmation or novel-species assessment should not rely on a single database top hit.",
-    "For potential novel species, review consensus quality, percent identity, query coverage, reference coverage, top-hit versus second-hit separation, Species Hypothesis information when available, and whether the closest matches are well-curated or type-material records.",
+    if (has_unite) "For potential novel species, review consensus quality, percent identity, query coverage, reference coverage, top-hit versus second-hit separation, Species Hypothesis information when available, and whether the closest matches are well-curated or type-material records.",
     "",
-    "Why wf-16s and UNITE Results May Differ",
-    paste0("- ", abundance_table, " and ", figure_dir, "/ are generated from the EPI2ME-like ITS workflow. In this delivery, that workflow commonly uses the database set configured by `database_set`, for example `ncbi_16s_18s_28s_ITS`. These results are read-level profiling summaries after the workflow's filtering, classification, and abundance aggregation steps."),
-    paste0("- ", unite_dir, "/consensus.blast.tsv and ", unite_top_hits_name, " are generated by BLASTN of the final consensus sequences against a UNITE database from https://unite.ut.ee/repository.php, for example `unite_eukaryotes` built from a UNITE Species Hypothesis FASTA."),
-    "- Because these analyses use different input units, databases, and decision rules, their taxonomic labels can differ. wf-16s summarizes many reads against its configured database; UNITE BLAST reviews one consensus sequence per barcode/sample against the selected UNITE database.",
-    "- If the abundance table/figures and the UNITE consensus review disagree substantially, first check which database was used for each analysis, then compare coverage, identity, mapping quality, read counts, and whether the closest database records are well curated. The more reliable result is usually the one supported by high-quality consensus sequence, high coverage, high identity, clear separation from the second-best hit, and an appropriate curated database for the target organism group.",
-    "",
+    if (has_read_profile && has_unite) c(
+      "Why wf-16s and UNITE Results May Differ",
+      paste0("- ", abundance_table, " and ", figure_dir, "/ are generated from the EPI2ME-like ITS workflow. In this delivery, that workflow commonly uses the database set configured by `database_set`, for example `ncbi_16s_18s_28s_ITS`. These results are read-level profiling summaries after the workflow's filtering, classification, and abundance aggregation steps."),
+      paste0("- ", unite_dir, "/consensus.blast.tsv and ", unite_top_hits_name, " are generated by BLASTN of the final consensus sequences against a UNITE database from https://unite.ut.ee/repository.php, for example `unite_eukaryotes` built from a UNITE Species Hypothesis FASTA. If `all-consensus-seqs_trimmed.fasta` is available, it is used for this UNITE review; otherwise `all-consensus-seqs.fasta` is used."),
+      "- Because these analyses use different input units, databases, and decision rules, their taxonomic labels can differ. wf-16s summarizes many reads against its configured database; UNITE BLAST reviews one consensus sequence per barcode/sample against the selected UNITE database.",
+      "- If the abundance table/figures and the UNITE consensus review disagree substantially, first check which database was used for each analysis, then compare coverage, identity, mapping quality, read counts, and whether the closest database records are well curated. The more reliable result is usually the one supported by high-quality consensus sequence, high coverage, high identity, clear separation from the second-best hit, and an appropriate curated database for the target organism group.",
+      ""
+    ),
+    if (isTRUE(delivery_files$has_abundance_table)) c(
     paste0("Table: ", abundance_table),
     "- tax: semicolon-separated taxonomic path. For this ITS delivery the expected order is usually superkingdom; kingdom; phylum; class; order; family; genus.",
     "- barcode/sample columns: read counts assigned to each taxonomic path for each barcode or sample.",
     "- total: total read count for that taxonomic path across all barcode/sample columns, when present.",
     "- Relative abundance within a sample can be calculated as: reads for one taxon in that sample / total classified and unclassified reads in that sample.",
     "- `Unclassified;Unknown;Unknown;...` means reads were not assigned to the reported taxonomic level in the abundance aggregation step. Common reasons include insufficient identity, insufficient reference coverage, off-target sequences, low read quality, chimeric reads, or incomplete database representation.",
-    "",
+    ""),
+    if (isTRUE(delivery_files$has_identification_tables)) c(
     "Table: barcode*-alignment-stats.tsv",
     "These tables are copied from wf-16s `alignment_tables/`. They are useful for manual review of candidate database references, but they are not the same as the abundance table and should not be interpreted as final per-read abundance calls.",
     "- reference: database reference sequence identifier.",
@@ -1608,7 +1720,8 @@ ITS_delivery_readme <- function(samples_dir,
     "- mean, sd, Coefficient of Variance: summary statistics of depth distribution across the reference. A high coefficient of variation may indicate uneven coverage.",
     "- pcreads: percentage of reads in the barcode/sample represented by this reference hit.",
     "- Important limitation: this table does not report per-read percent identity. A named reference hit with low coverage, low mapping quality, or few reads should be treated as weak evidence.",
-    "",
+    ""),
+    if (isTRUE(delivery_files$has_unite_top_hits)) c(
     paste0("Table: ", unite_top_hits_name),
     "This table contains the rank-1 UNITE BLAST hit for each consensus sequence. It is intended as an independent review of the final consensus sequence, not as a replacement for read-level abundance profiling. Original BLAST key metrics are retained in the table so that the suggested annotation can be audited.",
     "- qseqid: query consensus sequence ID.",
@@ -1631,7 +1744,7 @@ ITS_delivery_readme <- function(samples_dir,
     "- taxonomy_path, kingdom, phylum, class, order, family, genus, species: taxonomy parsed from UNITE-style headers when available.",
     "- rank: hit rank within each query after sorting by bitscore, E-value, identity, and coverage. In this root table rank is normally 1.",
     "- annotation_level: conservative label assigned by ONTools from identity and coverage thresholds: species, genus, family, or low_confidence.",
-    "- novel_candidate: TRUE only for the rank-1 hit when pident is below the configured novel-candidate identity threshold and coverage is sufficient. With the default parameters, this means pident < 97, query_coverage >= 80, and reference_coverage >= 50. This is a screening flag, not a formal new-species conclusion.",
+    "- novel_candidate: TRUE only for the rank-1 hit when pident is below the configured novel-candidate identity threshold and coverage is sufficient. With the default parameters, this means pident < 97, query_coverage >= 80, and reference_coverage >= 50. This is a screening flag, not a formal new-species conclusion."),
     "Note: ONTools is an ONT sequencing analysis software developed for NoveBio. All rights reserved."
   )
 }
@@ -1643,62 +1756,107 @@ ITS_delivery_readme_zh <- function(samples_dir,
                                    identification_dir,
                                    unite_dir,
                                    unite_top_hits_name,
-                                   has_unite_annotation) {
+                                   has_unite_annotation,
+                                   delivery_files) {
   sample_prefix <- if (is.null(samples_dir)) "barcode*/" else paste0(samples_dir, "/barcode*/")
+  has_read_profile <- isTRUE(delivery_files$has_abundance_table) ||
+    isTRUE(delivery_files$has_figures) ||
+    isTRUE(delivery_files$has_identification_tables)
+  has_unite <- isTRUE(delivery_files$has_unite_blast) ||
+    isTRUE(delivery_files$has_unite_top_hits)
   c(
     "ITS 综合交付结果说明",
     "",
     "概述",
-    "本交付目录整合三类 ITS 结果：",
-    "1. 每个 barcode/样本的扩增子共识序列结果。",
-    "2. 基于拆分后 FASTQ reads 生成的类 EPI2ME 流程 ITS 分类丰度结果。",
-    "3. 对整个项目的共识序列在 UNITE 数据库（https://unite.ut.ee/repository.php）中进行 BLAST 复核，并提供 consensus vs UNITE 的比对结果。",
+    "本交付目录包含以下 ITS 结果：",
+    numbered_readme_lines(c(
+      if (isTRUE(delivery_files$has_consensus_results) ||
+          isTRUE(delivery_files$has_consensus_fasta) ||
+          isTRUE(delivery_files$has_trimmed_consensus)) {
+        "每个 barcode/样本的扩增子共识序列结果。"
+      },
+      if (has_read_profile) {
+        "基于拆分后 FASTQ reads 生成的类 EPI2ME 流程 ITS 分类丰度结果。"
+      },
+      if (has_unite) {
+        "对整个项目的共识序列在 UNITE 数据库（https://unite.ut.ee/repository.php）中进行 BLAST 复核，并提供 consensus vs UNITE 的比对结果。"
+      }
+    )),
     "",
-    "这三类结果回答的问题不同。丰度表和图片用于概括 read 层面的样本组成；每个 barcode 的 alignment-stats 表用于查看 reads 支持了哪些数据库参考序列；UNITE BLAST 表用于对最终共识序列进行独立复核。",
+    paste(
+      c(
+        "这些结果回答的问题不同。",
+        if (isTRUE(delivery_files$has_abundance_table) || isTRUE(delivery_files$has_figures)) "丰度表和图片用于概括 read 层面的样本组成。",
+        if (isTRUE(delivery_files$has_identification_tables)) "每个 barcode 的 alignment-stats 表用于查看 reads 支持了哪些数据库参考序列。",
+        if (has_unite) "UNITE BLAST 表用于对最终共识序列进行独立复核。"
+      ),
+      collapse = ""
+    ),
     "",
     "推荐查看顺序",
-    paste0("1. 先看 ", abundance_table, " 和 ", figure_dir, "/，了解样本整体组成。"),
-    "2. 对重点样本，查看对应 barcode 的 alignment-stats 表，确认哪些数据库参考序列支持该分类结果。",
-    paste0("3. 如果生成了 consensus 序列，再查看 ", unite_top_hits_name, "，用 UNITE 数据库对共识序列进行独立复核。"),
-    "4. 如果涉及潜在新物种或意外分类，需要进一步查看完整 BLAST hits、consensus 序列、coverage、depth、identity、top hit 与 second hit 差距以及数据库记录来源。",
+    numbered_readme_lines(c(
+      if (isTRUE(delivery_files$has_abundance_table) && isTRUE(delivery_files$has_figures)) {
+        paste0("先看 ", abundance_table, " 和 ", figure_dir, "/，了解样本整体组成。")
+      },
+      if (isTRUE(delivery_files$has_identification_tables)) {
+        "对重点样本，查看对应 barcode 的 alignment-stats 表，确认哪些数据库参考序列支持该分类结果。"
+      },
+      if (isTRUE(delivery_files$has_unite_top_hits)) {
+        paste0("查看 ", unite_top_hits_name, "，用 UNITE 数据库对共识序列进行独立复核。")
+      },
+      if (has_unite) {
+        "如果涉及潜在新物种或意外分类，需要进一步查看完整 BLAST hits、consensus 序列、coverage、depth、identity、top hit 与 second hit 差距以及数据库记录来源。"
+      }
+    )),
     "",
     "目录内容",
-    paste0("- ", sample_prefix, "consensus_results/：从扩增子共识交付结果复制来的每个 barcode 的共识序列分析结果。"),
-    paste0("- ", sample_prefix, "consensus_results/consensus/consensus.fastq：该 barcode/样本的共识序列文件，如果流程成功生成则会存在。"),
-    paste0("- ", sample_prefix, "consensus_results/alignments/：reads 回比对到 consensus 的 BAM、BAM index 以及 IGV 截图，如果对应步骤已运行则会存在。"),
-    paste0("- ", sample_prefix, "consensus_results/*.synthetic.ab1：根据 reads pileup 合成的类 Sanger AB1 峰图文件，如果启用了 AB1 生成则会存在。"),
-    paste0("- ", sample_prefix, "consensus_results/Distribution_seqLength__*.png：过滤前和/或过滤后的 reads 长度分布图。"),
-    paste0("- ", sample_prefix, ITS_dir, "/：每个 barcode 的 ITS 分析证据。"),
-    paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/：每个 barcode 的 wf-16s 比对统计表。每个 `barcode*-alignment-stats.tsv` 文件汇总一个 barcode 的数据库参考序列命中情况。"),
-    paste0("- ", abundance_table, "：wf-16s ITS 分析得到的属水平丰度表，是查看样本组成的主表。"),
-    paste0("- ", figure_dir, "/：基于丰度表生成的丰度柱状图。`_percentage.png` 表示相对丰度，`_count.png` 表示 reads 数。"),
-    "- all-consensus-seqs.fasta：用于 UNITE BLAST 复核的项目级共识序列 FASTA。如果存在 trimmed consensus，默认优先使用 trimmed 序列并同时保存为该文件名。",
-    "- all-consensus-seqs.fasta.fai：all-consensus-seqs.fasta 的 FASTA index，如果可用则会存在。",
-    "- all-consensus-seqs_trimmed.fasta：如果共识结果中存在 trimmed consensus FASTA，则按原文件名额外保留一份。",
-    "- all-consensus-seqs_trimmed.fasta.fai：trimmed consensus FASTA 的 FASTA index，如果可用则会存在。",
-    "- <project>.csv：本项目对应的样本信息表，用于定义 barcode/样本分组。",
-    paste0("- ", unite_top_hits_name, "：放在根目录下的 UNITE top-hit 汇总表。每条 consensus 序列保留 rank 1 的最佳命中，是最方便查看 UNITE 复核结果的表。"),
-    paste0("- ", unite_dir, "/consensus.blast.tsv：带有表头的完整 consensus vs UNITE BLAST 表格结果，并包含 ONTools 计算得到的 coverage 和分类解析字段。"),
+    if (isTRUE(delivery_files$has_consensus_results)) paste0("- ", sample_prefix, "consensus_results/：从扩增子共识交付结果复制来的每个 barcode 的共识序列分析结果。"),
+    if (isTRUE(delivery_files$has_consensus_fastq)) paste0("- ", sample_prefix, "consensus_results/consensus/consensus.fastq：该 barcode/样本的共识序列文件。"),
+    if (isTRUE(delivery_files$has_alignments)) paste0("- ", sample_prefix, "consensus_results/alignments/：reads 回比对到 consensus 的 BAM、BAM index 以及 IGV 截图。"),
+    if (isTRUE(delivery_files$has_ab1)) paste0("- ", sample_prefix, "consensus_results/*.synthetic.ab1：根据 reads pileup 合成的类 Sanger AB1 峰图文件。"),
+    if (isTRUE(delivery_files$has_distribution_plots)) paste0("- ", sample_prefix, "consensus_results/Distribution_seqLength__*.png：过滤前和/或过滤后的 reads 长度分布图。"),
+    if (isTRUE(delivery_files$has_ITS_results)) paste0("- ", sample_prefix, ITS_dir, "/：每个 barcode 的 ITS 分析证据。"),
+    if (isTRUE(delivery_files$has_identification_tables)) paste0("- ", sample_prefix, ITS_dir, "/", identification_dir, "/：每个 barcode 的 wf-16s 比对统计表。每个 `barcode*-alignment-stats.tsv` 文件汇总一个 barcode 的数据库参考序列命中情况。"),
+    if (isTRUE(delivery_files$has_abundance_table)) paste0("- ", abundance_table, "：wf-16s ITS 分析得到的属水平丰度表，是查看样本组成的主表。"),
+    if (isTRUE(delivery_files$has_figures)) paste0("- ", figure_dir, "/：基于丰度表生成的丰度柱状图。`_percentage.png` 表示相对丰度，`_count.png` 表示 reads 数。"),
+    if (isTRUE(delivery_files$has_consensus_fasta)) "- all-consensus-seqs.fasta：扩增子共识序列流程生成的项目级共识序列 FASTA，并按原文件名保留。",
+    if (isTRUE(delivery_files$has_consensus_index)) "- all-consensus-seqs.fasta.fai：all-consensus-seqs.fasta 的 FASTA index。",
+    if (isTRUE(delivery_files$has_trimmed_consensus)) "- all-consensus-seqs_trimmed.fasta：经过引物修剪的项目级共识序列 FASTA。如果提供了引物序列信息，则共识序列两端会依据引物位置切除 DNA 建库带来的额外 A/T 碱基，并将反向互补序列修正为正向序列。",
+    if (isTRUE(delivery_files$has_trimmed_consensus_index)) "- all-consensus-seqs_trimmed.fasta.fai：`all-consensus-seqs_trimmed.fasta` 的 FASTA index。",
+    if (isTRUE(delivery_files$has_sample_info)) "- <project>.csv：本项目对应的样本信息表，用于定义 barcode/样本分组。",
+    if (isTRUE(delivery_files$has_unite_top_hits)) paste0("- ", unite_top_hits_name, "：放在根目录下的 UNITE top-hit 汇总表。每条 consensus 序列保留 rank 1 的最佳命中，是最方便查看 UNITE 复核结果的表。"),
+    if (isTRUE(delivery_files$has_unite_blast)) paste0("- ", unite_dir, "/consensus.blast.tsv：带有表头的完整 consensus vs UNITE BLAST 表格结果，并包含 ONTools 计算得到的 coverage 和分类解析字段。"),
     "- README.txt 和 README.zh-CN.txt：英文和中文交付说明。",
     "",
     "主要结果如何解读",
-    "丰度表和图片适合用于样本整体组成展示；每个 barcode 的比对统计表适合复核 wf-16s 的参考序列命中证据；UNITE BLAST top-hit 表适合作为共识序列层面的独立复核结果。",
+    paste(
+      c(
+        if (isTRUE(delivery_files$has_abundance_table) || isTRUE(delivery_files$has_figures)) "丰度表和图片适合用于样本整体组成展示。",
+        if (isTRUE(delivery_files$has_identification_tables)) "每个 barcode 的比对统计表适合复核 wf-16s 的参考序列命中证据。",
+        if (isTRUE(delivery_files$has_unite_top_hits)) "UNITE BLAST top-hit 表适合作为共识序列层面的独立复核结果。"
+      ),
+      collapse = ""
+    ),
     "wf-16s ITS 结果适合常规组成分析和候选分类筛查，但严格种水平确认或新物种判断不应只依赖单个数据库 best hit。",
-    "如果需要评估潜在新物种，建议重点查看共识序列质量、percent identity、query coverage、reference coverage、最佳命中与次佳命中的差距、Species Hypothesis 信息，以及最近命中是否来自高质量 curated record 或 type material。",
+    if (has_unite) "如果需要评估潜在新物种，建议重点查看共识序列质量、percent identity、query coverage、reference coverage、最佳命中与次佳命中的差距、Species Hypothesis 信息，以及最近命中是否来自高质量 curated record 或 type material。",
     "",
-    "为什么 wf-16s 结果和 UNITE 复核结果可能不一致",
-    paste0("- ", abundance_table, " 和 ", figure_dir, "/ 来自类 EPI2ME 流程 ITS 分析。该流程使用 `database_set` 指定的数据库，例如 `ncbi_16s_18s_28s_ITS`。这些结果是基于 reads 的分类、过滤和丰度汇总结果。"),
-    paste0("- ", unite_dir, "/consensus.blast.tsv 和 ", unite_top_hits_name, " 来自最终 consensus 序列与 UNITE 数据库之间的 BLASTN 比对。UNITE 数据库来源为 https://unite.ut.ee/repository.php，例如可用 UNITE Species Hypothesis FASTA 构建 `unite_eukaryotes` 数据库。"),
-    "- 两者使用的输入对象、数据库和判定规则都不同，因此分类结果可能存在差异。wf-16s 是对大量 reads 进行分类和丰度汇总；UNITE BLAST 是对每个 barcode/样本的一条或多条 consensus 序列与所选 UNITE 数据库进行复核。",
-    "- 如果丰度表/图片与 UNITE consensus 复核结果差别很大，建议先确认两个分析分别使用了哪个数据库，再比较 coverage、identity、mapping quality、reads 数、最佳命中和次佳命中的差距，以及最近命中的数据库记录是否为高质量 curated record。通常更可靠的结果应同时具备高质量 consensus、高覆盖度、高 identity、与次佳命中有清晰差距，并且使用了适合目标类群的 curated 数据库。",
-    "",
+    if (has_read_profile && has_unite) c(
+      "为什么 wf-16s 结果和 UNITE 复核结果可能不一致",
+      paste0("- ", abundance_table, " 和 ", figure_dir, "/ 来自类 EPI2ME 流程 ITS 分析。该流程使用 `database_set` 指定的数据库，例如 `ncbi_16s_18s_28s_ITS`。这些结果是基于 reads 的分类、过滤和丰度汇总结果。"),
+      paste0("- ", unite_dir, "/consensus.blast.tsv 和 ", unite_top_hits_name, " 来自最终 consensus 序列与 UNITE 数据库之间的 BLASTN 比对。UNITE 数据库来源为 https://unite.ut.ee/repository.php，例如可用 UNITE Species Hypothesis FASTA 构建 `unite_eukaryotes` 数据库。如果存在 `all-consensus-seqs_trimmed.fasta`，UNITE 复核会优先使用该 trimmed 文件；否则使用 `all-consensus-seqs.fasta`。"),
+      "- 两者使用的输入对象、数据库和判定规则都不同，因此分类结果可能存在差异。wf-16s 是对大量 reads 进行分类和丰度汇总；UNITE BLAST 是对每个 barcode/样本的一条或多条 consensus 序列与所选 UNITE 数据库进行复核。",
+      "- 如果丰度表/图片与 UNITE consensus 复核结果差别很大，建议先确认两个分析分别使用了哪个数据库，再比较 coverage、identity、mapping quality、reads 数、最佳命中和次佳命中的差距，以及最近命中的数据库记录是否为高质量 curated record。通常更可靠的结果应同时具备高质量 consensus、高覆盖度、高 identity、与次佳命中有清晰差距，并且使用了适合目标类群的 curated 数据库。",
+      ""
+    ),
+    if (isTRUE(delivery_files$has_abundance_table)) c(
     paste0("表格说明：", abundance_table),
     "- tax：分号分隔的分类路径。ITS 交付结果中通常为 superkingdom; kingdom; phylum; class; order; family; genus。",
     "- barcode/样本列：每个 barcode 或样本中，被分配到该分类路径的 reads 数。",
     "- total：如果存在该列，表示该分类路径在所有 barcode/样本中的 reads 合计数。",
     "- 样本内相对丰度可按以下方式计算：该样本中某分类 reads 数 / 该样本总 reads 数。",
     "- `Unclassified;Unknown;Unknown;...` 表示这些 reads 在丰度汇总阶段没有被注释到报告层级。常见原因包括 identity 不足、reference coverage 不足、非目标扩增、reads 质量较低、嵌合序列，或数据库中缺少足够接近的参考序列。",
-    "",
+    ""),
+    if (isTRUE(delivery_files$has_identification_tables)) c(
     "表格说明：barcode*-alignment-stats.tsv",
     "这些表来自 wf-16s 的 `alignment_tables/`，适合人工复核候选数据库参考序列，但它不是最终丰度表，也不能直接等同于逐条 read 的分类结果。",
     "- reference：数据库参考序列 ID。",
@@ -1716,7 +1874,8 @@ ITS_delivery_readme_zh <- function(samples_dir,
     "- mean、sd、Coefficient of Variance：参考序列深度分布的统计量。Coefficient of Variance 越高，通常表示覆盖越不均一。",
     "- pcreads：该参考命中的 reads 占该 barcode/样本 reads 的比例。",
     "- 重要限制：该表不包含逐条 read 的 percent identity。对于 reads 数少、coverage 低、meanmapq 低的命中，即使有明确物种名，也应作为弱证据谨慎解释。",
-    "",
+    ""),
+    if (isTRUE(delivery_files$has_unite_top_hits)) c(
     paste0("表格说明：", unite_top_hits_name),
     "该表为每条 consensus 序列保留 rank 1 的 UNITE BLAST 最佳命中，用于对最终共识序列进行独立复核，不能替代 read 层面的丰度分析。表中保留了原始 BLAST 的关键比对指标，便于复核该注释建议是否可靠。",
     "- qseqid：查询序列 ID，即 consensus 序列 ID。",
@@ -1739,7 +1898,7 @@ ITS_delivery_readme_zh <- function(samples_dir,
     "- taxonomy_path、kingdom、phylum、class、order、family、genus、species：从 UNITE 风格标题中解析出的分类信息，如果标题中存在则会显示。",
     "- rank：同一条查询序列内的命中排名，排序依据包括 bitscore、E-value、identity 和 coverage。根目录的 top-hit 表中通常为 1。",
     "- annotation_level：ONTools 根据 identity 和 coverage 阈值给出的保守注释层级，包括 species、genus、family 或 low_confidence。",
-    "- novel_candidate：只有 rank 1 的最佳命中在覆盖度足够、但 pident 低于设定的新物种候选 identity 阈值时才为 TRUE。在默认参数下，判断标准为 pident < 97、query_coverage >= 80 且 reference_coverage >= 50。该列只能作为筛查提示，不能单独作为新物种结论。",
+    "- novel_candidate：只有 rank 1 的最佳命中在覆盖度足够、但 pident 低于设定的新物种候选 identity 阈值时才为 TRUE。在默认参数下，判断标准为 pident < 97、query_coverage >= 80 且 reference_coverage >= 50。该列只能作为筛查提示，不能单独作为新物种结论。"),
     "注：ONTools为诺万生物开发的ONT测序分析软件，版权所有。"
   )
 }
