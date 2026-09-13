@@ -484,6 +484,7 @@ make_variant_delivery <- function(path_proj,
     variant_reference <- resolve_wf_amplicon_variant_reference(
       result_dir = workflow[[folder]]$paths$out_dir,
       reference = reference,
+      variant_vcf_name = variant_vcf_name,
       dry_run = dry_run
     )
     variant_references[[folder]] <- variant_reference
@@ -1057,35 +1058,41 @@ add_variant_reference_name_columns <- function(variant, reference_map) {
   variant
 }
 
-resolve_wf_amplicon_variant_reference <- function(result_dir, reference, dry_run) {
+resolve_wf_amplicon_variant_reference <- function(result_dir,
+                                                  reference,
+                                                  variant_vcf_name = "medaka.annotated.vcf.gz",
+                                                  dry_run) {
   check_file_arg(reference, "reference")
+  check_scalar_character(variant_vcf_name, "variant_vcf_name")
   reference <- normalizePath(reference, mustWork = TRUE)
   if (isTRUE(dry_run) || !dir.exists(result_dir)) {
     return(reference)
   }
 
-  direct_candidates <- list.files(
-    result_dir,
-    pattern = "^reference_sanitized_seqID[.](fa|fasta|fq|fastq)([.]gz)?$",
-    full.names = TRUE,
-    ignore.case = TRUE
+  chroms <- wf_amplicon_variant_vcf_chroms(
+    result_dir = result_dir,
+    variant_vcf_name = variant_vcf_name
   )
-  candidates <- direct_candidates
-  if (length(candidates) == 0L) {
-    candidates <- list.files(
-      result_dir,
-      pattern = "^reference_sanitized_seqID[.](fa|fasta|fq|fastq)([.]gz)?$",
-      full.names = TRUE,
-      recursive = TRUE,
+  candidates <- wf_amplicon_reference_candidates(result_dir)
+  if (length(chroms) > 0L) {
+    candidates <- candidates[vapply(
+      candidates,
+      reference_contains_chroms,
+      logical(1),
+      chroms = chroms
+    )]
+  } else {
+    candidates <- candidates[grepl(
+      "^reference_sanitized_seqID[.](fa|fasta|fna|fq|fastq)([.]gz)?$",
+      basename(candidates),
       ignore.case = TRUE
-    )
+    )]
   }
-  candidates <- sort(candidates[file.exists(candidates)])
 
   if (length(candidates) > 0L) {
     if (length(candidates) > 1L) {
       warning(
-        "Multiple sanitized reference files were found under `result_dir`; using the first: ",
+        "Multiple workflow reference files matching VCF CHROM values were found under `result_dir`; using the first: ",
         candidates[[1]],
         call. = FALSE
       )
@@ -1105,6 +1112,66 @@ resolve_wf_amplicon_variant_reference <- function(result_dir, reference, dry_run
   }
 
   reference
+}
+
+wf_amplicon_reference_candidates <- function(result_dir) {
+  candidates <- list.files(
+    result_dir,
+    pattern = "[.](fa|fasta|fna|fq|fastq)([.]gz)?$",
+    full.names = TRUE,
+    recursive = TRUE,
+    ignore.case = TRUE
+  )
+  candidates <- sort(candidates[file.exists(candidates)])
+  if (length(candidates) == 0L) {
+    return(character())
+  }
+
+  base <- basename(candidates)
+  direct <- dirname(candidates) == normalizePath(result_dir, mustWork = TRUE)
+  sanitized <- grepl(
+    "^reference_sanitized_seqID[.](fa|fasta|fna|fq|fastq)([.]gz)?$",
+    base,
+    ignore.case = TRUE
+  )
+  reference_named <- grepl("reference", base, ignore.case = TRUE)
+  candidates[order(!sanitized, !direct, !reference_named, nchar(candidates), candidates)]
+}
+
+wf_amplicon_variant_vcf_chroms <- function(result_dir, variant_vcf_name) {
+  vcf_files <- list.files(
+    result_dir,
+    pattern = paste0("^", regex_escape(variant_vcf_name), "$"),
+    full.names = TRUE,
+    recursive = TRUE
+  )
+  vcf_files <- sort(vcf_files[file.exists(vcf_files)])
+  chroms <- unique(unlist(lapply(vcf_files, vcf_chrom_values), use.names = FALSE))
+  chroms[!is.na(chroms) & nzchar(chroms)]
+}
+
+vcf_chrom_values <- function(vcf_file) {
+  lines <- read_vcf_lines(vcf_file)
+  data_lines <- lines[!startsWith(lines, "#")]
+  data_lines <- data_lines[nzchar(data_lines)]
+  if (length(data_lines) == 0L) {
+    return(character())
+  }
+
+  unique(vapply(
+    strsplit(data_lines, "\t", fixed = TRUE),
+    function(fields) fields[[1L]],
+    character(1)
+  ))
+}
+
+reference_contains_chroms <- function(reference, chroms) {
+  refs <- Biostrings::readDNAStringSet(reference)
+  all(chroms %in% names(refs))
+}
+
+regex_escape <- function(x) {
+  gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", x)
 }
 
 generate_variant_igv_snapshots <- function(result_dir,

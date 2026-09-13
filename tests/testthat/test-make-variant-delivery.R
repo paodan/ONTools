@@ -224,6 +224,95 @@ test_that("make_variant_delivery writes per-barcode and merged variant tables", 
   expect_true(any(grepl("variant_percent", readLines(delivered_readme_zh), fixed = TRUE)))
 })
 
+test_that("make_variant_delivery uses workflow-generated reference matching VCF CHROM values", {
+  proj <- tempfile("ont-project-")
+  delivery_dir <- tempfile("variant-delivery-")
+  run_root <- file.path(
+    proj,
+    "demux_out_YS-NB576",
+    "run01",
+    "sample01",
+    "readset01"
+  )
+  fastq_root <- file.path(run_root, "fastq_pass_trim")
+  result_dir <- file.path(run_root, "results", "wf_amplicon_variant", "PROJECT001_1600")
+  barcode_dir <- file.path(result_dir, "barcode001")
+  vcf_dir <- file.path(barcode_dir, "variants")
+
+  dir.create(file.path(run_root, "bam_pass", "barcode001"), recursive = TRUE)
+  dir.create(file.path(fastq_root, "PROJECT001_1600", "barcode001"), recursive = TRUE)
+  dir.create(vcf_dir, recursive = TRUE)
+
+  reference <- tempfile(fileext = ".fasta")
+  writeLines(c(
+    ">PLA3 A",
+    "ACGTACGTACGTACGTACGTACGTACGT",
+    ">PLA3 B",
+    "TGCATGCATGCATGCATGCATGCATGCA"
+  ), reference)
+  workflow_reference <- file.path(result_dir, "workflow_final_reference.fasta")
+  writeLines(c(
+    ">PLA3_A_",
+    "ACGTACGTACGTACGTACGTACGTACGT",
+    ">PLA3_B_",
+    "TGCATGCATGCATGCATGCATGCATGCA"
+  ), workflow_reference)
+
+  vcf <- file.path(vcf_dir, "medaka.annotated.vcf.gz")
+  con <- gzfile(vcf, open = "wt")
+  on.exit(close(con), add = TRUE)
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tbarcode001",
+    "PLA3_A_\t5\t.\tA\tG\t60\tPASS\tDP=30;SR=1,2,3,4;AR=0,1\tGT:GQ\t1:20",
+    "PLA3_B_\t6\t.\tG\tT\t60\tPASS\tDP=40;SR=2,3,4,5;AR=0,1\tGT:GQ\t1:20"
+  ), con)
+  close(con)
+  on.exit(NULL)
+
+  sample_info <- tempfile(fileext = ".csv")
+  utils::write.csv(
+    data.frame(
+      Barcode_ID = "PBC001-001",
+      Project_ID = "PROJECT001",
+      Expected_Size_bp = "1600",
+      Min_Read_Length = 1200,
+      Max_Read_Length = 1800
+    ),
+    sample_info,
+    row.names = FALSE
+  )
+
+  res <- make_variant_delivery(
+    path_proj = proj,
+    path_sampleInfo_file_list = c(PROJECT001_1600 = sample_info),
+    reference = reference,
+    path_delivery = delivery_dir,
+    run_basecalling_demux_step = FALSE,
+    run_QC_step = FALSE,
+    move_fastq_step = TRUE,
+    move_fastq_mode = "reuse",
+    run_amplicon_step = FALSE,
+    run_filtered_QC_step = FALSE,
+    run_igv_step = FALSE,
+    make_ab1 = FALSE,
+    collect_results_step = FALSE,
+    echo = FALSE,
+    stderr = FALSE
+  )
+
+  expect_equal(
+    res$variant_references$PROJECT001_1600,
+    normalizePath(workflow_reference)
+  )
+  variant <- utils::read.delim(
+    file.path(barcode_dir, "variant.tsv"),
+    check.names = FALSE
+  )
+  expect_equal(variant$CHROM, c("PLA3_A_", "PLA3_B_"))
+  expect_equal(variant$reference_name_original, c("PLA3 A", "PLA3 B"))
+})
+
 test_that("make_variant_delivery writes empty variant tables for empty VCFs", {
   result_dir <- tempfile("wf-amplicon-result-")
   vcf_dir <- file.path(result_dir, "barcode001", "variants")
