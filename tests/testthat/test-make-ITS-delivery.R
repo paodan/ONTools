@@ -238,6 +238,27 @@ test_that("make_ITS_delivery dry-run reports grouped ITS delivery path", {
   )
 })
 
+test_that("make_ITS_delivery checks grouped ITS output before analysis", {
+  inputs <- make_fake_grouped_ITS_inputs()
+  path_delivery <- tempfile("its-delivery-")
+  path_proj <- tempfile("ont-proj-")
+  dir.create(file.path(path_delivery, "PROJECT001_ITS", "ITS"), recursive = TRUE)
+  dir.create(path_proj, recursive = TRUE)
+
+  expect_error(
+    make_ITS_delivery(
+      path_ITS_result = inputs$its_result,
+      path_delivery = path_delivery,
+      consensus_delivery_path = "missing-consensus",
+      path_proj = path_proj,
+      path_sampleInfo_file_list = inputs$sample_info["PROJECT001_ITS"],
+      run_unite_annotation = FALSE,
+      echo = FALSE
+    ),
+    "PROJECT001_ITS/ITS"
+  )
+})
+
 test_that("make_ITS_delivery rejects removed output_dir argument", {
   expect_error(
     make_ITS_delivery(output_dir = "old", dry_run = TRUE),

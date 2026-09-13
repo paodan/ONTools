@@ -332,7 +332,7 @@ annotate_consensus_blast <- function(consensus_fasta,
   if (!is.null(makeblastdb_call)) {
     make_status <- system2(
       makeblastdb_call$command,
-      args = makeblastdb_call$args,
+      args = quote_system2_args(makeblastdb_call$args),
       stdout = stdout,
       stderr = stderr
     )
@@ -343,7 +343,7 @@ annotate_consensus_blast <- function(consensus_fasta,
 
   blast_status <- system2(
     blast_call$command,
-    args = blast_call$args,
+    args = quote_system2_args(blast_call$args),
     stdout = stdout,
     stderr = stderr
   )
@@ -363,6 +363,13 @@ annotate_consensus_blast <- function(consensus_fasta,
     thresholds = thresholds,
     conda_env = conda_env
   ))
+}
+
+quote_system2_args <- function(args) {
+  if (length(args) == 0L) return(args)
+  needs_quote <- grepl("[[:space:]'\"\\\\$`!#&;<>*?(){}\\[\\]|]", args)
+  args[needs_quote] <- shQuote(args[needs_quote])
+  args
 }
 
 read_consensus_blast_table <- function(path, fields, thresholds) {

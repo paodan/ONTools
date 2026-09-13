@@ -92,6 +92,59 @@ test_that("annotate_consensus_blast parses BLAST output and taxonomy", {
   expect_true(file.exists(res$paths$output_tsv))
 })
 
+test_that("annotate_consensus_blast passes BLAST outfmt as one argument", {
+  query <- tempfile(fileext = ".fasta")
+  out_dir <- tempfile("blast-")
+  fake_bin <- tempfile("blast-bin-")
+  captured <- file.path(fake_bin, "captured_args.txt")
+  dir.create(fake_bin)
+  writeLines(c(">consensus1", "ACGTACGT"), query)
+
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "out=''",
+      "outfmt_seen=''",
+      "while [[ $# -gt 0 ]]; do",
+      "  case \"$1\" in",
+      "    -out) out=\"$2\"; shift 2 ;;",
+      "    -outfmt) outfmt_seen=\"$2\"; printf '%s\\n' \"$2\" > \"$CAPTURED_ARGS\"; shift 2 ;;",
+      "    *) shift ;;",
+      "  esac",
+      "done",
+      "if [[ \"$outfmt_seen\" != *'qseqid qlen qstart'* ]]; then",
+      "  echo \"bad outfmt: $outfmt_seen\" >&2",
+      "  exit 9",
+      "fi",
+      ": > \"$out\""
+    ),
+    file.path(fake_bin, "blastn")
+  )
+  Sys.chmod(file.path(fake_bin, "blastn"), mode = "0755")
+
+  old_path <- Sys.getenv("PATH")
+  old_capture <- Sys.getenv("CAPTURED_ARGS")
+  on.exit({
+    Sys.setenv(PATH = old_path)
+    Sys.setenv(CAPTURED_ARGS = old_capture)
+  }, add = TRUE)
+  Sys.setenv(
+    PATH = paste(fake_bin, old_path, sep = .Platform$path.sep),
+    CAPTURED_ARGS = captured
+  )
+
+  res <- annotate_consensus_blast(
+    consensus_fasta = query,
+    db = "unite_eukaryotes",
+    out_dir = out_dir,
+    echo = FALSE
+  )
+
+  expect_equal(res$status, 0L)
+  expect_match(readLines(captured), "qseqid qlen qstart", fixed = TRUE)
+})
+
 test_that("annotate_consensus_blast flags low-identity covered top hit as novel candidate", {
   query <- tempfile(fileext = ".fasta")
   out_dir <- tempfile("blast-")

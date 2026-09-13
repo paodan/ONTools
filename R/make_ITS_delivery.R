@@ -466,6 +466,15 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       paste0(basename(output_dir), "_wf_ITS_work")
     )
   }
+  targets <- make_ITS_delivery_targets(
+    output_dir = output_dir,
+    grouped_delivery = grouped_delivery,
+    sample_info_groups = sample_info_groups
+  )
+
+  if (!isTRUE(dry_run)) {
+    check_ITS_delivery_targets_available(targets, overwrite = overwrite)
+  }
 
   if (isTRUE(dry_run)) {
     ITS_plan <- NULL
@@ -612,11 +621,6 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   }
   consensus_delivery_path <- normalizePath(consensus_delivery_path, mustWork = TRUE)
 
-  targets <- make_ITS_delivery_targets(
-    output_dir = output_dir,
-    grouped_delivery = grouped_delivery,
-    sample_info_groups = sample_info_groups
-  )
   ITS_results <- list()
   path_ITS_results <- list()
   for (target_name in names(targets)) {
@@ -875,6 +879,20 @@ make_ITS_delivery_targets <- function(output_dir,
     )
   }
   targets
+}
+
+check_ITS_delivery_targets_available <- function(targets, overwrite) {
+  existing <- vapply(targets, function(target) {
+    dir.exists(target$output_dir)
+  }, logical(1L))
+  if (any(existing) && !isTRUE(overwrite)) {
+    stop(
+      "ITS delivery directory already exists. Use `overwrite = TRUE` to replace it: ",
+      paste(vapply(targets[existing], `[[`, character(1L), "output_dir"), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 resolve_ITS_group_consensus_root <- function(consensus_delivery_path, group) {
