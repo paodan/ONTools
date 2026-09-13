@@ -574,10 +574,22 @@ test_that("make_ITS_delivery organizes consensus and ITS results under samples",
   )
   expect_true(file.exists(file.path(path_delivery, "README.txt")))
   expect_true(file.exists(file.path(path_delivery, "README.zh-CN.txt")))
+  readme <- paste(readLines(file.path(path_delivery, "README.txt")), collapse = "\n")
+  readme_zh <- paste(readLines(file.path(path_delivery, "README.zh-CN.txt")), collapse = "\n")
+  expect_match(readme, "Table: abundance_table_genus.tsv", fixed = TRUE)
+  expect_match(readme, "Table: barcode*-alignment-stats.tsv", fixed = TRUE)
+  expect_match(readme, "Table: unite_consensus_top_hits.tsv", fixed = TRUE)
+  expect_match(readme, "https://unite.ut.ee/repository.php", fixed = TRUE)
+  expect_match(readme, "pident < 97, query_coverage >= 80, and reference_coverage >= 50", fixed = TRUE)
+  expect_match(readme_zh, "表格说明：abundance_table_genus.tsv", fixed = TRUE)
+  expect_match(readme_zh, "表格说明：barcode*-alignment-stats.tsv", fixed = TRUE)
+  expect_match(readme_zh, "表格说明：unite_consensus_top_hits.tsv", fixed = TRUE)
+  expect_match(readme_zh, "https://unite.ut.ee/repository.php", fixed = TRUE)
+  expect_match(readme_zh, "pident < 97、query_coverage >= 80 且 reference_coverage >= 50", fixed = TRUE)
   expect_null(res$unite_annotation)
 })
 
-test_that("make_ITS_delivery writes UNITE detailed and root top-hit tables", {
+test_that("make_ITS_delivery writes headed UNITE BLAST and root top-hit tables", {
   skip_if_not(capabilities("png"))
 
   inputs <- make_fake_ITS_inputs()
@@ -626,14 +638,35 @@ test_that("make_ITS_delivery writes UNITE detailed and root top-hit tables", {
     "unite_consensus_annotation",
     "consensus.blast.tsv"
   )))
-  expect_true(file.exists(file.path(
+  expect_false(file.exists(file.path(
     path_delivery,
     "unite_consensus_annotation",
     "consensus.top_hits.tsv"
   )))
   expect_true(file.exists(file.path(path_delivery, "unite_consensus_top_hits.tsv")))
+  expect_match(
+    readLines(file.path(path_delivery, "unite_consensus_annotation", "consensus.blast.tsv"), n = 1),
+    "qseqid\tqlen\tqstart",
+    fixed = TRUE
+  )
   expect_s3_class(res$unite_annotation$top_hits, "data.frame")
   expect_equal(res$unite_annotation$top_hits$genus, "Saccharomyces")
+  top_hits <- utils::read.delim(
+    file.path(path_delivery, "unite_consensus_top_hits.tsv"),
+    sep = "\t",
+    check.names = FALSE
+  )
+  expect_true(all(c(
+    "qseqid", "qlen", "qstart", "qend", "sseqid", "slen", "sstart",
+    "send", "length", "pident", "qcovs", "query_coverage",
+    "reference_coverage", "mismatch", "gapopen", "evalue", "bitscore",
+    "annotation_level", "novel_candidate"
+  ) %in% names(top_hits)))
+  expect_equal(names(top_hits)[1:13], c(
+    "qseqid", "qlen", "qstart", "qend", "sseqid", "slen", "sstart",
+    "send", "length", "pident", "qcovs", "query_coverage",
+    "reference_coverage"
+  ))
 })
 
 test_that("write_ITS_delivery_readme can skip Chinese README", {

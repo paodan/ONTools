@@ -224,10 +224,10 @@ project-level abundance files, figures, sample information, and consensus FASTA
 are copied to the project root.
 \item Optionally run consensus-vs-UNITE review. Consensus FASTA files are
 collected into the project-root \code{all-consensus-seqs.fasta}, BLAST output is
-written to \code{unite_consensus_annotation/consensus.blast.tsv}, and the
-top-hit summary is written both to
-\code{unite_consensus_annotation/consensus.top_hits.tsv} and to the root-level
-\code{unite_consensus_top_hits.tsv}.
+written to \code{unite_consensus_annotation/consensus.blast.tsv} with column
+headers, and the top-hit summary is written to the root-level
+\code{unite_consensus_top_hits.tsv}. The detailed UNITE directory does not
+duplicate the root-level top-hit table.
 }
 }
 \examples{

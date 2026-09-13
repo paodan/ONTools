@@ -90,6 +90,7 @@ test_that("annotate_consensus_blast parses BLAST output and taxonomy", {
   expect_equal(res$top_hits$annotation_level, "species")
   expect_false(res$top_hits$novel_candidate)
   expect_true(file.exists(res$paths$output_tsv))
+  expect_match(readLines(res$paths$output_tsv, n = 1), "qseqid\tqlen\tqstart", fixed = TRUE)
 })
 
 test_that("annotate_consensus_blast passes BLAST outfmt as one argument", {

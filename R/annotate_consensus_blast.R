@@ -69,10 +69,11 @@
 #'   `top_hits`, `thresholds`, and `conda_env`.
 #'
 #' @details
-#' `annotate_consensus_blast()` writes BLAST output in tabular format with these
-#' fields: `qseqid`, `qlen`, `qstart`, `qend`, `sseqid`, `slen`, `sstart`,
-#' `send`, `length`, `pident`, `qcovs`, `mismatch`, `gapopen`, `evalue`,
-#' `bitscore`, `salltitles`, and `staxids`.
+#' `annotate_consensus_blast()` runs BLAST in tabular format, then rewrites the
+#' output TSV with column headers. The BLAST-derived fields are: `qseqid`,
+#' `qlen`, `qstart`, `qend`, `sseqid`, `slen`, `sstart`, `send`, `length`,
+#' `pident`, `qcovs`, `mismatch`, `gapopen`, `evalue`, `bitscore`,
+#' `salltitles`, and `staxids`.
 #'
 #' After reading the BLAST output, the function adds:
 #'
@@ -353,6 +354,13 @@ annotate_consensus_blast <- function(consensus_fasta,
 
   blast <- read_consensus_blast_table(output_tsv, outfmt_fields, thresholds)
   top_hits <- blast[blast$rank == 1L, , drop = FALSE]
+  utils::write.table(
+    blast,
+    output_tsv,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
 
   invisible(list(
     status = 0L,
