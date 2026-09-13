@@ -661,9 +661,10 @@ test_that("make_ITS_delivery writes headed UNITE BLAST and root top-hit tables",
   expect_true(all(c(
     "qseqid", "qlen", "qstart", "qend", "sseqid", "slen", "sstart",
     "send", "length", "pident", "qcovs", "query_coverage",
-    "reference_coverage", "mismatch", "gapopen", "evalue", "bitscore",
-    "annotation_level", "novel_candidate"
+    "reference_coverage", "mismatch", "gapopen", "evalue", "bitscore"
   ) %in% names(top_hits)))
+  expect_false("annotation_level" %in% names(top_hits))
+  expect_false("novel_candidate" %in% names(top_hits))
   expect_equal(names(top_hits)[1:13], c(
     "qseqid", "qlen", "qstart", "qend", "sseqid", "slen", "sstart",
     "send", "length", "pident", "qcovs", "query_coverage",

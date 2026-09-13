@@ -108,13 +108,12 @@
 #' @param unite_top_hits_name Filename copied to `path_delivery` for the top-hit
 #'   summary. Default is `"unite_consensus_top_hits.tsv"`, placed beside
 #'   `abundance_table_genus.tsv` for quick review.
-#' @param unite_threads,unite_max_target_seqs,unite_evalue,unite_task,unite_word_size,unite_strand,unite_dust,unite_perc_identity,unite_extra_args,unite_species_identity,unite_genus_identity,unite_family_identity,unite_min_query_coverage,unite_min_reference_coverage,unite_novel_identity,unite_blastn,unite_makeblastdb,unite_conda_env,conda
+#' @param unite_threads,unite_max_target_seqs,unite_evalue,unite_task,unite_word_size,unite_strand,unite_dust,unite_perc_identity,unite_extra_args,unite_blastn,unite_makeblastdb,unite_conda_env,conda
 #'   Parameters passed to [annotate_consensus_blast()] for UNITE annotation.
 #'   Defaults use `blastn`, `makeblastdb`, `threads = 10`,
-#'   `max_target_seqs = 20`, `evalue = "1e-20"`, species/genus/family identity
-#'   thresholds of 98.5/95/90 percent, minimum query/reference coverage of
-#'   80/50 percent, and `novel_identity = 97`. `unite_conda_env = NULL` means
-#'   BLAST tools are called from the current environment.
+#'   `max_target_seqs = 20`, and `evalue = "1e-20"`.
+#'   `unite_conda_env = NULL` means BLAST tools are called from the current
+#'   environment.
 #' @param readme_name,chinese_readme_name README filenames written under
 #'   `path_delivery`. Defaults are `"README.txt"` and `"README.zh-CN.txt"`. Set
 #'   `chinese_readme_name = NULL` to skip the Chinese README.
@@ -278,12 +277,6 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
                               unite_dust = NULL,
                               unite_perc_identity = NULL,
                               unite_extra_args = NULL,
-                              unite_species_identity = 98.5,
-                              unite_genus_identity = 95,
-                              unite_family_identity = 90,
-                              unite_min_query_coverage = 80,
-                              unite_min_reference_coverage = 50,
-                              unite_novel_identity = 97,
                               unite_blastn = "blastn",
                               unite_makeblastdb = "makeblastdb",
                               unite_conda_env = NULL,
@@ -708,12 +701,6 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       unite_dust = unite_dust,
       unite_perc_identity = unite_perc_identity,
       unite_extra_args = unite_extra_args,
-      unite_species_identity = unite_species_identity,
-      unite_genus_identity = unite_genus_identity,
-      unite_family_identity = unite_family_identity,
-      unite_min_query_coverage = unite_min_query_coverage,
-      unite_min_reference_coverage = unite_min_reference_coverage,
-      unite_novel_identity = unite_novel_identity,
       unite_blastn = unite_blastn,
       unite_makeblastdb = unite_makeblastdb,
       unite_conda_env = unite_conda_env,
@@ -1016,12 +1003,6 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
                                          unite_dust,
                                          unite_perc_identity,
                                          unite_extra_args,
-                                         unite_species_identity,
-                                         unite_genus_identity,
-                                         unite_family_identity,
-                                         unite_min_query_coverage,
-                                         unite_min_reference_coverage,
-                                         unite_novel_identity,
                                          unite_blastn,
                                          unite_makeblastdb,
                                          unite_conda_env,
@@ -1161,12 +1142,6 @@ assemble_single_ITS_delivery <- function(path_ITS_result,
         dust = unite_dust,
         perc_identity = unite_perc_identity,
         extra_args = unite_extra_args,
-        species_identity = unite_species_identity,
-        genus_identity = unite_genus_identity,
-        family_identity = unite_family_identity,
-        min_query_coverage = unite_min_query_coverage,
-        min_reference_coverage = unite_min_reference_coverage,
-        novel_identity = unite_novel_identity,
         blastn = unite_blastn,
         makeblastdb = unite_makeblastdb,
         conda_env = unite_conda_env,
@@ -1230,7 +1205,7 @@ format_unite_top_hits <- function(top_hits) {
     "mismatch", "gapopen", "evalue", "bitscore",
     "salltitles", "staxids", "taxonomy_path",
     "kingdom", "phylum", "class", "order", "family", "genus", "species",
-    "rank", "annotation_level", "novel_candidate"
+    "rank"
   )
   ordered <- intersect(key_cols, names(top_hits))
   remaining <- setdiff(names(top_hits), ordered)
@@ -1742,9 +1717,7 @@ ITS_delivery_readme <- function(samples_dir,
     "- query_coverage: coverage of the consensus sequence calculated from qstart/qend/qlen.",
     "- reference_coverage: coverage of the matched reference calculated from sstart/send/slen.",
     "- taxonomy_path, kingdom, phylum, class, order, family, genus, species: taxonomy parsed from UNITE-style headers when available.",
-    "- rank: hit rank within each query after sorting by bitscore, E-value, identity, and coverage. In this root table rank is normally 1.",
-    "- annotation_level: conservative label assigned by ONTools from identity and coverage thresholds: species, genus, family, or low_confidence.",
-    "- novel_candidate: TRUE only for the rank-1 hit when pident is below the configured novel-candidate identity threshold and coverage is sufficient. With the default parameters, this means pident < 97, query_coverage >= 80, and reference_coverage >= 50. This is a screening flag, not a formal new-species conclusion."),
+    "- rank: hit rank within each query after sorting by bitscore, E-value, identity, and coverage. In this root table rank is normally 1."),
     "Note: ONTools is an ONT sequencing analysis software developed for NoveBio. All rights reserved."
   )
 }
@@ -1896,9 +1869,7 @@ ITS_delivery_readme_zh <- function(samples_dir,
     "- query_coverage：ONTools 根据 qstart、qend 和 qlen 计算的 consensus 覆盖比例。",
     "- reference_coverage：ONTools 根据 sstart、send 和 slen 计算的参考序列覆盖比例。",
     "- taxonomy_path、kingdom、phylum、class、order、family、genus、species：从 UNITE 风格标题中解析出的分类信息，如果标题中存在则会显示。",
-    "- rank：同一条查询序列内的命中排名，排序依据包括 bitscore、E-value、identity 和 coverage。根目录的 top-hit 表中通常为 1。",
-    "- annotation_level：ONTools 根据 identity 和 coverage 阈值给出的保守注释层级，包括 species、genus、family 或 low_confidence。",
-    "- novel_candidate：只有 rank 1 的最佳命中在覆盖度足够、但 pident 低于设定的新物种候选 identity 阈值时才为 TRUE。在默认参数下，判断标准为 pident < 97、query_coverage >= 80 且 reference_coverage >= 50。该列只能作为筛查提示，不能单独作为新物种结论。"),
+    "- rank：同一条查询序列内的命中排名，排序依据包括 bitscore、E-value、identity 和 coverage。根目录的 top-hit 表中通常为 1。"),
     "注：ONTools为诺万生物开发的ONT测序分析软件，版权所有。"
   )
 }

@@ -87,8 +87,8 @@ test_that("annotate_consensus_blast parses BLAST output and taxonomy", {
   expect_equal(res$top_hits$sseqid, "SH1")
   expect_equal(res$top_hits$genus, "Saccharomyces")
   expect_equal(res$top_hits$species, "Saccharomyces cerevisiae")
-  expect_equal(res$top_hits$annotation_level, "species")
-  expect_false(res$top_hits$novel_candidate)
+  expect_false("annotation_level" %in% names(res$top_hits))
+  expect_false("novel_candidate" %in% names(res$top_hits))
   expect_true(file.exists(res$paths$output_tsv))
   expect_match(readLines(res$paths$output_tsv, n = 1), "qseqid\tqlen\tqstart", fixed = TRUE)
 })
@@ -146,7 +146,7 @@ test_that("annotate_consensus_blast passes BLAST outfmt as one argument", {
   expect_match(readLines(captured), "qseqid qlen qstart", fixed = TRUE)
 })
 
-test_that("annotate_consensus_blast flags low-identity covered top hit as novel candidate", {
+test_that("annotate_consensus_blast keeps low-identity top-hit metrics without automatic labels", {
   query <- tempfile(fileext = ".fasta")
   out_dir <- tempfile("blast-")
   fake_bin <- tempfile("blast-bin-")
@@ -181,8 +181,11 @@ test_that("annotate_consensus_blast flags low-identity covered top hit as novel 
     echo = FALSE
   )
 
-  expect_equal(res$top_hits$annotation_level, "family")
-  expect_true(res$top_hits$novel_candidate)
+  expect_equal(res$top_hits$sseqid, "SH3")
+  expect_equal(res$top_hits$pident, 94.5)
+  expect_equal(res$top_hits$query_coverage, 95)
+  expect_false("annotation_level" %in% names(res$top_hits))
+  expect_false("novel_candidate" %in% names(res$top_hits))
 })
 
 test_that("read_consensus_blast_table returns empty data frame for empty BLAST output", {

@@ -42,15 +42,6 @@
 #'   `blastn -perc_identity`. Default is `NULL`.
 #' @param extra_args Optional additional `blastn` arguments as a character
 #'   vector, for example `c("-ungapped")`. Default is `NULL`.
-#' @param species_identity,genus_identity,family_identity Percent identity
-#'   cutoffs used for the conservative `annotation_level` column. Defaults are
-#'   `98.5`, `95`, and `90`.
-#' @param min_query_coverage,min_reference_coverage Minimum coverage cutoffs
-#'   used before assigning species/genus/family levels. Defaults are `80` and
-#'   `50` percent.
-#' @param novel_identity Percent identity cutoff used to flag
-#'   `novel_candidate` when coverage is sufficient but the best hit is below
-#'   this identity. Default is `97`.
 #' @param blastn,makeblastdb Command names or executable paths. Defaults are
 #'   `"blastn"` and `"makeblastdb"`.
 #' @param conda_env Optional conda environment name. If supplied, external
@@ -66,7 +57,7 @@
 #'   and errors to the R console.
 #'
 #' @return Invisibly returns a list with `status`, `commands`, `paths`, `blast`,
-#'   `top_hits`, `thresholds`, and `conda_env`.
+#'   `top_hits`, and `conda_env`.
 #'
 #' @details
 #' `annotate_consensus_blast()` runs BLAST in tabular format, then rewrites the
@@ -86,17 +77,11 @@
 #'   taxonomy strings in `salltitles` when present.
 #' * `rank`: hit rank within each query, ordered by higher `bitscore`, lower
 #'   `evalue`, higher `pident`, then higher `query_coverage`.
-#' * `annotation_level`: `"species"`, `"genus"`, `"family"`, or
-#'   `"low_confidence"` based on the identity and coverage thresholds.
-#' * `novel_candidate`: `TRUE` for rank-1 hits with sufficient query/reference
-#'   coverage but identity below `novel_identity`.
 #'
-#' The default threshold logic is intentionally conservative. A hit must pass
-#' both `min_query_coverage = 80` and `min_reference_coverage = 50` before it can
-#' be labeled to family/genus/species by identity. The default identity
-#' thresholds are 90 percent for family, 95 percent for genus, and 98.5 percent
-#' for species. These labels are screening labels, not formal taxonomic
-#' decisions.
+#' The function intentionally reports the BLAST metrics and parsed taxonomy
+#' fields without assigning species/genus/family calls or novel-candidate flags.
+#' Users should interpret the result from identity, query/reference coverage,
+#' hit separation, and database metadata.
 #'
 #' For UNITE databases, ONTools expects FASTA headers that contain an SH
 #' identifier and taxonomy string. A typical header looks like:
@@ -167,12 +152,6 @@ annotate_consensus_blast <- function(consensus_fasta,
                                      dust = NULL,
                                      perc_identity = NULL,
                                      extra_args = NULL,
-                                     species_identity = 98.5,
-                                     genus_identity = 95,
-                                     family_identity = 90,
-                                     min_query_coverage = 80,
-                                     min_reference_coverage = 50,
-                                     novel_identity = 97,
                                      blastn = "blastn",
                                      makeblastdb = "makeblastdb",
                                      conda_env = NULL,
@@ -213,13 +192,6 @@ annotate_consensus_blast <- function(consensus_fasta,
   if (!is.null(perc_identity)) {
     perc_identity <- validate_nonnegative_number(perc_identity, "perc_identity")
   }
-  species_identity <- validate_nonnegative_number(species_identity, "species_identity")
-  genus_identity <- validate_nonnegative_number(genus_identity, "genus_identity")
-  family_identity <- validate_nonnegative_number(family_identity, "family_identity")
-  min_query_coverage <- validate_nonnegative_number(min_query_coverage, "min_query_coverage")
-  min_reference_coverage <- validate_nonnegative_number(min_reference_coverage, "min_reference_coverage")
-  novel_identity <- validate_nonnegative_number(novel_identity, "novel_identity")
-
   if (file.exists(consensus_fasta)) {
     consensus_fasta <- normalizePath(consensus_fasta, mustWork = TRUE)
   } else if (!isTRUE(dry_run)) {
@@ -302,15 +274,6 @@ annotate_consensus_blast <- function(consensus_fasta,
     output_tsv = output_tsv,
     out_dir = out_dir
   )
-  thresholds <- list(
-    species_identity = species_identity,
-    genus_identity = genus_identity,
-    family_identity = family_identity,
-    min_query_coverage = min_query_coverage,
-    min_reference_coverage = min_reference_coverage,
-    novel_identity = novel_identity
-  )
-
   if (isTRUE(dry_run)) {
     return(invisible(list(
       status = NA_integer_,
@@ -318,7 +281,6 @@ annotate_consensus_blast <- function(consensus_fasta,
       paths = paths,
       blast = NULL,
       top_hits = NULL,
-      thresholds = thresholds,
       conda_env = conda_env
     )))
   }
@@ -352,7 +314,7 @@ annotate_consensus_blast <- function(consensus_fasta,
     stop("blastn failed with exit status: ", blast_status, call. = FALSE)
   }
 
-  blast <- read_consensus_blast_table(output_tsv, outfmt_fields, thresholds)
+  blast <- read_consensus_blast_table(output_tsv, outfmt_fields)
   top_hits <- blast[blast$rank == 1L, , drop = FALSE]
   utils::write.table(
     blast,
@@ -368,7 +330,6 @@ annotate_consensus_blast <- function(consensus_fasta,
     paths = paths,
     blast = blast,
     top_hits = top_hits,
-    thresholds = thresholds,
     conda_env = conda_env
   ))
 }
@@ -380,7 +341,7 @@ quote_system2_args <- function(args) {
   args
 }
 
-read_consensus_blast_table <- function(path, fields, thresholds) {
+read_consensus_blast_table <- function(path, fields) {
   if (!file.exists(path) || file.info(path)$size == 0) {
     empty <- data.frame(matrix(ncol = length(fields), nrow = 0L))
     names(empty) <- fields
@@ -424,17 +385,6 @@ read_consensus_blast_table <- function(path, fields, thresholds) {
   taxonomy <- parse_consensus_blast_taxonomy(blast$salltitles)
   blast <- cbind(blast, taxonomy)
   blast <- rank_consensus_blast_hits(blast)
-  blast$annotation_level <- consensus_blast_annotation_level(blast, thresholds)
-  blast$novel_candidate <- with(
-    blast,
-    rank == 1L &
-      !is.na(pident) &
-      pident < thresholds$novel_identity &
-      !is.na(query_coverage) &
-      query_coverage >= thresholds$min_query_coverage &
-      !is.na(reference_coverage) &
-      reference_coverage >= thresholds$min_reference_coverage
-  )
   blast
 }
 
@@ -460,22 +410,6 @@ rank_consensus_blast_hits <- function(blast) {
   )
   rownames(blast) <- NULL
   blast
-}
-
-consensus_blast_annotation_level <- function(blast, thresholds) {
-  enough_coverage <- !is.na(blast$query_coverage) &
-    blast$query_coverage >= thresholds$min_query_coverage &
-    !is.na(blast$reference_coverage) &
-    blast$reference_coverage >= thresholds$min_reference_coverage
-
-  level <- rep("low_confidence", nrow(blast))
-  level[enough_coverage & !is.na(blast$pident) &
-          blast$pident >= thresholds$family_identity] <- "family"
-  level[enough_coverage & !is.na(blast$pident) &
-          blast$pident >= thresholds$genus_identity] <- "genus"
-  level[enough_coverage & !is.na(blast$pident) &
-          blast$pident >= thresholds$species_identity] <- "species"
-  level
 }
 
 parse_consensus_blast_taxonomy <- function(titles) {
