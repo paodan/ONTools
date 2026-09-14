@@ -252,22 +252,15 @@ dehost_fastq_read_ids <- function(paf, min_mapq, min_aln_frac) {
     return(character())
   }
 
-  paf_table <- utils::read.table(
-    paf,
-    sep = "\t",
-    quote = "",
-    comment.char = "",
-    fill = TRUE,
-    stringsAsFactors = FALSE
-  )
+  paf_table <- read_paf(paf, parse_tags = FALSE)
 
-  if (ncol(paf_table) < 12L || nrow(paf_table) == 0L) {
+  if (is.null(paf_table) || nrow(paf_table) == 0L) {
     return(character())
   }
 
-  read_length <- suppressWarnings(as.numeric(paf_table[[2L]]))
-  aligned_bases <- suppressWarnings(as.numeric(paf_table[[11L]]))
-  mapq <- suppressWarnings(as.numeric(paf_table[[12L]]))
+  read_length <- paf_table$query_length
+  aligned_bases <- paf_table$alignment_block_length
+  mapq <- paf_table$mapping_quality
 
   keep <- !is.na(read_length) &
     read_length > 0 &
@@ -276,7 +269,7 @@ dehost_fastq_read_ids <- function(paf, min_mapq, min_aln_frac) {
     mapq >= min_mapq &
     (aligned_bases / read_length) >= min_aln_frac
 
-  sort(unique(paf_table[[1L]][keep]))
+  sort(unique(paf_table$query_name[keep]))
 }
 
 validate_nonnegative_number <- function(x, name) {
