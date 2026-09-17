@@ -29,8 +29,13 @@ test_that("map_fasta_to_ref returns NULL for empty PAF by default", {
   file.create(paf)
 
   expect_message(
-    res <- map_fasta_to_ref_read_paf(paf, strict = FALSE),
-    "No sequence alignment was found"
+    res <- map_fasta_to_ref_read_paf(
+      paf,
+      strict = FALSE,
+      fastaFile = "query.fasta",
+      ref = "reference.fasta"
+    ),
+    "query.fasta.*reference.fasta"
   )
   expect_null(res)
 })
@@ -40,7 +45,12 @@ test_that("map_fasta_to_ref can fail strictly for empty PAF", {
   file.create(paf)
 
   expect_error(
-    map_fasta_to_ref_read_paf(paf, strict = TRUE),
-    "No sequence alignment was found"
+    map_fasta_to_ref_read_paf(
+      paf,
+      strict = TRUE,
+      fastaFile = "query.fasta",
+      ref = "reference.fasta"
+    ),
+    "query.fasta.*reference.fasta"
   )
 })

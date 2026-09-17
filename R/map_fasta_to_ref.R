@@ -150,7 +150,12 @@ map_fasta_to_ref <- function(fastaFile,
          call. = FALSE)
   }
 
-  paf <- map_fasta_to_ref_read_paf(paf_file, strict = strict)
+  paf <- map_fasta_to_ref_read_paf(
+    paf_file,
+    strict = strict,
+    fastaFile = fastaFile,
+    ref = ref
+  )
   if (is.null(paf)) return(NULL)
 
   sam_status <- system2(
@@ -185,13 +190,27 @@ map_fasta_to_ref <- function(fastaFile,
   ))
 }
 
-map_fasta_to_ref_read_paf <- function(paf_file, strict = FALSE) {
+map_fasta_to_ref_read_paf <- function(paf_file,
+                                      strict = FALSE,
+                                      fastaFile = NULL,
+                                      ref = NULL) {
   paf <- read_paf(paf_file)
   if (!is.null(paf) && nrow(paf) > 0L) {
     return(paf)
   }
 
   msg <- "No sequence alignment was found in the reference."
+  if (!is.null(fastaFile) || !is.null(ref)) {
+    query_label <- if (is.null(fastaFile)) "<unknown query>" else fastaFile
+    ref_label <- if (is.null(ref)) "<unknown reference>" else ref
+    msg <- paste0(
+      "No sequence alignment was found when mapping query FASTA ",
+      shQuote(query_label),
+      " to reference ",
+      shQuote(ref_label),
+      "."
+    )
+  }
   if (isTRUE(strict)) {
     stop(msg, call. = FALSE)
   }
