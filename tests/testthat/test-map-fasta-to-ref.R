@@ -23,3 +23,24 @@ test_that("map_fasta_to_ref plans minimap2 and samtools commands", {
   expect_match(res$commands$samtools_sort, "sort")
   expect_match(res$commands$samtools_index, "index")
 })
+
+test_that("map_fasta_to_ref returns NULL for empty PAF by default", {
+  paf <- tempfile(fileext = ".paf")
+  file.create(paf)
+
+  expect_message(
+    res <- map_fasta_to_ref_read_paf(paf, strict = FALSE),
+    "No sequence alignment was found"
+  )
+  expect_null(res)
+})
+
+test_that("map_fasta_to_ref can fail strictly for empty PAF", {
+  paf <- tempfile(fileext = ".paf")
+  file.create(paf)
+
+  expect_error(
+    map_fasta_to_ref_read_paf(paf, strict = TRUE),
+    "No sequence alignment was found"
+  )
+})

@@ -16,6 +16,7 @@ map_fasta_to_ref(
   conda_env = NULL,
   conda = "conda",
   dry_run = FALSE,
+  strict = FALSE,
   echo = TRUE,
   stderr = ""
 )
@@ -44,6 +45,10 @@ commands are run with \verb{conda run -n <conda_env>}.}
 
 \item{dry_run}{Logical. If \code{TRUE}, return planned commands without running
 external tools.}
+
+\item{strict}{Logical. If \code{TRUE}, stop when minimap2 finishes but no PAF
+alignment is found. If \code{FALSE}, return \code{NULL}, matching the original helper
+behavior.}
 
 \item{echo}{Logical. If \code{TRUE}, print planned commands before execution.}
 

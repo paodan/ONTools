@@ -18,6 +18,9 @@
 #' @param conda Conda executable name or path used when `conda_env` is supplied.
 #' @param dry_run Logical. If `TRUE`, return planned commands without running
 #'   external tools.
+#' @param strict Logical. If `TRUE`, stop when minimap2 finishes but no PAF
+#'   alignment is found. If `FALSE`, return `NULL`, matching the original helper
+#'   behavior.
 #' @param echo Logical. If `TRUE`, print planned commands before execution.
 #' @param stderr Passed to [system2()].
 #'
@@ -42,10 +45,11 @@ map_fasta_to_ref <- function(fastaFile,
                              minimap2 = "minimap2",
                              samtools = "samtools",
                              conda_env = NULL,
-                             conda = "conda",
-                             dry_run = FALSE,
-                             echo = TRUE,
-                             stderr = "") {
+	                             conda = "conda",
+	                             dry_run = FALSE,
+	                             strict = FALSE,
+	                             echo = TRUE,
+	                             stderr = "") {
   check_file_arg(fastaFile, "fastaFile")
   check_file_arg(ref, "ref")
   check_scalar_character(preset, "preset")
@@ -54,6 +58,7 @@ map_fasta_to_ref <- function(fastaFile,
   check_scalar_character(conda, "conda")
   check_logical_scalar(secondary, "secondary")
   check_logical_scalar(dry_run, "dry_run")
+  check_logical_scalar(strict, "strict")
   check_logical_scalar(echo, "echo")
   if (!is.null(output_file)) check_scalar_character(output_file, "output_file")
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
@@ -145,10 +150,8 @@ map_fasta_to_ref <- function(fastaFile,
          call. = FALSE)
   }
 
-  paf <- read_paf(paf_file)
-  if (is.null(paf) || nrow(paf) == 0L) {
-    stop("No sequence alignment was found in the reference.", call. = FALSE)
-  }
+  paf <- map_fasta_to_ref_read_paf(paf_file, strict = strict)
+  if (is.null(paf)) return(NULL)
 
   sam_status <- system2(
     sam_call$command,
@@ -180,4 +183,18 @@ map_fasta_to_ref <- function(fastaFile,
     preset = preset,
     conda_env = conda_env
   ))
+}
+
+map_fasta_to_ref_read_paf <- function(paf_file, strict = FALSE) {
+  paf <- read_paf(paf_file)
+  if (!is.null(paf) && nrow(paf) > 0L) {
+    return(paf)
+  }
+
+  msg <- "No sequence alignment was found in the reference."
+  if (isTRUE(strict)) {
+    stop(msg, call. = FALSE)
+  }
+  message(msg)
+  NULL
 }
