@@ -1,6 +1,6 @@
 Package: ONTools
 Title: Utilities for Oxford Nanopore Sequencing Results
-Version: 0.1.0
+Version: 0.2.0
 Authors@R:
     person("Weiyang", "Tao", role = c("aut", "cre"),
            email = "weiyang.tao@example.com")
