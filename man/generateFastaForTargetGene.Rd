@@ -14,8 +14,8 @@ generateFastaForTargetGene(
   h1up_len = 1000,
   h2down_len = 1000,
   preset = "asm5",
-  min_mapq = 0,
-  max_unaligned = 0,
+  min_mapq = NULL,
+  max_unaligned = NULL,
   paf_file = NULL,
   minimap2 = "minimap2",
   conda_env = NULL,
@@ -46,10 +46,11 @@ target gene.}
 
 \item{preset}{Minimap2 preset used when aligning the gene to the genome.}
 
-\item{min_mapq}{Minimum mapping quality for accepted PAF hits.}
+\item{min_mapq}{Optional minimum mapping quality for accepted PAF hits. If
+\code{NULL}, mapping quality is not used for filtering.}
 
-\item{max_unaligned}{Maximum allowed number of unaligned query bases across
-both ends. The default \code{0} keeps only full-length gene alignments.}
+\item{max_unaligned}{Optional maximum allowed number of unaligned query bases
+across both ends. If \code{NULL}, query end coverage is not used for filtering.}
 
 \item{paf_file}{Optional existing PAF file. If supplied, minimap2 is not run.}
 

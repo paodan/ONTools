@@ -72,3 +72,24 @@ test_that("generateFastaForTargetGene can return a dry-run plan", {
   expect_length(res$written_files, 0)
   expect_match(res$commands$minimap2, "minimap2")
 })
+
+test_that("generateFastaForTargetGene does not filter partial PAF hits by default", {
+  paf <- data.frame(
+    query_name = "gene1",
+    query_length = 100,
+    query_start = 10,
+    query_end = 90,
+    strand = "+",
+    target_name = "chr1",
+    target_length = 200,
+    target_start = 50,
+    target_end = 130,
+    residue_matches = 80,
+    alignment_block_length = 80,
+    mapping_quality = 0
+  )
+
+  expect_equal(nrow(generate_target_gene_filter_paf(paf, NULL, NULL)), 1)
+  expect_equal(nrow(generate_target_gene_filter_paf(paf, 1, NULL)), 0)
+  expect_equal(nrow(generate_target_gene_filter_paf(paf, NULL, 0)), 0)
+})

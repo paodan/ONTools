@@ -14,9 +14,10 @@
 #'   target gene.
 #' @param h1up_len,h2down_len Additional flank lengths outside H1 and H2.
 #' @param preset Minimap2 preset used when aligning the gene to the genome.
-#' @param min_mapq Minimum mapping quality for accepted PAF hits.
-#' @param max_unaligned Maximum allowed number of unaligned query bases across
-#'   both ends. The default `0` keeps only full-length gene alignments.
+#' @param min_mapq Optional minimum mapping quality for accepted PAF hits. If
+#'   `NULL`, mapping quality is not used for filtering.
+#' @param max_unaligned Optional maximum allowed number of unaligned query bases
+#'   across both ends. If `NULL`, query end coverage is not used for filtering.
 #' @param paf_file Optional existing PAF file. If supplied, minimap2 is not run.
 #' @param minimap2 Command name or executable path.
 #' @param conda_env Optional conda environment name. If supplied, minimap2 is run
@@ -59,8 +60,8 @@ generateFastaForTargetGene <- function(output_path,
                                        h1up_len = 1000,
                                        h2down_len = 1000,
                                        preset = "asm5",
-                                       min_mapq = 0,
-                                       max_unaligned = 0,
+                                       min_mapq = NULL,
+                                       max_unaligned = NULL,
                                        paf_file = NULL,
                                        minimap2 = "minimap2",
                                        conda_env = NULL,
@@ -91,8 +92,8 @@ generateFastaForTargetGene <- function(output_path,
   h2_len <- validate_nonnegative_integer(h2_len, "h2_len")
   h1up_len <- validate_nonnegative_integer(h1up_len, "h1up_len")
   h2down_len <- validate_nonnegative_integer(h2down_len, "h2down_len")
-  min_mapq <- validate_nonnegative_number(min_mapq, "min_mapq")
-  max_unaligned <- validate_nonnegative_integer(max_unaligned, "max_unaligned")
+  if (!is.null(min_mapq)) min_mapq <- validate_nonnegative_number(min_mapq, "min_mapq")
+  if (!is.null(max_unaligned)) max_unaligned <- validate_nonnegative_integer(max_unaligned, "max_unaligned")
 
   genome_fasta <- normalizePath(genome_fasta, mustWork = TRUE)
   gene_seq_fasta <- normalizePath(gene_seq_fasta, mustWork = TRUE)
@@ -276,11 +277,24 @@ generateFastaForTargetGene <- function(output_path,
 }
 
 generate_target_gene_filter_paf <- function(paf, min_mapq, max_unaligned) {
+  if (is.null(min_mapq) && is.null(max_unaligned)) {
+    return(paf)
+  }
+
+  keep <- rep(TRUE, nrow(paf))
+  if (!is.null(min_mapq)) {
+    keep <- keep &
+      !is.na(paf$mapping_quality) &
+      paf$mapping_quality >= min_mapq
+  }
+
   unaligned <- paf$query_start + (paf$query_length - paf$query_end)
-  keep <- !is.na(paf$mapping_quality) &
-    paf$mapping_quality >= min_mapq &
-    !is.na(unaligned) &
-    unaligned <= max_unaligned
+  if (!is.null(max_unaligned)) {
+    keep <- keep &
+      !is.na(unaligned) &
+      unaligned <= max_unaligned
+  }
+
   paf[keep, , drop = FALSE]
 }
 
