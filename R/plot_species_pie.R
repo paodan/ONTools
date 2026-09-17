@@ -127,11 +127,12 @@ plot_species_pie <- function(alignment_table,
     )
   }
   plot_data$fraction <- plot_data$value / sum(plot_data$value)
-  plot_data$label <- paste0(
-    plot_data$Species,
-    "\n",
-    sprintf("%.1f%%", plot_data$fraction * 100)
-  )
+  # plot_data$label <- paste0(
+  #   plot_data$Species,
+  #   "\n",
+  #   sprintf("%.1f%%", plot_data$fraction * 100)
+  # )
+  plot_data$label <- sprintf("%.1f%%", plot_data$fraction * 100)
   plot_data$Species <- factor(plot_data$Species, levels = plot_data$Species)
 
   plot <- ggplot2::ggplot(
