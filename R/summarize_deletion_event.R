@@ -11,6 +11,16 @@
 #'   of the expected deleted interval.
 #' @param breakpoint_tolerance Maximum allowed distance in bp between observed
 #'   and expected deletion boundaries for a read to count as `DEL_SUPPORT`.
+#' @param match_mode How an observed deletion should match the requested
+#'   interval. `"breakpoints"` requires both deletion breakpoints to fall within
+#'   `breakpoint_tolerance`. `"contains"` counts a read as deletion support when
+#'   the observed deletion contains the requested interval, allowing
+#'   `breakpoint_tolerance` on both sides. `"overlap"` counts any observed
+#'   deletion overlapping the requested interval by at least
+#'   `min_overlap_fraction` of the requested interval.
+#' @param min_overlap_fraction Minimum fraction of the requested deletion
+#'   interval that must overlap an observed deletion when
+#'   `match_mode = "overlap"`.
 #' @param min_mapq Minimum read mapping quality.
 #' @param min_flank_coverage Number of aligned reference bases required on both
 #'   sides of the deletion interval for a read to be informative. Near reference
@@ -39,6 +49,8 @@ summarize_deletion_event <- function(bam,
                                      deletion_start,
                                      deletion_end,
                                      breakpoint_tolerance = 5,
+                                     match_mode = c("breakpoints", "contains", "overlap"),
+                                     min_overlap_fraction = 0.8,
                                      min_mapq = 20,
                                      min_flank_coverage = 20,
                                      max_wt_deletion_bases = 0,
@@ -50,6 +62,11 @@ summarize_deletion_event <- function(bam,
   breakpoint_tolerance <- validate_nonnegative_integer(
     breakpoint_tolerance,
     "breakpoint_tolerance"
+  )
+  match_mode <- match.arg(match_mode)
+  min_overlap_fraction <- validate_fraction(
+    min_overlap_fraction,
+    "min_overlap_fraction"
   )
   min_mapq <- validate_nonnegative_integer(min_mapq, "min_mapq")
   min_flank_coverage <- validate_nonnegative_integer(
@@ -86,6 +103,8 @@ summarize_deletion_event <- function(bam,
         deletion_start = deletion_start,
         deletion_end = deletion_end,
         breakpoint_tolerance = breakpoint_tolerance,
+        match_mode = match_mode,
+        min_overlap_fraction = min_overlap_fraction,
         min_flank_coverage = min_flank_coverage,
         max_wt_deletion_bases = max_wt_deletion_bases
       )
@@ -105,6 +124,8 @@ summarize_deletion_event <- function(bam,
     deletion_start = deletion_start,
     deletion_end = deletion_end,
     breakpoint_tolerance = breakpoint_tolerance,
+    match_mode = match_mode,
+    min_overlap_fraction = min_overlap_fraction,
     min_mapq = min_mapq,
     min_flank_coverage = min_flank_coverage,
     max_wt_deletion_bases = max_wt_deletion_bases,
@@ -149,38 +170,47 @@ classify_deletion_event_read <- function(read,
                                          deletion_start,
                                          deletion_end,
                                          breakpoint_tolerance,
+                                         match_mode,
+                                         min_overlap_fraction,
                                          min_flank_coverage,
                                          max_wt_deletion_bases) {
   cigar_info <- parse_deletion_event_cigar(read$pos, read$cigar)
-  left_interval <- c(
-    max(1L, deletion_start - min_flank_coverage),
-    deletion_start - 1L
-  )
-  right_interval <- c(
-    deletion_end + 1L,
-    deletion_end + min_flank_coverage
-  )
   target_interval <- c(deletion_start, deletion_end)
-
-  left_required <- deletion_start - left_interval[[1L]]
-  right_required <- right_interval[[2L]] - deletion_end
-  left_covered <- interval_covered_bases(cigar_info$aligned, left_interval)
-  right_covered <- interval_covered_bases(cigar_info$aligned, right_interval)
-  target_covered <- interval_covered_bases(cigar_info$aligned, target_interval)
-  target_width <- deletion_end - deletion_start + 1L
-  target_deleted <- interval_covered_bases(cigar_info$deletions, target_interval)
   best_deletion <- best_matching_deletion(
     cigar_info$deletions,
     deletion_start,
     deletion_end
   )
+  matched <- deletion_event_matches(
+    best_deletion = best_deletion,
+    deletion_start = deletion_start,
+    deletion_end = deletion_end,
+    breakpoint_tolerance = breakpoint_tolerance,
+    match_mode = match_mode,
+    min_overlap_fraction = min_overlap_fraction
+  )
+  flank_start <- if (matched) best_deletion$start else deletion_start
+  flank_end <- if (matched) best_deletion$end else deletion_end
+  left_interval <- c(
+    max(1L, flank_start - min_flank_coverage),
+    flank_start - 1L
+  )
+  right_interval <- c(
+    flank_end + 1L,
+    flank_end + min_flank_coverage
+  )
+
+  left_required <- flank_start - left_interval[[1L]]
+  right_required <- right_interval[[2L]] - flank_end
+  left_covered <- interval_covered_bases(cigar_info$aligned, left_interval)
+  right_covered <- interval_covered_bases(cigar_info$aligned, right_interval)
+  target_covered <- interval_covered_bases(cigar_info$aligned, target_interval)
+  target_width <- deletion_end - deletion_start + 1L
+  target_deleted <- interval_covered_bases(cigar_info$deletions, target_interval)
 
   left_ok <- left_covered >= left_required
   right_ok <- right_covered >= right_required
   flank_ok <- left_ok && right_ok
-  matched <- !is.null(best_deletion) &&
-    abs(best_deletion$start - deletion_start) <= breakpoint_tolerance &&
-    abs(best_deletion$end - deletion_end) <= breakpoint_tolerance
 
   if (!flank_ok) {
     class <- "AMBIGUOUS"
@@ -221,6 +251,32 @@ classify_deletion_event_read <- function(read,
     target_deleted = target_deleted,
     stringsAsFactors = FALSE
   )
+}
+
+deletion_event_matches <- function(best_deletion,
+                                   deletion_start,
+                                   deletion_end,
+                                   breakpoint_tolerance,
+                                   match_mode,
+                                   min_overlap_fraction) {
+  if (is.null(best_deletion)) return(FALSE)
+
+  if (identical(match_mode, "breakpoints")) {
+    return(
+      abs(best_deletion$start - deletion_start) <= breakpoint_tolerance &&
+        abs(best_deletion$end - deletion_end) <= breakpoint_tolerance
+    )
+  }
+
+  if (identical(match_mode, "contains")) {
+    return(
+      best_deletion$start <= deletion_start + breakpoint_tolerance &&
+        best_deletion$end >= deletion_end - breakpoint_tolerance
+    )
+  }
+
+  requested_width <- deletion_end - deletion_start + 1L
+  (best_deletion$overlap / requested_width) >= min_overlap_fraction
 }
 
 parse_deletion_event_cigar <- function(pos, cigar) {

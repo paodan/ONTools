@@ -10,6 +10,8 @@ summarize_deletion_event(
   deletion_start,
   deletion_end,
   breakpoint_tolerance = 5,
+  match_mode = c("breakpoints", "contains", "overlap"),
+  min_overlap_fraction = 0.8,
   min_mapq = 20,
   min_flank_coverage = 20,
   max_wt_deletion_bases = 0,
@@ -26,6 +28,18 @@ of the expected deleted interval.}
 
 \item{breakpoint_tolerance}{Maximum allowed distance in bp between observed
 and expected deletion boundaries for a read to count as \code{DEL_SUPPORT}.}
+
+\item{match_mode}{How an observed deletion should match the requested
+interval. \code{"breakpoints"} requires both deletion breakpoints to fall within
+\code{breakpoint_tolerance}. \code{"contains"} counts a read as deletion support when
+the observed deletion contains the requested interval, allowing
+\code{breakpoint_tolerance} on both sides. \code{"overlap"} counts any observed
+deletion overlapping the requested interval by at least
+\code{min_overlap_fraction} of the requested interval.}
+
+\item{min_overlap_fraction}{Minimum fraction of the requested deletion
+interval that must overlap an observed deletion when
+\code{match_mode = "overlap"}.}
 
 \item{min_mapq}{Minimum read mapping quality.}
 

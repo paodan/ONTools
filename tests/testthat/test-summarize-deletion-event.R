@@ -23,6 +23,8 @@ test_that("classify_deletion_event_read identifies deletion support", {
     deletion_start = 100,
     deletion_end = 160,
     breakpoint_tolerance = 5,
+    match_mode = "breakpoints",
+    min_overlap_fraction = 0.8,
     min_flank_coverage = 20,
     max_wt_deletion_bases = 0
   )
@@ -48,6 +50,8 @@ test_that("classify_deletion_event_read identifies WT support", {
     deletion_start = 100,
     deletion_end = 160,
     breakpoint_tolerance = 5,
+    match_mode = "breakpoints",
+    min_overlap_fraction = 0.8,
     min_flank_coverage = 20,
     max_wt_deletion_bases = 0
   )
@@ -71,6 +75,8 @@ test_that("classify_deletion_event_read marks missing flanks as ambiguous", {
     deletion_start = 100,
     deletion_end = 160,
     breakpoint_tolerance = 5,
+    match_mode = "breakpoints",
+    min_overlap_fraction = 0.8,
     min_flank_coverage = 20,
     max_wt_deletion_bases = 0
   )
@@ -94,6 +100,8 @@ test_that("classify_deletion_event_read marks boundary mismatch as ambiguous", {
     deletion_start = 100,
     deletion_end = 160,
     breakpoint_tolerance = 5,
+    match_mode = "breakpoints",
+    min_overlap_fraction = 0.8,
     min_flank_coverage = 20,
     max_wt_deletion_bases = 0
   )
@@ -102,6 +110,33 @@ test_that("classify_deletion_event_read marks boundary mismatch as ambiguous", {
   expect_equal(out$reason, "deletion_boundary_mismatch")
   expect_equal(out$observed_deletion_start, 100L)
   expect_equal(out$observed_deletion_end, 150L)
+})
+
+test_that("classify_deletion_event_read can count a larger deletion containing the target interval", {
+  read <- list(
+    qname = "read-containing-del",
+    rname = "PLA3_B_",
+    pos = 1L,
+    cigar = "77M130D73M",
+    mapq = 60L,
+    strand = "-"
+  )
+
+  out <- classify_deletion_event_read(
+    read,
+    deletion_start = 100,
+    deletion_end = 200,
+    breakpoint_tolerance = 5,
+    match_mode = "contains",
+    min_overlap_fraction = 0.8,
+    min_flank_coverage = 20,
+    max_wt_deletion_bases = 0
+  )
+
+  expect_equal(out$event_class, "DEL_SUPPORT")
+  expect_equal(out$reason, "matched_deletion")
+  expect_equal(out$observed_deletion_start, 78L)
+  expect_equal(out$observed_deletion_end, 207L)
 })
 
 test_that("summarize_deletion_event_table reports class frequencies", {
