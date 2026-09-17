@@ -130,6 +130,7 @@ plot_values_on_plate <- function(data, valueName = "value", rowName = "row",
 #' category and renders all other wells in grey.
 #'
 #' @inheritParams plot_values_on_plate
+#' @param device Output graphics device, either `"png"` or `"pdf"`.
 #' @param path Output directory for `A.pdf`, `B.pdf`, `C.pdf`, and `D.pdf`.
 #'
 #' @return Invisibly returns a named list of `ggplot` objects.

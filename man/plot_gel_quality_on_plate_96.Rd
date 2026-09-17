@@ -6,6 +6,7 @@
 \usage{
 plot_gel_quality_on_plate_96(
   data,
+  device = c("png", "pdf"),
   path = "./",
   valueName = "value",
   rowName = "row",
@@ -16,6 +17,8 @@ plot_gel_quality_on_plate_96(
 \arguments{
 \item{data}{A data frame containing at least the row, column, and value
 columns.}
+
+\item{device}{Output graphics device, either \code{"png"} or \code{"pdf"}.}
 
 \item{path}{Output directory for \code{A.pdf}, \code{B.pdf}, \code{C.pdf}, and \code{D.pdf}.}
 
