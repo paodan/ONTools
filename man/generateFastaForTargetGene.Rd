@@ -21,6 +21,7 @@ generateFastaForTargetGene(
   conda_env = NULL,
   conda = "conda",
   output_ext = ".fasta",
+  combined_fasta_name = "all_sequences.fasta",
   trim_to_bounds = FALSE,
   dry_run = FALSE,
   echo = TRUE,
@@ -60,6 +61,9 @@ with \verb{conda run -n <conda_env>}.}
 \item{conda}{Conda executable name or path used when \code{conda_env} is supplied.}
 
 \item{output_ext}{Extension appended to generated FASTA file names.}
+
+\item{combined_fasta_name}{File name for the combined FASTA written in each
+hit directory. Set to \code{NULL} to skip writing the combined FASTA.}
 
 \item{trim_to_bounds}{Logical. If \code{FALSE}, stop when requested flank regions
 extend outside the contig. If \code{TRUE}, trim regions to contig bounds.}

@@ -23,6 +23,8 @@
 #'   with `conda run -n <conda_env>`.
 #' @param conda Conda executable name or path used when `conda_env` is supplied.
 #' @param output_ext Extension appended to generated FASTA file names.
+#' @param combined_fasta_name File name for the combined FASTA written in each
+#'   hit directory. Set to `NULL` to skip writing the combined FASTA.
 #' @param trim_to_bounds Logical. If `FALSE`, stop when requested flank regions
 #'   extend outside the contig. If `TRUE`, trim regions to contig bounds.
 #' @param dry_run Logical. If `TRUE`, return planned commands without running
@@ -64,6 +66,7 @@ generateFastaForTargetGene <- function(output_path,
                                        conda_env = NULL,
                                        conda = "conda",
                                        output_ext = ".fasta",
+                                       combined_fasta_name = "all_sequences.fasta",
                                        trim_to_bounds = FALSE,
                                        dry_run = FALSE,
                                        echo = TRUE,
@@ -82,6 +85,7 @@ generateFastaForTargetGene <- function(output_path,
   check_logical_scalar(echo, "echo")
   if (!is.null(paf_file)) check_file_arg(paf_file, "paf_file")
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
+  if (!is.null(combined_fasta_name)) check_scalar_character(combined_fasta_name, "combined_fasta_name")
 
   h1_len <- validate_nonnegative_integer(h1_len, "h1_len")
   h2_len <- validate_nonnegative_integer(h2_len, "h2_len")
@@ -247,6 +251,11 @@ generateFastaForTargetGene <- function(output_path,
 
     hit_dir <- file.path(output_path, as.character(i))
     dir.create(hit_dir, showWarnings = FALSE, recursive = TRUE)
+    if (!is.null(combined_fasta_name)) {
+      combined_file <- file.path(hit_dir, combined_fasta_name)
+      Biostrings::writeXStringSet(seq[[i]], filepath = combined_file, format = "fasta")
+      written_files <- c(written_files, combined_file)
+    }
     for (sequence_name in names(seq[[i]])) {
       file_name <- paste0(generate_target_gene_safe_name(sequence_name), output_ext)
       out_file <- file.path(hit_dir, file_name)

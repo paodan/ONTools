@@ -34,9 +34,13 @@ test_that("generateFastaForTargetGene writes target and replacement FASTA files 
   expect_s3_class(res$paf, "data.frame")
   expect_length(res$seq, 1)
   expect_length(res$seq[[1]], 10)
-  expect_length(res$written_files, 10)
+  expect_length(res$written_files, 11)
   expect_true(all(file.exists(res$written_files)))
   expect_true(all(grepl("[.]fasta$", basename(res$written_files))))
+  expect_true(file.exists(file.path(out_dir, "1", "all_sequences.fasta")))
+
+  combined <- Biostrings::readDNAStringSet(file.path(out_dir, "1", "all_sequences.fasta"))
+  expect_identical(names(combined), names(res$seq[[1]]))
 
   seq_widths <- stats::setNames(as.integer(BiocGenerics::width(res$seq[[1]])), names(res$seq[[1]]))
   expect_equal(seq_widths["gene1_h1_chr1_4_5"], c(gene1_h1_chr1_4_5 = 2L))
