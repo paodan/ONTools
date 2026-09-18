@@ -152,6 +152,7 @@ test_that("move_16s writes English and Chinese README files", {
 
   expect_true(all(file.exists(res$readme_files)))
   expect_true(any(grepl("16S Taxonomic Profiling Delivery", readme, fixed = TRUE)))
+  expect_true(any(grepl("a barcode is the sequencing tag", readme, fixed = TRUE)))
   expect_true(any(grepl("abundance_table_genus.tsv", readme, fixed = TRUE)))
   expect_true(any(grepl("alignment tables", readme, fixed = TRUE)))
   expect_true(any(grepl("custom_16s_db", readme, fixed = TRUE)))
@@ -159,6 +160,7 @@ test_that("move_16s writes English and Chinese README files", {
   expect_false(any(grepl("novel-species assessment", readme, fixed = TRUE)))
   expect_false(any(grepl("only evidence for strict species confirmation", readme, fixed = TRUE)))
   expect_true(any(grepl("16S 物种注释结果说明", readme_zh, fixed = TRUE)))
+  expect_true(any(grepl("barcode 指测序时用于区分", readme_zh, fixed = TRUE)))
   expect_true(any(grepl("丰度表说明", readme_zh, fixed = TRUE)))
   expect_true(any(grepl("custom_16s_db", readme_zh, fixed = TRUE)))
   expect_false(any(grepl("如果该结果来自 epi2me-labs/wf-16s 的默认设置", readme_zh, fixed = TRUE)))
@@ -274,8 +276,11 @@ test_that("move_16s writes consensus BLAST review when a 16S database is supplie
   readme <- readLines(file.path(path_16s, "README.txt"), warn = FALSE)
   readme_zh <- readLines(file.path(path_16s, "README.zh-CN.txt"), warn = FALSE)
   expect_true(any(grepl("16s_consensus_annotation/consensus.blast.tsv", readme, fixed = TRUE)))
-  expect_true(any(grepl("NCBI 16S ribosomal RNA", readme, fixed = TRUE)))
-  expect_true(any(grepl("consensus BLAST", readme_zh, fixed = TRUE)))
+  expect_true(any(grepl("sequence-level review", readme, fixed = TRUE)))
+  expect_false(any(grepl("recommended by default", readme, fixed = TRUE)))
+  expect_false(any(grepl("SILVA SSU Ref NR", readme, fixed = TRUE)))
+  expect_true(any(grepl("最终共识序列与本次分析所用参考数据库", readme_zh, fixed = TRUE)))
+  expect_false(any(grepl("常规 16S 交付建议默认", readme_zh, fixed = TRUE)))
 })
 
 test_that("write_16s_readme can skip Chinese README", {

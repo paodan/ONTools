@@ -806,6 +806,7 @@ s16_results_readme <- function(abundance_table,
     "",
     "Overview",
     "This directory contains the delivery files for 16S rRNA amplicon taxonomic profiling generated from wf-16s results. The workflow filters reads, assigns them to a reference taxonomy database, aggregates genus-level abundance, and reports per-barcode reference alignment summaries.",
+    "In this report, a barcode is the sequencing tag used to distinguish samples pooled in the same sequencing run. In most projects, each barcode corresponds to one submitted sample.",
     "",
     "Directory Contents",
     paste0("- ", abundance_table, ": genus-level abundance table. Rows are taxonomic paths and columns are sample/barcode read counts plus a total column when present."),
@@ -834,7 +835,7 @@ s16_results_readme <- function(abundance_table,
     "",
     "Reference Database",
     paste0("The reference database used for this 16S taxonomic profiling delivery is `", database_set, "`. This database is suitable for routine composition profiling, initial taxonomic screening, and results that need to remain compatible with wf-16s outputs when its marker scope matches the sample type."),
-    if (isTRUE(has_16s_annotation)) "The consensus BLAST review is an independent sequence-level check. For routine 16S delivery, a local NCBI 16S ribosomal RNA BLAST database is recommended by default; SILVA SSU Ref NR can also be used when a curated SSU taxonomy framework is preferred.",
+    if (isTRUE(has_16s_annotation)) "The consensus BLAST results provide a sequence-level review of the final consensus sequences against the reference database used for this analysis. These results can be used together with the abundance table and per-barcode alignment summaries to review the main taxonomic assignments.",
     "",
     "Notes for 16S Interpretation",
     "The abundance table is the main file for sample-level composition summaries. The alignment tables help with manual review, but they should not be interpreted as abundance tables because they summarize reference hits rather than final per-read taxonomic assignments.",
@@ -846,7 +847,7 @@ s16_results_readme <- function(abundance_table,
       c(
         "Use the abundance table and figures for routine reporting.",
         "Use the per-barcode identification tables to review candidate taxa, low-abundance hits, high `Unknown` samples, and references with low coverage or low mapping quality.",
-        if (isTRUE(has_16s_annotation)) "Use the consensus BLAST top-hit table as an independent confirmation screen, especially when reporting a dominant organism or reconciling unexpected wf-16s assignments."
+        if (isTRUE(has_16s_annotation)) "Use the consensus BLAST top-hit table to review the closest reference matches for the final consensus sequences, especially for dominant organisms or samples with unexpected taxonomic assignments."
       ),
       collapse = " "
     )
@@ -867,6 +868,7 @@ s16_results_readme_zh <- function(abundance_table,
     "",
     "概述",
     "本目录为 16S rRNA 扩增子物种注释结果交付目录。结果来自 wf-16s 流程：对 reads 进行质控过滤，基于参考分类数据库进行注释，汇总属水平丰度，并输出每个 barcode 的参考序列比对统计表。",
+    "本说明中的 barcode 指测序时用于区分同一次测序中不同样本的条形码标签。通常情况下，一个 barcode 对应一个送检样本。",
     "",
     "目录内容",
     paste0("- ", abundance_table, "：属水平丰度表。每一行为一个分类路径，每个样本或 barcode 对应一列 read 数；如果存在 total 列，则表示所有样本的合计 read 数。"),
@@ -895,7 +897,7 @@ s16_results_readme_zh <- function(abundance_table,
     "",
     "参考数据库说明",
     paste0("本次 16S 物种注释结果使用的参考数据库为 `", database_set, "`。当该数据库的 marker 范围与样本类型匹配时，适合用于常规组成分析、分类初筛，以及保持结果与 wf-16s 输出格式兼容。"),
-    if (isTRUE(has_16s_annotation)) "consensus BLAST 复核是独立的序列层面检查。常规 16S 交付建议默认使用本地 NCBI 16S ribosomal RNA BLAST 数据库；如果希望使用更系统的 SSU 分类框架，也可以使用 SILVA SSU Ref NR。",
+    if (isTRUE(has_16s_annotation)) "consensus BLAST 结果用于展示最终共识序列与本次分析所用参考数据库之间的序列层面匹配情况，可与丰度表和每个 barcode 的比对统计表结合，用于复核主要分类结果。",
     "",
     "16S 结果解读注意事项",
     "丰度表是样本整体组成分析的主要结果。注释表适合人工复核候选分类，但不能直接当作丰度表使用，因为它汇总的是参考序列命中情况，而不是最终逐条 read 分类后的丰度。",
@@ -906,7 +908,7 @@ s16_results_readme_zh <- function(abundance_table,
     paste(
       c(
         "常规报告建议使用丰度表和图片；当样本 Unknown 比例较高、存在低丰度命中，或某些参考序列覆盖度和比对质量较低时，再结合每个 barcode 的注释表进行人工复核。",
-        if (isTRUE(has_16s_annotation)) "当需要报告优势菌、或 wf-16s 分类结果与预期不一致时，可使用 consensus BLAST top-hit 表作为独立复核。"
+        if (isTRUE(has_16s_annotation)) "当需要查看优势菌、或某些样本的分类结果与预期不一致时，可结合 consensus BLAST top-hit 表查看最终共识序列最接近的参考序列。"
       ),
       collapse = ""
     )
