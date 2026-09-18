@@ -14,6 +14,27 @@ move_16s(
   figure_dir = "figures",
   identification_dir = "identification_tables",
   database_set = "ncbi_16s_18s",
+  consensus_delivery_path = NULL,
+  consensus_file = "all-consensus-seqs.fasta",
+  trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
+  run_16s_annotation = TRUE,
+  s16_db = NULL,
+  s16_db_fasta = NULL,
+  s16_dir = "16s_consensus_annotation",
+  s16_top_hits_name = "16s_consensus_top_hits.tsv",
+  s16_threads = 10,
+  s16_max_target_seqs = 20,
+  s16_evalue = "1e-20",
+  s16_task = NULL,
+  s16_word_size = NULL,
+  s16_strand = NULL,
+  s16_dust = NULL,
+  s16_perc_identity = NULL,
+  s16_extra_args = NULL,
+  s16_blastn = "blastn",
+  s16_makeblastdb = "makeblastdb",
+  s16_conda_env = NULL,
+  conda = "conda",
   cutoff = 0.01,
   width = 12,
   height = 6,
@@ -46,6 +67,31 @@ the \verb{16s/} delivery directory.}
 
 \item{database_set}{wf-16s database set used to generate the delivered
 taxonomic profiling results.}
+
+\item{consensus_delivery_path}{Optional consensus delivery directory. When
+supplied, project-level consensus FASTA files are copied into the \verb{16s/}
+delivery directory and can be reviewed by BLASTN against a 16S database.}
+
+\item{consensus_file, trimmed_consensus_file}{Consensus FASTA names searched
+under \code{consensus_delivery_path}. When the trimmed FASTA exists, it is
+preferred for BLAST review; otherwise \code{consensus_file} is used.}
+
+\item{run_16s_annotation}{Logical. If \code{TRUE}, run
+\code{\link[=annotate_consensus_blast]{annotate_consensus_blast()}} on the collected consensus FASTA when
+\code{consensus_delivery_path} and a 16S BLAST database are supplied.}
+
+\item{s16_db, s16_db_fasta}{BLAST database prefix or FASTA passed to
+\code{\link[=annotate_consensus_blast]{annotate_consensus_blast()}}. Use \code{s16_db} for an already-built 16S BLAST
+database such as NCBI 16S ribosomal RNA, or \code{s16_db_fasta} to build a
+BLAST database from a FASTA file such as SILVA SSU Ref NR.}
+
+\item{s16_dir}{Directory under the \verb{16s/} delivery for detailed consensus
+BLAST results.}
+
+\item{s16_top_hits_name}{Filename written under the \verb{16s/} delivery for the
+top-hit summary.}
+
+\item{s16_threads, s16_max_target_seqs, s16_evalue, s16_task, s16_word_size, s16_strand, s16_dust, s16_perc_identity, s16_extra_args, s16_blastn, s16_makeblastdb, s16_conda_env, conda}{Parameters passed to \code{\link[=annotate_consensus_blast]{annotate_consensus_blast()}} for 16S consensus review.}
 
 \item{cutoff}{Minimum relative abundance kept in abundance plots.}
 

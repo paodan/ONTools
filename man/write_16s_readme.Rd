@@ -10,6 +10,11 @@ write_16s_readme(
   figure_dir = "figures",
   identification_dir = "identification_tables",
   database_set = "ncbi_16s_18s",
+  s16_dir = "16s_consensus_annotation",
+  s16_top_hits_name = "16s_consensus_top_hits.tsv",
+  has_consensus_fasta = FALSE,
+  has_trimmed_consensus = FALSE,
+  has_16s_annotation = FALSE,
   readme_name = "README.txt",
   chinese_readme_name = "README.zh-CN.txt"
 )
@@ -26,6 +31,12 @@ directory under \code{path_16s}.}
 
 \item{database_set}{wf-16s database set used to generate the delivered
 taxonomic profiling results.}
+
+\item{s16_dir, s16_top_hits_name}{Directory and top-hit filename used for 16S
+consensus BLAST review.}
+
+\item{has_consensus_fasta, has_trimmed_consensus, has_16s_annotation}{Logical
+flags controlling consensus-review text in the README.}
 
 \item{readme_name}{English README filename written under \code{path_16s}.}
 

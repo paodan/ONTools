@@ -19,6 +19,25 @@
 #'   the `16s/` delivery directory.
 #' @param database_set wf-16s database set used to generate the delivered
 #'   taxonomic profiling results.
+#' @param consensus_delivery_path Optional consensus delivery directory. When
+#'   supplied, project-level consensus FASTA files are copied into the `16s/`
+#'   delivery directory and can be reviewed by BLASTN against a 16S database.
+#' @param consensus_file,trimmed_consensus_file Consensus FASTA names searched
+#'   under `consensus_delivery_path`. When the trimmed FASTA exists, it is
+#'   preferred for BLAST review; otherwise `consensus_file` is used.
+#' @param run_16s_annotation Logical. If `TRUE`, run
+#'   [annotate_consensus_blast()] on the collected consensus FASTA when
+#'   `consensus_delivery_path` and a 16S BLAST database are supplied.
+#' @param s16_db,s16_db_fasta BLAST database prefix or FASTA passed to
+#'   [annotate_consensus_blast()]. Use `s16_db` for an already-built 16S BLAST
+#'   database such as NCBI 16S ribosomal RNA, or `s16_db_fasta` to build a
+#'   BLAST database from a FASTA file such as SILVA SSU Ref NR.
+#' @param s16_dir Directory under the `16s/` delivery for detailed consensus
+#'   BLAST results.
+#' @param s16_top_hits_name Filename written under the `16s/` delivery for the
+#'   top-hit summary.
+#' @param s16_threads,s16_max_target_seqs,s16_evalue,s16_task,s16_word_size,s16_strand,s16_dust,s16_perc_identity,s16_extra_args,s16_blastn,s16_makeblastdb,s16_conda_env,conda
+#'   Parameters passed to [annotate_consensus_blast()] for 16S consensus review.
 #' @param cutoff Minimum relative abundance kept in abundance plots.
 #' @param width,height Plot width and height in inches.
 #' @param readme_name English README filename written under the `16s/`
@@ -39,6 +58,27 @@ move_16s <- function(path_result,
                      figure_dir = "figures",
                      identification_dir = "identification_tables",
                      database_set = "ncbi_16s_18s",
+                     consensus_delivery_path = NULL,
+                     consensus_file = "all-consensus-seqs.fasta",
+                     trimmed_consensus_file = "all-consensus-seqs_trimmed.fasta",
+                     run_16s_annotation = TRUE,
+                     s16_db = NULL,
+                     s16_db_fasta = NULL,
+                     s16_dir = "16s_consensus_annotation",
+                     s16_top_hits_name = "16s_consensus_top_hits.tsv",
+                     s16_threads = 10,
+                     s16_max_target_seqs = 20,
+                     s16_evalue = "1e-20",
+                     s16_task = NULL,
+                     s16_word_size = NULL,
+                     s16_strand = NULL,
+                     s16_dust = NULL,
+                     s16_perc_identity = NULL,
+                     s16_extra_args = NULL,
+                     s16_blastn = "blastn",
+                     s16_makeblastdb = "makeblastdb",
+                     s16_conda_env = NULL,
+                     conda = "conda",
                      cutoff = 0.01,
                      width = 12,
                      height = 6,
@@ -55,6 +95,21 @@ move_16s <- function(path_result,
   check_scalar_character(figure_dir, "figure_dir")
   check_scalar_character(identification_dir, "identification_dir")
   check_scalar_character(database_set, "database_set")
+  if (!is.null(consensus_delivery_path)) {
+    check_dir_arg(consensus_delivery_path, "consensus_delivery_path")
+  }
+  check_scalar_character(consensus_file, "consensus_file")
+  check_scalar_character(trimmed_consensus_file, "trimmed_consensus_file")
+  check_logical_scalar(run_16s_annotation, "run_16s_annotation")
+  if (!is.null(s16_db)) check_scalar_character(s16_db, "s16_db")
+  if (!is.null(s16_db_fasta)) check_file_arg(s16_db_fasta, "s16_db_fasta")
+  check_scalar_character(s16_dir, "s16_dir")
+  check_scalar_character(s16_top_hits_name, "s16_top_hits_name")
+  check_scalar_character(s16_evalue, "s16_evalue")
+  check_scalar_character(s16_blastn, "s16_blastn")
+  check_scalar_character(s16_makeblastdb, "s16_makeblastdb")
+  if (!is.null(s16_conda_env)) check_scalar_character(s16_conda_env, "s16_conda_env")
+  check_scalar_character(conda, "conda")
   cutoff <- validate_fraction(cutoff, "cutoff")
   width <- validate_positive_number(width, "width")
   height <- validate_positive_number(height, "height")
@@ -134,12 +189,83 @@ move_16s <- function(path_result,
     stop("Failed to copy abundance table: ", abun, call. = FALSE)
   }
 
+  consensus_fastas <- list(
+    consensus_fasta = NA_character_,
+    trimmed_consensus_fasta = NA_character_,
+    s16_consensus_fasta = NA_character_
+  )
+  s16_annotation <- NULL
+  s16_top_hits <- NA_character_
+  if (!is.null(consensus_delivery_path)) {
+    consensus_fastas <- collect_ITS_consensus_fasta(
+      consensus_delivery_path = consensus_delivery_path,
+      output_dir = path_16s,
+      trimmed_consensus_file = trimmed_consensus_file,
+      consensus_file = consensus_file
+    )
+    consensus_fastas$s16_consensus_fasta <- consensus_fastas$unite_consensus_fasta
+
+    if (isTRUE(run_16s_annotation)) {
+      if (is.null(s16_db) && is.null(s16_db_fasta)) {
+        warning(
+          "Skipping 16S consensus annotation because neither `s16_db` nor ",
+          "`s16_db_fasta` was supplied.",
+          call. = FALSE
+        )
+      } else if (is.na(consensus_fastas$s16_consensus_fasta) ||
+                 !file.exists(consensus_fastas$s16_consensus_fasta)) {
+        warning(
+          "Skipping 16S consensus annotation because no consensus FASTA was found.",
+          call. = FALSE
+        )
+      } else {
+        s16_output_dir <- file.path(path_16s, s16_dir)
+        s16_annotation <- annotate_consensus_blast(
+          consensus_fasta = consensus_fastas$s16_consensus_fasta,
+          db = s16_db,
+          db_fasta = s16_db_fasta,
+          out_dir = s16_output_dir,
+          output_tsv = file.path(s16_output_dir, "consensus.blast.tsv"),
+          prefix = "consensus",
+          threads = s16_threads,
+          max_target_seqs = s16_max_target_seqs,
+          evalue = s16_evalue,
+          task = s16_task,
+          word_size = s16_word_size,
+          strand = s16_strand,
+          dust = s16_dust,
+          perc_identity = s16_perc_identity,
+          extra_args = s16_extra_args,
+          blastn = s16_blastn,
+          makeblastdb = s16_makeblastdb,
+          conda_env = s16_conda_env,
+          conda = conda,
+          dry_run = FALSE,
+          echo = FALSE
+        )
+        utils::write.table(
+          format_unite_top_hits(s16_annotation$top_hits),
+          file.path(path_16s, s16_top_hits_name),
+          sep = "\t",
+          quote = FALSE,
+          row.names = FALSE
+        )
+        s16_top_hits <- file.path(path_16s, s16_top_hits_name)
+      }
+    }
+  }
+
   readme_files <- write_16s_readme(
     path_16s = path_16s,
     abundance_table = basename(abun),
     figure_dir = figure_dir,
     identification_dir = identification_dir,
     database_set = database_set,
+    s16_dir = s16_dir,
+    s16_top_hits_name = s16_top_hits_name,
+    has_consensus_fasta = file.exists(file.path(path_16s, consensus_file)),
+    has_trimmed_consensus = file.exists(file.path(path_16s, trimmed_consensus_file)),
+    has_16s_annotation = !is.null(s16_annotation),
     readme_name = readme_name,
     chinese_readme_name = chinese_readme_name
   )
@@ -152,6 +278,12 @@ move_16s <- function(path_result,
     path_identification = path_identification,
     abundance_table = file.path(path_16s, basename(abun)),
     copied_tables = copied_tables,
+    consensus_delivery_path = consensus_delivery_path,
+    consensus_fasta = consensus_fastas$consensus_fasta,
+    trimmed_consensus_fasta = consensus_fastas$trimmed_consensus_fasta,
+    s16_consensus_fasta = consensus_fastas$s16_consensus_fasta,
+    s16_annotation = s16_annotation,
+    s16_top_hits = s16_top_hits,
     plot_files = plot_files,
     readme_files = readme_files,
     plot = plots
@@ -168,6 +300,10 @@ move_16s <- function(path_result,
 #'   directory under `path_16s`.
 #' @param database_set wf-16s database set used to generate the delivered
 #'   taxonomic profiling results.
+#' @param s16_dir,s16_top_hits_name Directory and top-hit filename used for 16S
+#'   consensus BLAST review.
+#' @param has_consensus_fasta,has_trimmed_consensus,has_16s_annotation Logical
+#'   flags controlling consensus-review text in the README.
 #' @param readme_name English README filename written under `path_16s`.
 #' @param chinese_readme_name Chinese README filename written under `path_16s`.
 #'   Set to `NULL` to skip writing it.
@@ -180,6 +316,11 @@ write_16s_readme <- function(path_16s,
                              figure_dir = "figures",
                              identification_dir = "identification_tables",
                              database_set = "ncbi_16s_18s",
+                             s16_dir = "16s_consensus_annotation",
+                             s16_top_hits_name = "16s_consensus_top_hits.tsv",
+                             has_consensus_fasta = FALSE,
+                             has_trimmed_consensus = FALSE,
+                             has_16s_annotation = FALSE,
                              readme_name = "README.txt",
                              chinese_readme_name = "README.zh-CN.txt") {
   check_dir_arg(path_16s, "path_16s")
@@ -187,6 +328,11 @@ write_16s_readme <- function(path_16s,
   check_scalar_character(figure_dir, "figure_dir")
   check_scalar_character(identification_dir, "identification_dir")
   check_scalar_character(database_set, "database_set")
+  check_scalar_character(s16_dir, "s16_dir")
+  check_scalar_character(s16_top_hits_name, "s16_top_hits_name")
+  check_logical_scalar(has_consensus_fasta, "has_consensus_fasta")
+  check_logical_scalar(has_trimmed_consensus, "has_trimmed_consensus")
+  check_logical_scalar(has_16s_annotation, "has_16s_annotation")
   check_scalar_character(readme_name, "readme_name")
   if (!is.null(chinese_readme_name)) {
     check_scalar_character(chinese_readme_name, "chinese_readme_name")
@@ -199,7 +345,12 @@ write_16s_readme <- function(path_16s,
       abundance_table = abundance_table,
       figure_dir = figure_dir,
       identification_dir = identification_dir,
-      database_set = database_set
+      database_set = database_set,
+      s16_dir = s16_dir,
+      s16_top_hits_name = s16_top_hits_name,
+      has_consensus_fasta = has_consensus_fasta,
+      has_trimmed_consensus = has_trimmed_consensus,
+      has_16s_annotation = has_16s_annotation
     ),
     output,
     useBytes = TRUE
@@ -213,7 +364,12 @@ write_16s_readme <- function(path_16s,
         abundance_table = abundance_table,
         figure_dir = figure_dir,
         identification_dir = identification_dir,
-        database_set = database_set
+        database_set = database_set,
+        s16_dir = s16_dir,
+        s16_top_hits_name = s16_top_hits_name,
+        has_consensus_fasta = has_consensus_fasta,
+        has_trimmed_consensus = has_trimmed_consensus,
+        has_16s_annotation = has_16s_annotation
       ),
       output_zh,
       useBytes = TRUE
@@ -636,7 +792,12 @@ stack_abundance_table <- function(abun_data, sample_cols) {
 s16_results_readme <- function(abundance_table,
                               figure_dir,
                               identification_dir,
-                              database_set) {
+                              database_set,
+                              s16_dir,
+                              s16_top_hits_name,
+                              has_consensus_fasta,
+                              has_trimmed_consensus,
+                              has_16s_annotation) {
   c(
     "16S Taxonomic Profiling Delivery",
     "",
@@ -647,6 +808,10 @@ s16_results_readme <- function(abundance_table,
     paste0("- ", abundance_table, ": genus-level abundance table. Rows are taxonomic paths and columns are sample/barcode read counts plus a total column when present."),
     paste0("- ", figure_dir, "/: abundance bar plots generated from the abundance table. Files ending in `_percentage.png` show relative abundance, and files ending in `_count.png` show read counts."),
     paste0("- ", identification_dir, "/: per-barcode alignment summary tables copied from wf-16s `alignment_tables/`. Each `barcode*-alignment-stats.tsv` file summarizes reference-level alignment evidence."),
+    if (isTRUE(has_consensus_fasta)) "- all-consensus-seqs.fasta: project-level consensus FASTA generated by the amplicon consensus workflow.",
+    if (isTRUE(has_trimmed_consensus)) "- all-consensus-seqs_trimmed.fasta: primer-trimmed project-level consensus FASTA. When available, this file is preferred for consensus BLAST review.",
+    if (isTRUE(has_16s_annotation)) paste0("- ", s16_top_hits_name, ": root-level top-hit summary from BLASTN of the final consensus sequences against a 16S rRNA database."),
+    if (isTRUE(has_16s_annotation)) paste0("- ", s16_dir, "/consensus.blast.tsv: full consensus-vs-16S-database BLAST table with column headers and ONTools-derived coverage/taxonomy fields."),
     "",
     "Abundance Table",
     "The `tax` column is a semicolon-separated taxonomy path, usually in this order: superkingdom; kingdom; phylum; class; order; family; genus.",
@@ -666,20 +831,34 @@ s16_results_readme <- function(abundance_table,
     "",
     "Reference Database",
     paste0("The reference database used for this 16S taxonomic profiling delivery is `", database_set, "`. This database is suitable for routine composition profiling, initial taxonomic screening, and results that need to remain compatible with wf-16s outputs when its marker scope matches the sample type."),
+    if (isTRUE(has_16s_annotation)) "The consensus BLAST review is an independent sequence-level check. For routine 16S delivery, a local NCBI 16S ribosomal RNA BLAST database is recommended by default; SILVA SSU Ref NR can also be used when a curated SSU taxonomy framework is preferred.",
     "",
     "Notes for 16S Interpretation",
     "The abundance table is the main file for sample-level composition summaries. The alignment tables help with manual review, but they should not be interpreted as abundance tables because they summarize reference hits rather than final per-read taxonomic assignments.",
+    if (isTRUE(has_16s_annotation)) "The consensus BLAST table reviews one or more final consensus sequences per barcode/sample, whereas wf-16s summarizes many reads after filtering and abundance aggregation. Results can differ because they use different input units and possibly different databases.",
     "Species-level calls from 16S should be interpreted cautiously, especially when several closely related species have similar 16S sequences, coverage is low, or mapping quality is poor.",
     "",
     "Recommended Use",
-    "Use the abundance table and figures for routine reporting. Use the per-barcode identification tables to review candidate taxa, low-abundance hits, high `Unknown` samples, and references with low coverage or low mapping quality."
+    paste(
+      c(
+        "Use the abundance table and figures for routine reporting.",
+        "Use the per-barcode identification tables to review candidate taxa, low-abundance hits, high `Unknown` samples, and references with low coverage or low mapping quality.",
+        if (isTRUE(has_16s_annotation)) "Use the consensus BLAST top-hit table as an independent confirmation screen, especially when reporting a dominant organism or reconciling unexpected wf-16s assignments."
+      ),
+      collapse = " "
+    )
   )
 }
 
 s16_results_readme_zh <- function(abundance_table,
                                  figure_dir,
                                  identification_dir,
-                                 database_set) {
+                                 database_set,
+                                 s16_dir,
+                                 s16_top_hits_name,
+                                 has_consensus_fasta,
+                                 has_trimmed_consensus,
+                                 has_16s_annotation) {
   c(
     "16S 物种注释结果说明",
     "",
@@ -690,6 +869,10 @@ s16_results_readme_zh <- function(abundance_table,
     paste0("- ", abundance_table, "：属水平丰度表。每一行为一个分类路径，每个样本或 barcode 对应一列 read 数；如果存在 total 列，则表示所有样本的合计 read 数。"),
     paste0("- ", figure_dir, "/：由丰度表生成的丰度柱状图。`_percentage.png` 表示相对丰度，`_count.png` 表示 read 数。"),
     paste0("- ", identification_dir, "/：每个 barcode 的参考序列比对统计表，来自 wf-16s 的 `alignment_tables/`。每个 `barcode*-alignment-stats.tsv` 文件汇总该 barcode 比对到各参考序列的证据。"),
+    if (isTRUE(has_consensus_fasta)) "- all-consensus-seqs.fasta：扩增子共识序列流程生成的项目级共识序列 FASTA。",
+    if (isTRUE(has_trimmed_consensus)) "- all-consensus-seqs_trimmed.fasta：经过引物修剪的项目级共识序列 FASTA。如果存在该文件，会优先用于 consensus BLAST 复核。",
+    if (isTRUE(has_16s_annotation)) paste0("- ", s16_top_hits_name, "：最终 consensus 序列与 16S rRNA 数据库进行 BLASTN 后得到的 top-hit 汇总表。"),
+    if (isTRUE(has_16s_annotation)) paste0("- ", s16_dir, "/consensus.blast.tsv：带有表头的完整 consensus vs 16S 数据库 BLAST 表格，并包含 ONTools 计算得到的 coverage 和分类解析字段。"),
     "",
     "丰度表说明",
     "`tax` 列为分号分隔的分类路径，通常顺序为：superkingdom; kingdom; phylum; class; order; family; genus。",
@@ -709,13 +892,21 @@ s16_results_readme_zh <- function(abundance_table,
     "",
     "参考数据库说明",
     paste0("本次 16S 物种注释结果使用的参考数据库为 `", database_set, "`。当该数据库的 marker 范围与样本类型匹配时，适合用于常规组成分析、分类初筛，以及保持结果与 wf-16s 输出格式兼容。"),
+    if (isTRUE(has_16s_annotation)) "consensus BLAST 复核是独立的序列层面检查。常规 16S 交付建议默认使用本地 NCBI 16S ribosomal RNA BLAST 数据库；如果希望使用更系统的 SSU 分类框架，也可以使用 SILVA SSU Ref NR。",
     "",
     "16S 结果解读注意事项",
     "丰度表是样本整体组成分析的主要结果。注释表适合人工复核候选分类，但不能直接当作丰度表使用，因为它汇总的是参考序列命中情况，而不是最终逐条 read 分类后的丰度。",
+    if (isTRUE(has_16s_annotation)) "consensus BLAST 表是对每个 barcode/样本的一条或多条最终共识序列进行复核；wf-16s 则是在过滤和丰度汇总后对大量 reads 进行总结。两者使用的输入对象和数据库可能不同，因此结果可能存在差异。",
     "16S 的种水平注释需要谨慎解释，尤其是在近缘物种 16S 序列非常相似、覆盖度较低或 mapping quality 较低的情况下。",
     "",
     "推荐使用方式",
-    "常规报告建议使用丰度表和图片；当样本 Unknown 比例较高、存在低丰度命中，或某些参考序列覆盖度和比对质量较低时，再结合每个 barcode 的注释表进行人工复核。"
+    paste(
+      c(
+        "常规报告建议使用丰度表和图片；当样本 Unknown 比例较高、存在低丰度命中，或某些参考序列覆盖度和比对质量较低时，再结合每个 barcode 的注释表进行人工复核。",
+        if (isTRUE(has_16s_annotation)) "当需要报告优势菌、或 wf-16s 分类结果与预期不一致时，可使用 consensus BLAST top-hit 表作为独立复核。"
+      ),
+      collapse = ""
+    )
   )
 }
 

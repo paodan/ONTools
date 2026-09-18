@@ -167,6 +167,93 @@ test_that("move_16s writes English and Chinese README files", {
   expect_true(any(grepl("种水平注释需要谨慎", readme_zh, fixed = TRUE)))
 })
 
+test_that("move_16s writes consensus BLAST review when a 16S database is supplied", {
+  skip_if_not(capabilities("png"))
+
+  path_result <- tempfile()
+  path_delivery <- tempfile()
+  consensus_delivery <- tempfile()
+  fake_bin <- tempfile("blast-bin-")
+  dir.create(file.path(path_result, "alignment_tables"), recursive = TRUE)
+  dir.create(file.path(consensus_delivery, "project"), recursive = TRUE)
+  dir.create(fake_bin)
+  writeLines(c(
+    "tax\tbarcode001\ttotal",
+    "Bacteria;Bacillati;Bacillota;Bacilli;Bacillales;Bacillaceae;Bacillus\t88\t88"
+  ), file.path(path_result, "abundance_table_genus.tsv"))
+  writeLines(
+    "reference\tstartpos\tref length\tnumber of reads",
+    file.path(path_result, "alignment_tables", "barcode001-alignment-stats.tsv")
+  )
+  writeLines(
+    c(">barcode001_original_consensus", "ACGTACGTACGT"),
+    file.path(consensus_delivery, "project", "all-consensus-seqs.fasta")
+  )
+  writeLines(
+    c(">barcode001_trimmed_consensus", "ACGTACGT"),
+    file.path(consensus_delivery, "project", "all-consensus-seqs_trimmed.fasta")
+  )
+
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "out=''",
+      "while [[ $# -gt 0 ]]; do",
+      "  case \"$1\" in",
+      "    -out) out=\"$2\"; shift 2 ;;",
+      "    *) shift ;;",
+      "  esac",
+      "done",
+      "printf 'barcode001_consensus\\t1500\\t1\\t1490\\tNR_001\\t1500\\t1\\t1490\\t1490\\t99.5\\t99\\t1\\t0\\t1e-120\\t600\\tNR_001|k__Bacteria;p__Bacillota;c__Bacilli;o__Bacillales;f__Bacillaceae;g__Bacillus;s__Bacillus_subtilis\\t1423\\n' > \"$out\""
+    ),
+    file.path(fake_bin, "blastn")
+  )
+  Sys.chmod(file.path(fake_bin, "blastn"), mode = "0755")
+
+  old_path <- Sys.getenv("PATH")
+  on.exit(Sys.setenv(PATH = old_path), add = TRUE)
+  Sys.setenv(PATH = paste(fake_bin, old_path, sep = .Platform$path.sep))
+
+  res <- expect_warning(
+    move_16s(
+      path_result = path_result,
+      path_delivery = path_delivery,
+      consensus_delivery_path = consensus_delivery,
+      s16_db = "ncbi_16s_rRNA",
+      overwrite = TRUE,
+      tax_levels = "Genus",
+      width = 4,
+      height = 3
+    ),
+    NA
+  )
+
+  path_16s <- file.path(normalizePath(path_delivery), "16s")
+  expect_true(file.exists(file.path(path_16s, "all-consensus-seqs.fasta")))
+  expect_true(file.exists(file.path(path_16s, "all-consensus-seqs_trimmed.fasta")))
+  expect_true(file.exists(file.path(
+    path_16s,
+    "16s_consensus_annotation",
+    "consensus.blast.tsv"
+  )))
+  expect_true(file.exists(file.path(path_16s, "16s_consensus_top_hits.tsv")))
+  expect_s3_class(res$s16_annotation$top_hits, "data.frame")
+  expect_equal(res$s16_annotation$top_hits$genus, "Bacillus")
+  top_hits <- utils::read.delim(
+    file.path(path_16s, "16s_consensus_top_hits.tsv"),
+    sep = "\t",
+    check.names = FALSE
+  )
+  expect_true(all(c("qseqid", "sseqid", "pident", "query_coverage", "genus") %in% names(top_hits)))
+
+  readme <- readLines(file.path(path_16s, "README.txt"), warn = FALSE)
+  readme_zh <- readLines(file.path(path_16s, "README.zh-CN.txt"), warn = FALSE)
+  expect_true(any(grepl("16s_consensus_annotation/consensus.blast.tsv", readme, fixed = TRUE)))
+  expect_true(any(grepl("NCBI 16S ribosomal RNA", readme, fixed = TRUE)))
+  expect_true(any(grepl("consensus BLAST", readme_zh, fixed = TRUE)))
+})
+
 test_that("write_16s_readme can skip Chinese README", {
   path_16s <- tempfile()
   dir.create(path_16s)
