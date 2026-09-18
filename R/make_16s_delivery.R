@@ -36,7 +36,7 @@
 #'   BLAST results.
 #' @param s16_top_hits_name Filename written under the `16s/` delivery for the
 #'   top-hit summary.
-#' @param s16_threads,s16_max_target_seqs,s16_evalue,s16_task,s16_word_size,s16_strand,s16_dust,s16_perc_identity,s16_extra_args,s16_blastn,s16_makeblastdb,s16_conda_env,conda
+#' @param s16_threads,s16_max_target_seqs,s16_evalue,s16_task,s16_word_size,s16_strand,s16_dust,s16_perc_identity,s16_extra_args,s16_blastn,s16_makeblastdb,s16_conda_env,s16_taxdump_dir,conda
 #'   Parameters passed to [annotate_consensus_blast()] for 16S consensus review.
 #' @param cutoff Minimum relative abundance kept in abundance plots.
 #' @param width,height Plot width and height in inches.
@@ -78,6 +78,7 @@ move_16s <- function(path_result,
                      s16_blastn = "blastn",
                      s16_makeblastdb = "makeblastdb",
                      s16_conda_env = NULL,
+                     s16_taxdump_dir = NULL,
                      conda = "conda",
                      cutoff = 0.01,
                      width = 12,
@@ -109,6 +110,7 @@ move_16s <- function(path_result,
   check_scalar_character(s16_blastn, "s16_blastn")
   check_scalar_character(s16_makeblastdb, "s16_makeblastdb")
   if (!is.null(s16_conda_env)) check_scalar_character(s16_conda_env, "s16_conda_env")
+  if (!is.null(s16_taxdump_dir)) check_dir_arg(s16_taxdump_dir, "s16_taxdump_dir")
   check_scalar_character(conda, "conda")
   cutoff <- validate_fraction(cutoff, "cutoff")
   width <- validate_positive_number(width, "width")
@@ -240,6 +242,7 @@ move_16s <- function(path_result,
           makeblastdb = s16_makeblastdb,
           conda_env = s16_conda_env,
           conda = conda,
+          taxdump_dir = s16_taxdump_dir,
           dry_run = FALSE,
           echo = FALSE
         )

@@ -174,9 +174,11 @@ test_that("move_16s writes consensus BLAST review when a 16S database is supplie
   path_delivery <- tempfile()
   consensus_delivery <- tempfile()
   fake_bin <- tempfile("blast-bin-")
+  taxdump <- tempfile("taxdump-")
   dir.create(file.path(path_result, "alignment_tables"), recursive = TRUE)
   dir.create(file.path(consensus_delivery, "project"), recursive = TRUE)
   dir.create(fake_bin)
+  dir.create(taxdump)
   writeLines(c(
     "tax\tbarcode001\ttotal",
     "Bacteria;Bacillati;Bacillota;Bacilli;Bacillales;Bacillaceae;Bacillus\t88\t88"
@@ -205,11 +207,31 @@ test_that("move_16s writes consensus BLAST review when a 16S database is supplie
       "    *) shift ;;",
       "  esac",
       "done",
-      "printf 'barcode001_consensus\\t1500\\t1\\t1490\\tNR_001\\t1500\\t1\\t1490\\t1490\\t99.5\\t99\\t1\\t0\\t1e-120\\t600\\tNR_001|k__Bacteria;p__Bacillota;c__Bacilli;o__Bacillales;f__Bacillaceae;g__Bacillus;s__Bacillus_subtilis\\t1423\\n' > \"$out\""
+      "printf 'barcode001_consensus\\t1500\\t1\\t1490\\tNR_001\\t1500\\t1\\t1490\\t1490\\t99.5\\t99\\t1\\t0\\t1e-120\\t600\\tBacillus subtilis 16S ribosomal RNA\\t1423\\n' > \"$out\""
     ),
     file.path(fake_bin, "blastn")
   )
   Sys.chmod(file.path(fake_bin, "blastn"), mode = "0755")
+  writeLines(c(
+    "1\t|\t1\t|\tno rank\t|",
+    "2\t|\t1\t|\tsuperkingdom\t|",
+    "1239\t|\t2\t|\tphylum\t|",
+    "91061\t|\t1239\t|\tclass\t|",
+    "1385\t|\t91061\t|\torder\t|",
+    "186817\t|\t1385\t|\tfamily\t|",
+    "1386\t|\t186817\t|\tgenus\t|",
+    "1423\t|\t1386\t|\tspecies\t|"
+  ), file.path(taxdump, "nodes.dmp"))
+  writeLines(c(
+    "1\t|\troot\t|\t\t|\tscientific name\t|",
+    "2\t|\tBacteria\t|\t\t|\tscientific name\t|",
+    "1239\t|\tBacillota\t|\t\t|\tscientific name\t|",
+    "91061\t|\tBacilli\t|\t\t|\tscientific name\t|",
+    "1385\t|\tBacillales\t|\t\t|\tscientific name\t|",
+    "186817\t|\tBacillaceae\t|\t\t|\tscientific name\t|",
+    "1386\t|\tBacillus\t|\t\t|\tscientific name\t|",
+    "1423\t|\tBacillus subtilis\t|\t\t|\tscientific name\t|"
+  ), file.path(taxdump, "names.dmp"))
 
   old_path <- Sys.getenv("PATH")
   on.exit(Sys.setenv(PATH = old_path), add = TRUE)
@@ -221,6 +243,7 @@ test_that("move_16s writes consensus BLAST review when a 16S database is supplie
       path_delivery = path_delivery,
       consensus_delivery_path = consensus_delivery,
       s16_db = "ncbi_16s_rRNA",
+      s16_taxdump_dir = taxdump,
       overwrite = TRUE,
       tax_levels = "Genus",
       width = 4,
@@ -240,6 +263,7 @@ test_that("move_16s writes consensus BLAST review when a 16S database is supplie
   expect_true(file.exists(file.path(path_16s, "16s_consensus_top_hits.tsv")))
   expect_s3_class(res$s16_annotation$top_hits, "data.frame")
   expect_equal(res$s16_annotation$top_hits$genus, "Bacillus")
+  expect_equal(res$s16_annotation$top_hits$phylum, "Bacillota")
   top_hits <- utils::read.delim(
     file.path(path_16s, "16s_consensus_top_hits.tsv"),
     sep = "\t",

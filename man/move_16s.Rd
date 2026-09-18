@@ -34,6 +34,7 @@ move_16s(
   s16_blastn = "blastn",
   s16_makeblastdb = "makeblastdb",
   s16_conda_env = NULL,
+  s16_taxdump_dir = NULL,
   conda = "conda",
   cutoff = 0.01,
   width = 12,
@@ -91,7 +92,7 @@ BLAST results.}
 \item{s16_top_hits_name}{Filename written under the \verb{16s/} delivery for the
 top-hit summary.}
 
-\item{s16_threads, s16_max_target_seqs, s16_evalue, s16_task, s16_word_size, s16_strand, s16_dust, s16_perc_identity, s16_extra_args, s16_blastn, s16_makeblastdb, s16_conda_env, conda}{Parameters passed to \code{\link[=annotate_consensus_blast]{annotate_consensus_blast()}} for 16S consensus review.}
+\item{s16_threads, s16_max_target_seqs, s16_evalue, s16_task, s16_word_size, s16_strand, s16_dust, s16_perc_identity, s16_extra_args, s16_blastn, s16_makeblastdb, s16_conda_env, s16_taxdump_dir, conda}{Parameters passed to \code{\link[=annotate_consensus_blast]{annotate_consensus_blast()}} for 16S consensus review.}
 
 \item{cutoff}{Minimum relative abundance kept in abundance plots.}
 

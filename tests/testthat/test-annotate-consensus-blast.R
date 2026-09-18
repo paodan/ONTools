@@ -93,6 +93,74 @@ test_that("annotate_consensus_blast parses BLAST output and taxonomy", {
   expect_match(readLines(res$paths$output_tsv, n = 1), "qseqid\tqlen\tqstart", fixed = TRUE)
 })
 
+test_that("annotate_consensus_blast fills taxonomy from NCBI taxdump staxids", {
+  query <- tempfile(fileext = ".fasta")
+  out_dir <- tempfile("blast-")
+  fake_bin <- tempfile("blast-bin-")
+  taxdump <- tempfile("taxdump-")
+  dir.create(fake_bin)
+  dir.create(taxdump)
+  writeLines(c(">consensus1", "ACGTACGT"), query)
+  writeLines(c(
+    "1\t|\t1\t|\tno rank\t|",
+    "2\t|\t1\t|\tsuperkingdom\t|",
+    "1239\t|\t2\t|\tphylum\t|",
+    "91061\t|\t1239\t|\tclass\t|",
+    "1385\t|\t91061\t|\torder\t|",
+    "186817\t|\t1385\t|\tfamily\t|",
+    "1386\t|\t186817\t|\tgenus\t|",
+    "1423\t|\t1386\t|\tspecies\t|"
+  ), file.path(taxdump, "nodes.dmp"))
+  writeLines(c(
+    "1\t|\troot\t|\t\t|\tscientific name\t|",
+    "2\t|\tBacteria\t|\t\t|\tscientific name\t|",
+    "1239\t|\tBacillota\t|\t\t|\tscientific name\t|",
+    "91061\t|\tBacilli\t|\t\t|\tscientific name\t|",
+    "1385\t|\tBacillales\t|\t\t|\tscientific name\t|",
+    "186817\t|\tBacillaceae\t|\t\t|\tscientific name\t|",
+    "1386\t|\tBacillus\t|\t\t|\tscientific name\t|",
+    "1423\t|\tBacillus subtilis\t|\t\t|\tscientific name\t|"
+  ), file.path(taxdump, "names.dmp"))
+
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "out=''",
+      "while [[ $# -gt 0 ]]; do",
+      "  case \"$1\" in",
+      "    -out) out=\"$2\"; shift 2 ;;",
+      "    *) shift ;;",
+      "  esac",
+      "done",
+      "printf 'consensus1\\t1500\\t1\\t1490\\tNR_001\\t1500\\t1\\t1490\\t1490\\t99.5\\t99\\t1\\t0\\t1e-120\\t600\\tBacillus subtilis 16S ribosomal RNA\\t1423\\n' > \"$out\""
+    ),
+    file.path(fake_bin, "blastn")
+  )
+  Sys.chmod(file.path(fake_bin, "blastn"), mode = "0755")
+
+  old_path <- Sys.getenv("PATH")
+  on.exit(Sys.setenv(PATH = old_path), add = TRUE)
+  Sys.setenv(PATH = paste(fake_bin, old_path, sep = .Platform$path.sep))
+
+  res <- annotate_consensus_blast(
+    consensus_fasta = query,
+    db = "ncbi_16s_rRNA",
+    out_dir = out_dir,
+    taxdump_dir = taxdump,
+    echo = FALSE
+  )
+
+  expect_equal(res$top_hits$kingdom, "Bacteria")
+  expect_equal(res$top_hits$phylum, "Bacillota")
+  expect_equal(res$top_hits$class, "Bacilli")
+  expect_equal(res$top_hits$order, "Bacillales")
+  expect_equal(res$top_hits$family, "Bacillaceae")
+  expect_equal(res$top_hits$genus, "Bacillus")
+  expect_equal(res$top_hits$species, "Bacillus subtilis")
+  expect_match(res$top_hits$taxonomy_path, "Bacteria;Bacillota;Bacilli", fixed = TRUE)
+})
+
 test_that("annotate_consensus_blast passes BLAST outfmt as one argument", {
   query <- tempfile(fileext = ".fasta")
   out_dir <- tempfile("blast-")

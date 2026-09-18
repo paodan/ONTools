@@ -49,6 +49,10 @@
 #'   BLAST tools from the current environment.
 #' @param conda Conda executable name or path used when `conda_env` is supplied.
 #'   Default is `"conda"`.
+#' @param taxdump_dir Optional NCBI taxonomy dump directory containing
+#'   `nodes.dmp` and `names.dmp`. When supplied, missing taxonomy fields are
+#'   filled from BLAST `staxids`, which is useful for NCBI 16S ribosomal RNA
+#'   BLAST databases whose FASTA titles do not contain full lineage strings.
 #' @param dry_run Logical. If `TRUE`, return planned commands without running.
 #'   Default is `FALSE`.
 #' @param echo Logical. If `TRUE`, print planned commands before execution.
@@ -73,8 +77,9 @@
 #' * `reference_coverage`: percent of the subject/reference sequence spanned by
 #'   the alignment, calculated from `sstart`, `send`, and `slen`.
 #' * `taxonomy_path`, `kingdom`, `phylum`, `class`, `order`, `family`, `genus`,
-#'   and `species`: parsed from UNITE-style `k__...;p__...;...;s__...`
-#'   taxonomy strings in `salltitles` when present.
+#'   and `species`: parsed from UNITE/SILVA-style `k__...;p__...;...;s__...`
+#'   taxonomy strings in `salltitles` when present, and optionally filled from
+#'   NCBI taxdump lineage using `staxids` when `taxdump_dir` is supplied.
 #' * `rank`: hit rank within each query, ordered by higher `bitscore`, lower
 #'   `evalue`, higher `pident`, then higher `query_coverage`.
 #'
@@ -156,6 +161,7 @@ annotate_consensus_blast <- function(consensus_fasta,
                                      makeblastdb = "makeblastdb",
                                      conda_env = NULL,
                                      conda = "conda",
+                                     taxdump_dir = NULL,
                                      dry_run = FALSE,
                                      echo = TRUE,
                                      stdout = "",
@@ -180,6 +186,7 @@ annotate_consensus_blast <- function(consensus_fasta,
   if (!is.null(strand)) check_scalar_character(strand, "strand")
   if (!is.null(dust)) check_scalar_character(dust, "dust")
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
+  if (!is.null(taxdump_dir)) check_dir_arg(taxdump_dir, "taxdump_dir")
   if (!is.null(extra_args) &&
       (!is.character(extra_args) || anyNA(extra_args))) {
     stop("`extra_args` must be a character vector without missing values.",
@@ -274,6 +281,9 @@ annotate_consensus_blast <- function(consensus_fasta,
     output_tsv = output_tsv,
     out_dir = out_dir
   )
+  if (!is.null(taxdump_dir)) {
+    paths$taxdump_dir <- normalizePath(taxdump_dir, mustWork = TRUE)
+  }
   if (isTRUE(dry_run)) {
     return(invisible(list(
       status = NA_integer_,
@@ -314,7 +324,11 @@ annotate_consensus_blast <- function(consensus_fasta,
     stop("blastn failed with exit status: ", blast_status, call. = FALSE)
   }
 
-  blast <- read_consensus_blast_table(output_tsv, outfmt_fields)
+  blast <- read_consensus_blast_table(
+    output_tsv,
+    outfmt_fields,
+    taxdump_dir = taxdump_dir
+  )
   top_hits <- blast[blast$rank == 1L, , drop = FALSE]
   utils::write.table(
     blast,
@@ -341,7 +355,7 @@ quote_system2_args <- function(args) {
   args
 }
 
-read_consensus_blast_table <- function(path, fields) {
+read_consensus_blast_table <- function(path, fields, taxdump_dir = NULL) {
   if (!file.exists(path) || file.info(path)$size == 0) {
     empty <- data.frame(matrix(ncol = length(fields), nrow = 0L))
     names(empty) <- fields
@@ -383,6 +397,13 @@ read_consensus_blast_table <- function(path, fields) {
   )
 
   taxonomy <- parse_consensus_blast_taxonomy(blast$salltitles)
+  if (!is.null(taxdump_dir)) {
+    taxonomy <- fill_consensus_taxonomy_from_taxdump(
+      taxonomy = taxonomy,
+      staxids = blast$staxids,
+      taxdump_dir = taxdump_dir
+    )
+  }
   blast <- cbind(blast, taxonomy)
   blast <- rank_consensus_blast_hits(blast)
   blast
@@ -462,6 +483,108 @@ parse_one_consensus_blast_title <- function(title) {
   out$genus <- values[["g"]]
   out$species <- values[["s"]]
   out
+}
+
+fill_consensus_taxonomy_from_taxdump <- function(taxonomy, staxids, taxdump_dir) {
+  missing <- is.na(taxonomy$taxonomy_path) | !nzchar(taxonomy$taxonomy_path)
+  if (!any(missing)) return(taxonomy)
+
+  taxdump <- read_ncbi_taxdump(taxdump_dir)
+  for (i in which(missing)) {
+    taxid <- first_blast_taxid(staxids[[i]])
+    if (is.na(taxid)) next
+    lineage <- ncbi_taxid_lineage(taxid, taxdump)
+    if (is.null(lineage)) next
+    for (col in intersect(names(lineage), names(taxonomy))) {
+      taxonomy[[col]][[i]] <- lineage[[col]]
+    }
+  }
+  taxonomy
+}
+
+first_blast_taxid <- function(staxid) {
+  if (is.na(staxid) || !nzchar(as.character(staxid))) return(NA_character_)
+  ids <- unlist(strsplit(as.character(staxid), "[;,[:space:]]+", perl = TRUE), use.names = FALSE)
+  ids <- ids[nzchar(ids) & ids != "0"]
+  if (length(ids) == 0L) return(NA_character_)
+  ids[[1L]]
+}
+
+read_ncbi_taxdump <- function(taxdump_dir) {
+  nodes_file <- file.path(taxdump_dir, "nodes.dmp")
+  names_file <- file.path(taxdump_dir, "names.dmp")
+  check_file_arg(nodes_file, "nodes.dmp")
+  check_file_arg(names_file, "names.dmp")
+
+  nodes <- utils::read.delim(
+    nodes_file,
+    sep = "|",
+    header = FALSE,
+    quote = "",
+    comment.char = "",
+    stringsAsFactors = FALSE,
+    fill = TRUE
+  )
+  names <- utils::read.delim(
+    names_file,
+    sep = "|",
+    header = FALSE,
+    quote = "",
+    comment.char = "",
+    stringsAsFactors = FALSE,
+    fill = TRUE
+  )
+  nodes <- data.frame(
+    taxid = trimws(nodes[[1L]]),
+    parent = trimws(nodes[[2L]]),
+    rank = trimws(nodes[[3L]]),
+    stringsAsFactors = FALSE
+  )
+  names <- data.frame(
+    taxid = trimws(names[[1L]]),
+    name = trimws(names[[2L]]),
+    class = trimws(names[[4L]]),
+    stringsAsFactors = FALSE
+  )
+  sci <- names[names$class == "scientific name", c("taxid", "name"), drop = FALSE]
+  node_index <- stats::setNames(seq_len(nrow(nodes)), nodes$taxid)
+  name_index <- stats::setNames(sci$name, sci$taxid)
+  list(nodes = nodes, node_index = node_index, names = name_index)
+}
+
+ncbi_taxid_lineage <- function(taxid, taxdump) {
+  rank_map <- c(
+    superkingdom = "kingdom",
+    kingdom = "kingdom",
+    phylum = "phylum",
+    class = "class",
+    order = "order",
+    family = "family",
+    genus = "genus",
+    species = "species"
+  )
+  values <- stats::setNames(rep(NA_character_, 7L), unique(unname(rank_map)))
+  seen <- character()
+  current <- as.character(taxid)
+  while (!is.na(current) && nzchar(current) && !current %in% seen) {
+    seen <- c(seen, current)
+    row_id <- taxdump$node_index[[current]]
+    if (is.null(row_id) || is.na(row_id)) break
+    node <- taxdump$nodes[row_id, , drop = FALSE]
+    rank <- node$rank[[1L]]
+    out_col <- if (rank %in% names(rank_map)) rank_map[[rank]] else NULL
+    if (!is.null(out_col) && is.na(values[[out_col]])) {
+      values[[out_col]] <- taxdump$names[[current]]
+    }
+    parent <- node$parent[[1L]]
+    if (identical(parent, current)) break
+    current <- parent
+  }
+
+  if (all(is.na(values))) return(NULL)
+  taxonomy_path <- paste(stats::na.omit(unname(values)), collapse = ";")
+  if (!nzchar(taxonomy_path)) taxonomy_path <- NA_character_
+  as.list(c(taxonomy_path = taxonomy_path, values))
 }
 
 consensus_blast_prefix <- function(path) {

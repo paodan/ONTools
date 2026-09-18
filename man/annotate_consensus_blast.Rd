@@ -24,6 +24,7 @@ annotate_consensus_blast(
   makeblastdb = "makeblastdb",
   conda_env = NULL,
   conda = "conda",
+  taxdump_dir = NULL,
   dry_run = FALSE,
   echo = TRUE,
   stdout = "",
@@ -89,6 +90,11 @@ BLAST tools from the current environment.}
 \item{conda}{Conda executable name or path used when \code{conda_env} is supplied.
 Default is \code{"conda"}.}
 
+\item{taxdump_dir}{Optional NCBI taxonomy dump directory containing
+\code{nodes.dmp} and \code{names.dmp}. When supplied, missing taxonomy fields are
+filled from BLAST \code{staxids}, which is useful for NCBI 16S ribosomal RNA
+BLAST databases whose FASTA titles do not contain full lineage strings.}
+
 \item{dry_run}{Logical. If \code{TRUE}, return planned commands without running.
 Default is \code{FALSE}.}
 
@@ -126,8 +132,9 @@ calculated from \code{qstart}, \code{qend}, and \code{qlen}.
 \item \code{reference_coverage}: percent of the subject/reference sequence spanned by
 the alignment, calculated from \code{sstart}, \code{send}, and \code{slen}.
 \item \code{taxonomy_path}, \code{kingdom}, \code{phylum}, \code{class}, \code{order}, \code{family}, \code{genus},
-and \code{species}: parsed from UNITE-style \verb{k__...;p__...;...;s__...}
-taxonomy strings in \code{salltitles} when present.
+and \code{species}: parsed from UNITE/SILVA-style \verb{k__...;p__...;...;s__...}
+taxonomy strings in \code{salltitles} when present, and optionally filled from
+NCBI taxdump lineage using \code{staxids} when \code{taxdump_dir} is supplied.
 \item \code{rank}: hit rank within each query, ordered by higher \code{bitscore}, lower
 \code{evalue}, higher \code{pident}, then higher \code{query_coverage}.
 }
