@@ -16,9 +16,13 @@
 #'   outputs, optionally map reads and generate synthetic AB1 files, then build
 #'   the delivery package.
 #' @param output Output root directory.
-#' @param project Project identifier used to create
-#'   `<output>/<project>_delivery/` and, when requested,
-#'   `<output>/<project>_delivery.tar.gz`.
+#' @param project Project identifier used to create the delivery directory and,
+#'   when requested, the archive.
+#' @param delivery_suffix Suffix appended to `project` for the final delivery
+#'   directory and archive names. Defaults to `""`, so the delivery directory is
+#'   `<output>/<project>/`. Use `"_delivery"` to keep the older naming style.
+#' @param sample_sheet Optional sample sheet or sample metadata file to copy
+#'   into `Metadata/` in the delivery directory.
 #' @param overwrite Logical. If `TRUE`, replace an existing delivery directory
 #'   and archive.
 #' @param make_archive Logical. If `TRUE`, create a `.tar.gz` archive next to
@@ -60,6 +64,9 @@
 #'   generated variant tables.
 #' @param readme_name,chinese_readme_name README filenames. Set
 #'   `chinese_readme_name = NULL` to skip the Chinese README.
+#' @param include_manifest Logical. If `TRUE`, write `manifest.tsv` with the
+#'   files included in the delivery and their source paths. Defaults to `FALSE`
+#'   for cleaner customer-facing delivery packages.
 #' @param dry_run Logical. If `TRUE`, return the planned copies and generated
 #'   files without writing anything.
 #' @param echo Logical. If `TRUE`, print a short summary.
@@ -86,6 +93,8 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
                                             fastq = NULL,
                                             output,
                                             project,
+                                            delivery_suffix = "",
+                                            sample_sheet = NULL,
                                             overwrite = FALSE,
                                             make_archive = TRUE,
                                             run_wf = !is.null(fastq),
@@ -119,6 +128,7 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
                                             variant_vcf_pattern = "[.]vcf([.]gz)?$",
                                             readme_name = "README.txt",
                                             chinese_readme_name = "README.zh-CN.txt",
+                                            include_manifest = FALSE,
                                             dry_run = FALSE,
                                             echo = TRUE) {
   if (is.null(input_dir) && is.null(fastq)) {
@@ -126,8 +136,12 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   }
   if (!is.null(input_dir)) check_dir_arg(input_dir, "input_dir")
   if (!is.null(fastq)) check_dir_arg(fastq, "fastq")
+  if (!is.null(sample_sheet)) check_file_arg(sample_sheet, "sample_sheet")
   check_scalar_character(output, "output")
   check_scalar_character(project, "project")
+  if (!is.character(delivery_suffix) || length(delivery_suffix) != 1L || is.na(delivery_suffix)) {
+    stop("`delivery_suffix` must be a single character string.", call. = FALSE)
+  }
   check_scalar_character(wf_out_dir, "wf_out_dir")
   check_scalar_character(work_dir, "work_dir")
   check_scalar_character(staging_dir, "staging_dir")
@@ -158,6 +172,7 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   if (!is.null(variant_conda_env)) {
     check_scalar_character(variant_conda_env, "variant_conda_env")
   }
+  check_logical_scalar(include_manifest, "include_manifest")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   if (!is.null(sequencing_summary)) check_file_arg(sequencing_summary, "sequencing_summary")
@@ -178,16 +193,20 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   if (!is.null(sequencing_summary)) {
     sequencing_summary <- normalizePath(sequencing_summary, mustWork = TRUE)
   }
+  if (!is.null(sample_sheet)) {
+    sample_sheet <- normalizePath(sample_sheet, mustWork = TRUE)
+  }
   output <- normalizePath(output, mustWork = FALSE)
   wf_out_dir <- normalizePath(wf_out_dir, mustWork = FALSE)
   work_dir <- normalizePath(work_dir, mustWork = FALSE)
   staging_dir <- normalizePath(staging_dir, mustWork = FALSE)
-  delivery_name <- paste0(project, "_delivery")
+  delivery_name <- paste0(project, delivery_suffix)
   delivery_dir <- file.path(output, delivery_name)
   archive <- file.path(output, paste0(delivery_name, ".tar.gz"))
   paths <- list(
     input_dir = input_dir,
     fastq = fastq,
+    sample_sheet = sample_sheet,
     wf_out_dir = wf_out_dir,
     work_dir = work_dir,
     staging_dir = if (!is.null(fastq)) staging_dir else NULL,
@@ -295,8 +314,11 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
 
   dir.create(output, recursive = TRUE, showWarnings = FALSE)
   dir.create(delivery_dir, recursive = TRUE, showWarnings = FALSE)
-  for (subdir in c("Bam", "QC", "Sequence", "Var", "04_md5")) {
+  for (subdir in c("Bam", "QC", "Sequence", "Var", "md5")) {
     dir.create(file.path(delivery_dir, subdir), recursive = TRUE, showWarnings = FALSE)
+  }
+  if (!is.null(sample_sheet)) {
+    dir.create(file.path(delivery_dir, "Metadata"), recursive = TRUE, showWarnings = FALSE)
   }
 
   manifest_rows <- bacterial_delivery_execute_copy_plan(plan)
@@ -318,14 +340,23 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   )
   manifest_rows <- rbind(manifest_rows, readme_rows)
 
-  manifest_path <- file.path(delivery_dir, "manifest.tsv")
-  utils::write.table(
-    manifest_rows,
-    manifest_path,
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
+  metadata_rows <- bacterial_delivery_copy_sample_sheet(
+    sample_sheet = sample_sheet,
+    delivery_dir = delivery_dir
   )
+  manifest_rows <- rbind(manifest_rows, metadata_rows)
+
+  manifest_path <- NULL
+  if (isTRUE(include_manifest)) {
+    manifest_path <- file.path(delivery_dir, "manifest.tsv")
+    utils::write.table(
+      manifest_rows,
+      manifest_path,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
 
   bacterial_delivery_write_md5(delivery_dir)
 
@@ -345,6 +376,7 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
     paths = list(
       input_dir = input_for_packaging,
       fastq = fastq,
+      sample_sheet = sample_sheet,
       wf_out_dir = wf_out_dir,
       work_dir = work_dir,
       staging_dir = if (!is.null(fastq)) staging_dir else NULL,
@@ -1025,7 +1057,6 @@ bacterial_delivery_empty_variant_table <- function() {
     Freq = numeric(),
     DP4 = character(),
     Seq = character(),
-    Supplement = character(),
     stringsAsFactors = FALSE
   )
 }
@@ -1063,7 +1094,6 @@ bacterial_delivery_variant_table_from_vcf <- function(vcf) {
     Freq = bacterial_delivery_round_freq(depth$freq),
     DP4 = dp4$label,
     Seq = seq_context,
-    Supplement = rep("", nrow(raw)),
     stringsAsFactors = FALSE
   )
 }
@@ -1208,11 +1238,7 @@ bacterial_delivery_write_merged_variant_tables <- function(delivery_dir) {
 
 bacterial_delivery_write_merged_table <- function(files, output) {
   tables <- lapply(files, function(path) {
-    table <- utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
-    if (!"source_file" %in% names(table)) {
-      table$source_file <- rep(basename(path), nrow(table))
-    }
-    table
+    utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
   })
   columns <- unique(unlist(lapply(tables, names), use.names = FALSE))
   tables <- lapply(tables, function(table) {
@@ -1252,26 +1278,54 @@ bacterial_delivery_write_readmes <- function(delivery_dir,
   rows
 }
 
+bacterial_delivery_copy_sample_sheet <- function(sample_sheet, delivery_dir) {
+  rows <- bacterial_delivery_empty_manifest()
+  if (is.null(sample_sheet)) return(rows)
+
+  destination <- file.path(delivery_dir, "Metadata", basename(sample_sheet))
+  dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
+  ok <- file.copy(sample_sheet, destination, overwrite = TRUE)
+  if (!isTRUE(ok)) {
+    stop("Failed to copy sample sheet: ", sample_sheet, call. = FALSE)
+  }
+
+  rbind(rows, bacterial_delivery_manifest_row(
+    label = "sample_sheet",
+    source = sample_sheet,
+    destination = destination,
+    status = "copied"
+  ))
+}
+
 bacterial_delivery_readme <- function(project) {
   c(
     paste0("Project: ", project),
     "Bacterial genomes delivery package",
     "===================================",
     "",
+    "Recommended files to review:",
+    "- Sequence/*.consensus.fasta: final consensus sequences for each sample.",
+    "- Var/*.filt.var.xls: filtered per-sample variant tables for routine review.",
+    "- merged_data.filt.var.xls: filtered variants merged across delivered samples.",
+    "- QC/*.png: quality-control and coverage figures, when available.",
+    "- Metadata/: sample sheet or sample metadata table, when provided.",
+    "",
     "Directory contents:",
-    "- Bam/: BAM alignment files and BAM index files.",
-    "- QC/: QC figures copied from the source results.",
-    "- Sequence/: consensus FASTA files and AB1 traces, when present.",
-    "- Var/: per-sample variant tables.",
+    "- Bam/: read alignments against the consensus sequence and BAM index files.",
+    "- QC/: coverage, read-length, or other quality-control figures.",
+    "- Sequence/: consensus FASTA files and synthetic AB1 traces, when present.",
+    "- Var/: per-sample variant tables and source VCF files, when generated.",
+    "- Metadata/: sample sheet or project metadata table, when provided.",
     "- merged_data.var.xls: merged unfiltered variant table, when variant tables are available.",
     "- merged_data.filt.var.xls: merged filtered variant table, when filtered variant tables are available.",
-    "- manifest.tsv: files included in this delivery and their source paths.",
-    "- 04_md5/md5.txt: MD5 checksums for delivered files.",
+    "- manifest.tsv: optional internal file list with source paths, present only when requested.",
+    "- md5/md5.txt: MD5 checksums for delivered files.",
     "",
-    "Notes:",
-    "- Source filenames are preserved.",
-    "- Existing variant tables are copied as-is.",
-    "- When VCF files are used to generate variant tables, filtering uses variant_percent by default."
+    "Variant table columns:",
+    "- Chr, Pos, Ref, Alt: reference sequence, position, reference allele, and alternate allele.",
+    "- DP, Ref_dp, Alt_dp, Freq: total depth, reference-supporting depth, alternate-supporting depth, and alternate allele frequency.",
+    "- DP4: strand-level support in the order ref-forward, ref-reverse, alt-forward, alt-reverse.",
+    "- Seq: local sequence context around the variant, when available."
   )
 }
 
@@ -1281,20 +1335,29 @@ bacterial_delivery_readme_zh <- function(project) {
     "细菌基因组结果交付包",
     "====================",
     "",
+    "建议优先查看：",
+    "- Sequence/*.consensus.fasta：每个样本的最终共识序列。",
+    "- Var/*.filt.var.xls：单样本过滤后的变异表，适合常规查看。",
+    "- merged_data.filt.var.xls：所有交付样本合并后的过滤变异表。",
+    "- QC/*.png：质控图、覆盖度图或读长分布图（如有）。",
+    "- Metadata/：样本信息表或项目 metadata 表（如提供）。",
+    "",
     "目录内容：",
-    "- Bam/：BAM 比对文件及其索引文件。",
-    "- QC/：从源结果复制的质控图片。",
-    "- Sequence/：共识序列 FASTA 文件和 AB1 文件（如存在）。",
-    "- Var/：单样本变异表。",
+    "- Bam/：reads 回帖到共识序列后的 BAM 比对文件及其索引文件。",
+    "- QC/：覆盖度、读长分布或其他质控图片。",
+    "- Sequence/：共识序列 FASTA 文件和合成 AB1 文件（如存在）。",
+    "- Var/：单样本变异表以及生成的 VCF 文件（如有）。",
+    "- Metadata/：样本信息表或项目 metadata 表（如提供）。",
     "- merged_data.var.xls：合并后的未过滤变异表（如有变异表）。",
     "- merged_data.filt.var.xls：合并后的过滤变异表（如有过滤变异表）。",
-    "- manifest.tsv：交付文件列表及来源路径。",
-    "- 04_md5/md5.txt：交付文件的 MD5 校验值。",
+    "- manifest.tsv：可选的内部文件清单及来源路径，仅在请求时提供。",
+    "- md5/md5.txt：交付文件的 MD5 校验值。",
     "",
-    "说明：",
-    "- 本函数保留源文件名，不更改样本名称。",
-    "- 已存在的变异表会原样复制。",
-    "- 如果使用 VCF 生成变异表，默认按 variant_percent 过滤。"
+    "变异表字段说明：",
+    "- Chr、Pos、Ref、Alt：参考序列、位置、参考等位基因和替代等位基因。",
+    "- DP、Ref_dp、Alt_dp、Freq：总深度、支持参考的深度、支持突变的深度和突变频率。",
+    "- DP4：链向支持数，顺序为 ref 正链、ref 负链、alt 正链、alt 负链。",
+    "- Seq：变异位点附近的序列上下文（如可获得）。"
   )
 }
 
@@ -1321,12 +1384,21 @@ bacterial_delivery_manifest_row <- function(label, source, destination, status) 
 bacterial_delivery_relative_path <- function(path) {
   parts <- strsplit(normalizePath(path, mustWork = FALSE), .Platform$file.sep, fixed = TRUE)[[1]]
   root_index <- match(TRUE, grepl("_delivery$", parts))
-  if (is.na(root_index)) return(basename(path))
-  paste(parts[seq.int(root_index + 1L, length(parts))], collapse = "/")
+  if (!is.na(root_index)) {
+    return(paste(parts[seq.int(root_index + 1L, length(parts))], collapse = "/"))
+  }
+
+  top_dirs <- c("Bam", "QC", "Sequence", "Var", "Metadata", "md5")
+  top_index <- match(TRUE, parts %in% top_dirs)
+  if (!is.na(top_index)) {
+    return(paste(parts[seq.int(top_index, length(parts))], collapse = "/"))
+  }
+
+  basename(path)
 }
 
 bacterial_delivery_write_md5 <- function(delivery_dir) {
-  md5_dir <- file.path(delivery_dir, "04_md5")
+  md5_dir <- file.path(delivery_dir, "md5")
   dir.create(md5_dir, recursive = TRUE, showWarnings = FALSE)
   md5_file <- file.path(md5_dir, "md5.txt")
   files <- list.files(delivery_dir, recursive = TRUE, full.names = TRUE)

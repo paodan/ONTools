@@ -9,6 +9,8 @@ make_bacterial_genomes_delivery(
   fastq = NULL,
   output,
   project,
+  delivery_suffix = "",
+  sample_sheet = NULL,
   overwrite = FALSE,
   make_archive = TRUE,
   run_wf = !is.null(fastq),
@@ -42,6 +44,7 @@ make_bacterial_genomes_delivery(
   variant_vcf_pattern = "[.]vcf([.]gz)?$",
   readme_name = "README.txt",
   chinese_readme_name = "README.zh-CN.txt",
+  include_manifest = FALSE,
   dry_run = FALSE,
   echo = TRUE
 )
@@ -59,9 +62,15 @@ the delivery package.}
 
 \item{output}{Output root directory.}
 
-\item{project}{Project identifier used to create
-\verb{<output>/<project>_delivery/} and, when requested,
-\verb{<output>/<project>_delivery.tar.gz}.}
+\item{project}{Project identifier used to create the delivery directory and,
+when requested, the archive.}
+
+\item{delivery_suffix}{Suffix appended to \code{project} for the final delivery
+directory and archive names. Defaults to \code{""}, so the delivery directory is
+\verb{<output>/<project>/}. Use \code{"_delivery"} to keep the older naming style.}
+
+\item{sample_sheet}{Optional sample sheet or sample metadata file to copy
+into \verb{Metadata/} in the delivery directory.}
 
 \item{overwrite}{Logical. If \code{TRUE}, replace an existing delivery directory
 and archive.}
@@ -121,6 +130,10 @@ generated variant tables.}
 
 \item{readme_name, chinese_readme_name}{README filenames. Set
 \code{chinese_readme_name = NULL} to skip the Chinese README.}
+
+\item{include_manifest}{Logical. If \code{TRUE}, write \code{manifest.tsv} with the
+files included in the delivery and their source paths. Defaults to \code{FALSE}
+for cleaner customer-facing delivery packages.}
 
 \item{dry_run}{Logical. If \code{TRUE}, return the planned copies and generated
 files without writing anything.}

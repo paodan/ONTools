@@ -6,6 +6,7 @@ test_that("make_bacterial_genomes_delivery copies files without renaming", {
   dir.create(file.path(input, "Sequence"), recursive = TRUE)
   dir.create(file.path(input, "Var"), recursive = TRUE)
   dir.create(output)
+  sample_sheet <- tempfile(fileext = ".csv")
 
   writeLines("bam", file.path(input, "Bam", "G22510280341-G418.bam"))
   writeLines("bai", file.path(input, "Bam", "G22510280341-G418.bam.bai"))
@@ -20,17 +21,20 @@ test_that("make_bacterial_genomes_delivery copies files without renaming", {
     "CHROM\tPOS\tREF\tALT\tvariant_percent",
     file.path(input, "Var", "G22510280341-G418.filt.var.xls")
   )
+  writeLines("sample,barcode\nG22510280341-G418,barcode001", sample_sheet)
 
   res <- make_bacterial_genomes_delivery(
     input_dir = input,
     output = output,
     project = "PROJECT001",
+    sample_sheet = sample_sheet,
     overwrite = TRUE,
     make_archive = FALSE,
     echo = FALSE
   )
 
   delivery <- res$paths$delivery_dir
+  expect_equal(basename(delivery), "PROJECT001")
   expect_true(file.exists(file.path(delivery, "Bam", "G22510280341-G418.bam")))
   expect_true(file.exists(file.path(delivery, "Bam", "G22510280341-G418.bam.bai")))
   expect_true(file.exists(file.path(delivery, "QC", "G22510280341-G418.coverage.png")))
@@ -40,12 +44,43 @@ test_that("make_bacterial_genomes_delivery copies files without renaming", {
   expect_true(file.exists(file.path(delivery, "Var", "G22510280341-G418.filt.var.xls")))
   expect_true(file.exists(file.path(delivery, "merged_data.var.xls")))
   expect_true(file.exists(file.path(delivery, "merged_data.filt.var.xls")))
-  expect_true(file.exists(file.path(delivery, "manifest.tsv")))
-  expect_true(file.exists(file.path(delivery, "04_md5", "md5.txt")))
+  expect_false(file.exists(file.path(delivery, "manifest.tsv")))
+  expect_null(res$manifest)
+  expect_equal(res$paths$sample_sheet, normalizePath(sample_sheet))
+  expect_true(file.exists(file.path(delivery, "Metadata", basename(sample_sheet))))
+  expect_true(file.exists(file.path(delivery, "md5", "md5.txt")))
+  readme <- readLines(file.path(delivery, "README.txt"))
+  readme_zh <- readLines(file.path(delivery, "README.zh-CN.txt"))
+  expect_false(any(grepl("Source filenames are preserved", readme, fixed = TRUE)))
+  expect_false(any(grepl("本函数保留源文件名", readme_zh, fixed = TRUE)))
+  md5_lines <- readLines(file.path(delivery, "md5", "md5.txt"))
+  expect_true(any(grepl("Bam/G22510280341-G418[.]bam$", md5_lines)))
 
-  manifest <- utils::read.delim(file.path(delivery, "manifest.tsv"), check.names = FALSE)
+  res_with_manifest <- make_bacterial_genomes_delivery(
+    input_dir = input,
+    output = output,
+    project = "PROJECT001_MANIFEST",
+    sample_sheet = sample_sheet,
+    overwrite = TRUE,
+    make_archive = FALSE,
+    include_manifest = TRUE,
+    echo = FALSE
+  )
+  manifest <- utils::read.delim(res_with_manifest$manifest, check.names = FALSE)
   expect_true("variant_table" %in% manifest$label)
   expect_true("merged_variant_table" %in% manifest$label)
+  expect_true("sample_sheet" %in% manifest$label)
+
+  res_with_suffix <- make_bacterial_genomes_delivery(
+    input_dir = input,
+    output = output,
+    project = "PROJECT001_SUFFIX",
+    delivery_suffix = "_delivery",
+    overwrite = TRUE,
+    make_archive = FALSE,
+    echo = FALSE
+  )
+  expect_equal(basename(res_with_suffix$paths$delivery_dir), "PROJECT001_SUFFIX_delivery")
 })
 
 test_that("make_bacterial_genomes_delivery generates variant tables from VCF", {
@@ -83,7 +118,7 @@ test_that("make_bacterial_genomes_delivery generates variant tables from VCF", {
   expect_equal(nrow(filt), 1)
   expect_equal(
     names(var),
-    c("Chr", "Pos", "Ref", "Alt", "DP", "Ref_dp", "Alt_dp", "Freq", "DP4", "Seq", "Supplement")
+    c("Chr", "Pos", "Ref", "Alt", "DP", "Ref_dp", "Alt_dp", "Freq", "DP4", "Seq")
   )
   expect_equal(var$Chr, c("contig1", "contig1"))
   expect_equal(var$Ref, c("A", "C"))
@@ -94,6 +129,9 @@ test_that("make_bacterial_genomes_delivery generates variant tables from VCF", {
   expect_equal(var$Seq, c("[A/G]", "[C/T]"))
   expect_true(file.exists(file.path(delivery, "merged_data.var.xls")))
   expect_true(file.exists(file.path(delivery, "merged_data.filt.var.xls")))
+  merged <- utils::read.delim(file.path(delivery, "merged_data.var.xls"), check.names = FALSE)
+  expect_false("source_file" %in% names(merged))
+  expect_false("Supplement" %in% names(merged))
 })
 
 test_that("make_bacterial_genomes_delivery supports dry-run and archive", {
