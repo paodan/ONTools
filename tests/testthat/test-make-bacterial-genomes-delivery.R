@@ -51,6 +51,8 @@ test_that("make_bacterial_genomes_delivery copies files without renaming", {
   expect_true(file.exists(file.path(delivery, "md5", "md5.txt")))
   readme <- readLines(file.path(delivery, "README.txt"))
   readme_zh <- readLines(file.path(delivery, "README.zh-CN.txt"))
+  expect_true(any(grepl("Bacterial genome/plasmid results delivery package", readme, fixed = TRUE)))
+  expect_true(any(grepl("细菌基因组/质粒结果交付包", readme_zh, fixed = TRUE)))
   expect_false(any(grepl("Source filenames are preserved", readme, fixed = TRUE)))
   expect_false(any(grepl("本函数保留源文件名", readme_zh, fixed = TRUE)))
   md5_lines <- readLines(file.path(delivery, "md5", "md5.txt"))

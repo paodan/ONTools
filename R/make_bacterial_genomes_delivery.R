@@ -1300,8 +1300,8 @@ bacterial_delivery_copy_sample_sheet <- function(sample_sheet, delivery_dir) {
 bacterial_delivery_readme <- function(project) {
   c(
     paste0("Project: ", project),
-    "Bacterial genomes delivery package",
-    "===================================",
+    "Bacterial genome/plasmid results delivery package",
+    "=================================================",
     "",
     "Recommended files to review:",
     "- Sequence/*.consensus.fasta: final consensus sequences for each sample.",
@@ -1332,8 +1332,8 @@ bacterial_delivery_readme <- function(project) {
 bacterial_delivery_readme_zh <- function(project) {
   c(
     paste0("项目：", project),
-    "细菌基因组结果交付包",
-    "====================",
+    "细菌基因组/质粒结果交付包",
+    "========================",
     "",
     "建议优先查看：",
     "- Sequence/*.consensus.fasta：每个样本的最终共识序列。",
