@@ -27,11 +27,13 @@ make_bacterial_genomes_delivery(
   gzip = "gzip",
   extra_args = "-offline",
   run_mapping = FALSE,
+  run_variant_calling = FALSE,
   make_ab1 = FALSE,
   sequencing_summary = NULL,
   mapping_threads = threads,
   minimap2 = "minimap2",
   samtools = "samtools",
+  bcftools = "bcftools",
   make_variant_tables = TRUE,
   min_variant_percent = 0.05,
   variant_filter_column = "Freq",
@@ -79,6 +81,10 @@ before final packaging when \code{fastq} is supplied.}
 \item{run_mapping}{Logical. If \code{TRUE}, run \code{\link[=map_reads_to_assembly]{map_reads_to_assembly()}} for
 consensus FASTA files that can be matched to FASTQ files by basename.}
 
+\item{run_variant_calling}{Logical. If \code{TRUE}, run \code{bcftools mpileup} and
+\code{bcftools call} for consensus/BAM pairs to generate VCF files before
+creating variant tables.}
+
 \item{make_ab1}{Logical. If \code{TRUE}, run \code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}} for
 consensus/BAM pairs that can be matched by basename.}
 
@@ -87,8 +93,8 @@ consensus/BAM pairs that can be matched by basename.}
 
 \item{mapping_threads}{Thread count passed to \code{\link[=map_reads_to_assembly]{map_reads_to_assembly()}}.}
 
-\item{minimap2, samtools}{Command names or paths used by mapping and AB1
-generation.}
+\item{minimap2, samtools, bcftools}{Command names or paths used by mapping,
+variant calling, and AB1 generation.}
 
 \item{make_variant_tables}{Logical. If \code{TRUE}, generate missing variant
 tables from VCF files found under \code{input_dir}.}

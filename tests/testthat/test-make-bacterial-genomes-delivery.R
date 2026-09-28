@@ -187,3 +187,90 @@ test_that("make_bacterial_genomes_delivery can collect workflow outputs after FA
   expect_true(file.exists(file.path(delivery, "merged_data.var.xls")))
   expect_equal(res$collection$status, 0L)
 })
+
+test_that("make_bacterial_genomes_delivery can call variants from consensus and BAM", {
+  fastq <- tempfile("bg-fastq-")
+  wf_out <- tempfile("bg-wf-")
+  output <- tempfile("bg-output-")
+  bin <- tempfile("bg-bin-")
+  dir.create(file.path(fastq, "barcode001"), recursive = TRUE)
+  dir.create(file.path(wf_out, "sample1"), recursive = TRUE)
+  dir.create(output)
+  dir.create(bin)
+  writeLines(c("@read1", "ACGT", "+", "!!!!"), file.path(fastq, "barcode001", "barcode001.fastq.gz"))
+
+  fasta_gz <- file.path(wf_out, "sample1", "sample1.medaka.fasta.gz")
+  con <- gzfile(fasta_gz, open = "wt")
+  writeLines(c(">sample1", "ACGTACGT"), con)
+  close(con)
+  writeLines("bam", file.path(wf_out, "sample1", "sample1.bam"))
+  writeLines("bai", file.path(wf_out, "sample1", "sample1.bam.bai"))
+
+  fake_samtools <- file.path(bin, "samtools")
+  writeLines(c(
+    "#!/bin/sh",
+    "if [ \"$1\" = \"faidx\" ]; then",
+    "  printf 'sample1\\t8\\t9\\t8\\t9\\n' > \"$2.fai\"",
+    "  exit 0",
+    "fi",
+    "exit 0"
+  ), fake_samtools)
+  Sys.chmod(fake_samtools, "0755")
+
+  fake_bcftools <- file.path(bin, "bcftools")
+  writeLines(c(
+    "#!/bin/sh",
+    "cmd=\"$1\"",
+    "shift",
+    "if [ \"$cmd\" = \"mpileup\" ]; then",
+    "  out=''",
+    "  while [ \"$#\" -gt 0 ]; do",
+    "    if [ \"$1\" = \"-o\" ]; then out=\"$2\"; shift 2; else shift; fi",
+    "  done",
+    "  printf 'bcf\\n' > \"$out\"",
+    "  exit 0",
+    "fi",
+    "if [ \"$cmd\" = \"call\" ]; then",
+    "  out=''",
+    "  while [ \"$#\" -gt 0 ]; do",
+    "    if [ \"$1\" = \"-o\" ]; then out=\"$2\"; shift 2; else shift; fi",
+    "  done",
+    "  {",
+    "    printf '##fileformat=VCFv4.2\\n'",
+    "    printf '#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\tsample1\\n'",
+    "    printf 'sample1\\t2\\t.\\tC\\tT\\t60\\tPASS\\tDP4=6,4,5,5\\tGT:DP\\t0/1:20\\n'",
+    "  } > \"$out\"",
+    "  exit 0",
+    "fi",
+    "if [ \"$cmd\" = \"index\" ]; then",
+    "  printf 'index\\n' > \"$1.csi\"",
+    "  exit 0",
+    "fi",
+    "exit 1"
+  ), fake_bcftools)
+  Sys.chmod(fake_bcftools, "0755")
+
+  res <- make_bacterial_genomes_delivery(
+    fastq = fastq,
+    output = output,
+    project = "PROJECT006",
+    run_wf = FALSE,
+    wf_out_dir = wf_out,
+    run_variant_calling = TRUE,
+    samtools = fake_samtools,
+    bcftools = fake_bcftools,
+    overwrite = TRUE,
+    make_archive = FALSE,
+    echo = FALSE
+  )
+
+  delivery <- res$paths$delivery_dir
+  expect_true(file.exists(file.path(delivery, "Var", "sample1.var.xls")))
+  expect_true(file.exists(file.path(delivery, "Var", "sample1.filt.var.xls")))
+  var <- utils::read.delim(file.path(delivery, "Var", "sample1.var.xls"), check.names = FALSE)
+  expect_equal(var$DP4, "DP4=6,4,5,5")
+  expect_equal(var$Ref_dp, 10L)
+  expect_equal(var$Alt_dp, 10L)
+  expect_equal(var$Freq, 0.5)
+  expect_equal(res$collection$variants$sample1$status, 0L)
+})

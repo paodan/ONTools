@@ -33,13 +33,16 @@
 #'   Parameters passed to [run_wf_bacterial_genomes()] when `run_wf = TRUE`.
 #' @param run_mapping Logical. If `TRUE`, run [map_reads_to_assembly()] for
 #'   consensus FASTA files that can be matched to FASTQ files by basename.
+#' @param run_variant_calling Logical. If `TRUE`, run `bcftools mpileup` and
+#'   `bcftools call` for consensus/BAM pairs to generate VCF files before
+#'   creating variant tables.
 #' @param make_ab1 Logical. If `TRUE`, run [synthetic_ab1_from_bam()] for
 #'   consensus/BAM pairs that can be matched by basename.
 #' @param sequencing_summary Optional sequencing summary file passed to
 #'   [plot_seqQC()] to generate read-length QC PNGs.
 #' @param mapping_threads Thread count passed to [map_reads_to_assembly()].
-#' @param minimap2,samtools Command names or paths used by mapping and AB1
-#'   generation.
+#' @param minimap2,samtools,bcftools Command names or paths used by mapping,
+#'   variant calling, and AB1 generation.
 #' @param make_variant_tables Logical. If `TRUE`, generate missing variant
 #'   tables from VCF files found under `input_dir`.
 #' @param min_variant_percent Minimum value used for the generated filtered
@@ -96,11 +99,13 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
                                             gzip = "gzip",
                                             extra_args = "-offline",
                                             run_mapping = FALSE,
+                                            run_variant_calling = FALSE,
                                             make_ab1 = FALSE,
                                             sequencing_summary = NULL,
                                             mapping_threads = threads,
                                             minimap2 = "minimap2",
                                             samtools = "samtools",
+                                            bcftools = "bcftools",
                                             make_variant_tables = TRUE,
                                             min_variant_percent = 0.05,
                                             variant_filter_column = "Freq",
@@ -126,12 +131,14 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   check_scalar_character(gzip, "gzip")
   check_scalar_character(minimap2, "minimap2")
   check_scalar_character(samtools, "samtools")
+  check_scalar_character(bcftools, "bcftools")
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(make_archive, "make_archive")
   check_logical_scalar(run_wf, "run_wf")
   check_logical_scalar(run_plasmid_id, "run_plasmid_id")
   check_logical_scalar(resume, "resume")
   check_logical_scalar(run_mapping, "run_mapping")
+  check_logical_scalar(run_variant_calling, "run_variant_calling")
   check_logical_scalar(make_ab1, "make_ab1")
   check_logical_scalar(make_variant_tables, "make_variant_tables")
   check_scalar_character(variant_filter_column, "variant_filter_column")
@@ -213,10 +220,12 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
         staging_dir = staging_dir,
         sequencing_summary = sequencing_summary,
         run_mapping = run_mapping,
+        run_variant_calling = run_variant_calling,
         make_ab1 = make_ab1,
         mapping_threads = mapping_threads,
         minimap2 = minimap2,
         samtools = samtools,
+        bcftools = bcftools,
         overwrite = overwrite,
         dry_run = dry_run,
         echo = echo
@@ -371,10 +380,12 @@ collect_bacterial_genomes_workflow_outputs <- function(wf_out_dir,
                                                        staging_dir,
                                                        sequencing_summary,
                                                        run_mapping,
+                                                       run_variant_calling,
                                                        make_ab1,
                                                        mapping_threads,
                                                        minimap2,
                                                        samtools,
+                                                       bcftools,
                                                        overwrite,
                                                        dry_run,
                                                        echo) {
@@ -428,6 +439,21 @@ collect_bacterial_genomes_workflow_outputs <- function(wf_out_dir,
       samtools = samtools,
       echo = echo
     )
+    coverage <- bacterial_genomes_generate_missing_coverage_plots(
+      staging_dir = staging_dir,
+      samtools = samtools
+    )
+    mapping$coverage <- coverage
+  }
+
+  variants <- list()
+  if (isTRUE(run_variant_calling)) {
+    variants <- bacterial_genomes_call_variants(
+      staging_dir = staging_dir,
+      samtools = samtools,
+      bcftools = bcftools,
+      echo = echo
+    )
   }
 
   ab1 <- list()
@@ -444,6 +470,7 @@ collect_bacterial_genomes_workflow_outputs <- function(wf_out_dir,
     plan = plan,
     manifest = manifest,
     mapping = mapping,
+    variants = variants,
     ab1 = ab1,
     qc = qc,
     status = 0L
@@ -632,6 +659,133 @@ bacterial_genomes_generate_missing_ab1 <- function(staging_dir, samtools, echo) 
       echo = echo
     )
   }
+  results
+}
+
+bacterial_genomes_generate_missing_coverage_plots <- function(staging_dir, samtools) {
+  consensus_files <- list.files(file.path(staging_dir, "Sequence"),
+                                pattern = "[.]consensus[.]fasta$",
+                                full.names = TRUE)
+  results <- list()
+  for (consensus in consensus_files) {
+    stem <- sub("[.]consensus[.]fasta$", "", basename(consensus), ignore.case = TRUE)
+    bam <- file.path(staging_dir, "Bam", paste0(stem, ".bam"))
+    if (!file.exists(bam)) next
+
+    depth_file <- file.path(staging_dir, "Bam", paste0(stem, ".depth.txt"))
+    coverage_png <- file.path(staging_dir, "QC", paste0(stem, ".coverage.png"))
+    if (file.exists(coverage_png)) next
+
+    dir.create(dirname(depth_file), recursive = TRUE, showWarnings = FALSE)
+    dir.create(dirname(coverage_png), recursive = TRUE, showWarnings = FALSE)
+
+    status <- system2(
+      samtools,
+      args = c("depth", "-aa", bam),
+      stdout = depth_file,
+      stderr = ""
+    )
+    if (!identical(status, 0L)) {
+      warning("samtools depth failed for BAM: ", bam, call. = FALSE)
+      next
+    }
+    if (!file.exists(depth_file) || file.info(depth_file)$size == 0L) {
+      warning("Depth file is empty for BAM: ", bam, call. = FALSE)
+      next
+    }
+
+    results[[stem]] <- list(
+      status = status,
+      paths = list(
+        consensus = consensus,
+        bam = bam,
+        depth = depth_file,
+        coverage_plot = coverage_png
+      ),
+      plot = plot_read_depth(
+        depth_file = depth_file,
+        depth_plot = coverage_png,
+        width = 8,
+        height = 5,
+        facet_nrow = 3
+      )
+    )
+  }
+  results
+}
+
+bacterial_genomes_call_variants <- function(staging_dir, samtools, bcftools, echo) {
+  consensus_files <- list.files(file.path(staging_dir, "Sequence"),
+                                pattern = "[.]consensus[.]fasta$",
+                                full.names = TRUE)
+  results <- list()
+  for (consensus in consensus_files) {
+    stem <- sub("[.]consensus[.]fasta$", "", basename(consensus), ignore.case = TRUE)
+    bam <- file.path(staging_dir, "Bam", paste0(stem, ".bam"))
+    if (!file.exists(bam)) {
+      warning("No matching BAM found for variant calling: ", basename(consensus), call. = FALSE)
+      next
+    }
+
+    vcf <- file.path(staging_dir, "Var", paste0(stem, ".vcf.gz"))
+    vcf_index <- paste0(vcf, ".csi")
+    if (file.exists(vcf)) {
+      results[[stem]] <- list(
+        status = 0L,
+        skipped = TRUE,
+        paths = list(consensus = consensus, bam = bam, vcf = vcf, index = vcf_index)
+      )
+      next
+    }
+
+    dir.create(dirname(vcf), recursive = TRUE, showWarnings = FALSE)
+    fai <- paste0(consensus, ".fai")
+    if (!file.exists(fai)) {
+      faidx_status <- system2(samtools, args = c("faidx", consensus), stderr = "")
+      if (!identical(faidx_status, 0L)) {
+        warning("samtools faidx failed for consensus: ", consensus, call. = FALSE)
+        next
+      }
+    }
+
+    tmp_bcf <- tempfile("mpileup_", fileext = ".bcf")
+    on.exit(unlink(tmp_bcf), add = TRUE)
+    mpileup_args <- c("mpileup", "-Ou", "-f", consensus, "-o", tmp_bcf, bam)
+    call_args <- c("call", "-mv", "-Oz", "-o", vcf, tmp_bcf)
+    index_args <- c("index", vcf)
+    if (isTRUE(echo)) {
+      message(paste(c(shQuote(bcftools), shQuote(mpileup_args)), collapse = " "))
+      message(paste(c(shQuote(bcftools), shQuote(call_args)), collapse = " "))
+      message(paste(c(shQuote(bcftools), shQuote(index_args)), collapse = " "))
+    }
+
+    mpileup_status <- system2(bcftools, args = mpileup_args, stderr = "")
+    if (!identical(mpileup_status, 0L)) {
+      warning("bcftools mpileup failed for BAM: ", bam, call. = FALSE)
+      next
+    }
+    call_status <- system2(bcftools, args = call_args, stderr = "")
+    if (!identical(call_status, 0L)) {
+      warning("bcftools call failed for BAM: ", bam, call. = FALSE)
+      next
+    }
+    index_status <- system2(bcftools, args = index_args, stderr = "")
+    if (!identical(index_status, 0L)) {
+      warning("bcftools index failed for VCF: ", vcf, call. = FALSE)
+    }
+
+    results[[stem]] <- list(
+      status = if (identical(index_status, 0L)) 0L else index_status,
+      skipped = FALSE,
+      commands = list(
+        mpileup = paste(c(shQuote(bcftools), shQuote(mpileup_args)), collapse = " "),
+        call = paste(c(shQuote(bcftools), shQuote(call_args)), collapse = " "),
+        index = paste(c(shQuote(bcftools), shQuote(index_args)), collapse = " ")
+      ),
+      paths = list(consensus = consensus, bam = bam, vcf = vcf, index = vcf_index)
+    )
+  }
+
   results
 }
 
