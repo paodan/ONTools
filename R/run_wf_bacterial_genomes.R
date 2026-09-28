@@ -122,6 +122,17 @@ run_wf_bacterial_genomes <- function(fastq = "./fastq_pass_trim",
     stop("`min_len` must be less than or equal to `max_len`.", call. = FALSE)
   }
 
+  if (dir.exists(fastq)) {
+    fastq <- normalizePath(fastq, mustWork = TRUE)
+  } else if (!isTRUE(dry_run) || !is.null(max_len)) {
+    stop("`fastq` directory does not exist: ", fastq, call. = FALSE)
+  } else {
+    fastq <- normalizePath(fastq, mustWork = FALSE)
+  }
+  out_dir <- normalizePath(out_dir, mustWork = FALSE)
+  work_dir <- normalizePath(work_dir, mustWork = FALSE)
+  filtered_fastq_dir <- normalizePath(filtered_fastq_dir, mustWork = FALSE)
+
   nextflow_env <- build_nextflow_env(syntax_parser, ansi_log, nextflow_env)
   filtering_enabled <- !is.null(max_len)
   filter_plan <- list(

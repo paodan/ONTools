@@ -160,6 +160,10 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   if (!is.null(sequencing_summary)) {
     sequencing_summary <- normalizePath(sequencing_summary, mustWork = TRUE)
   }
+  output <- normalizePath(output, mustWork = FALSE)
+  wf_out_dir <- normalizePath(wf_out_dir, mustWork = FALSE)
+  work_dir <- normalizePath(work_dir, mustWork = FALSE)
+  staging_dir <- normalizePath(staging_dir, mustWork = FALSE)
   delivery_name <- paste0(project, "_delivery")
   delivery_dir <- file.path(output, delivery_name)
   archive <- file.path(output, paste0(delivery_name, ".tar.gz"))

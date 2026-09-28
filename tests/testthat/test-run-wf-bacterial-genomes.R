@@ -34,7 +34,7 @@ test_that("run_wf_bacterial_genomes builds filter and Nextflow commands", {
   expect_true(any(res$args == "--threads"))
   expect_true(any(res$args == "20"))
   expect_true(any(res$args == "-work-dir"))
-  expect_true(any(res$args == "work"))
+  expect_true(any(res$args == res$paths$work_dir))
   expect_true(any(res$args == "--sample_sheet"))
   expect_true(any(res$args == normalizePath(sample_sheet)))
   expect_true(any(res$args == "--flye_genome_size"))
