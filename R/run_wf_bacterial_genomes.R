@@ -334,6 +334,10 @@ build_bacterial_genomes_filter_plan <- function(fastq,
   list(
     enabled = TRUE,
     command_strings = command_strings,
+    seqkit = seqkit,
+    gzip = gzip,
+    min_len = min_len,
+    max_len = max_len,
     input_files = input_files,
     output_files = output_files,
     statuses = integer()
@@ -344,19 +348,60 @@ run_bacterial_genomes_filter_plan <- function(filter_plan) {
   statuses <- integer(length(filter_plan$command_strings))
   for (i in seq_along(filter_plan$command_strings)) {
     dir.create(dirname(filter_plan$output_files[i]), recursive = TRUE, showWarnings = FALSE)
+    tmp_fastq <- tempfile("filtered_", fileext = ".fastq")
+    on.exit(unlink(tmp_fastq), add = TRUE)
+
     status <- system2(
-      "sh",
-      args = c("-c", filter_plan$command_strings[i]),
-      stdout = "",
+      filter_plan$seqkit,
+      args = c(
+        "seq",
+        "-m", as.character(filter_plan$min_len),
+        "-M", as.character(filter_plan$max_len),
+        filter_plan$input_files[i]
+      ),
+      stdout = tmp_fastq,
       stderr = ""
     )
     if (!identical(status, 0L)) {
       stop("seqkit length filtering failed with exit status: ", status, call. = FALSE)
     }
+
+    status <- system2(
+      filter_plan$gzip,
+      args = c("-c", tmp_fastq),
+      stdout = filter_plan$output_files[i],
+      stderr = ""
+    )
+    if (!identical(status, 0L)) {
+      stop("gzip compression failed with exit status: ", status, call. = FALSE)
+    }
+
+    validate_filtered_fastq_output(filter_plan$output_files[i])
     statuses[i] <- status
   }
 
   statuses
+}
+
+validate_filtered_fastq_output <- function(path) {
+  if (!file.exists(path) || file.info(path)$size == 0L) {
+    stop("Filtered FASTQ was not created or is empty: ", path, call. = FALSE)
+  }
+
+  con <- gzfile(path, open = "rt")
+  on.exit(close(con), add = TRUE)
+  first_line <- readLines(con, n = 1L, warn = FALSE)
+  if (length(first_line) == 0L || !startsWith(first_line[[1L]], "@")) {
+    preview <- if (length(first_line) == 0L) "" else first_line[[1L]]
+    stop(
+      "Filtered FASTQ is not valid FASTQ after gzip decompression: ",
+      path,
+      if (nzchar(preview)) paste0(". First line: ", preview) else "",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
 }
 
 validate_scalar_cli_value <- function(x, name) {

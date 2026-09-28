@@ -100,3 +100,15 @@ test_that("run_wf_bacterial_genomes validates filter inputs", {
     "not found"
   )
 })
+
+test_that("run_wf_bacterial_genomes rejects non-FASTQ gzip filter output", {
+  bad_fastq <- tempfile(fileext = ".fastq.gz")
+  con <- gzfile(bad_fastq, open = "wt")
+  writeLines("SeqKit -- a cross-platform and ultrafast toolkit", con)
+  close(con)
+
+  expect_error(
+    validate_filtered_fastq_output(bad_fastq),
+    "not valid FASTQ"
+  )
+})
