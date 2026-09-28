@@ -499,6 +499,13 @@ empty_vcf_data_frame <- function(header) {
 }
 
 normalize_vcf_fixed_columns <- function(vcf) {
+  character_cols <- intersect(
+    c("CHROM", "ID", "REF", "ALT", "FILTER", "INFO", "FORMAT"),
+    names(vcf)
+  )
+  for (col in character_cols) {
+    vcf[[col]] <- as.character(vcf[[col]])
+  }
   if ("POS" %in% names(vcf)) {
     vcf$POS <- suppressWarnings(as.integer(vcf$POS))
   }
