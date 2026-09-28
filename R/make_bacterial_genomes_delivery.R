@@ -332,19 +332,20 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   merged_rows <- bacterial_delivery_write_merged_variant_tables(delivery_dir)
   manifest_rows <- rbind(manifest_rows, merged_rows)
 
-  readme_rows <- bacterial_delivery_write_readmes(
-    delivery_dir = delivery_dir,
-    project = project,
-    readme_name = readme_name,
-    chinese_readme_name = chinese_readme_name
-  )
-  manifest_rows <- rbind(manifest_rows, readme_rows)
-
   metadata_rows <- bacterial_delivery_copy_sample_sheet(
     sample_sheet = sample_sheet,
     delivery_dir = delivery_dir
   )
   manifest_rows <- rbind(manifest_rows, metadata_rows)
+
+  readme_rows <- bacterial_delivery_write_readmes(
+    delivery_dir = delivery_dir,
+    project = project,
+    readme_name = readme_name,
+    chinese_readme_name = chinese_readme_name,
+    include_manifest = include_manifest
+  )
+  manifest_rows <- rbind(manifest_rows, readme_rows)
 
   manifest_path <- NULL
   if (isTRUE(include_manifest)) {
@@ -1253,10 +1254,11 @@ bacterial_delivery_write_merged_table <- function(files, output) {
 bacterial_delivery_write_readmes <- function(delivery_dir,
                                              project,
                                              readme_name,
-                                             chinese_readme_name) {
+                                             chinese_readme_name,
+                                             include_manifest) {
   rows <- bacterial_delivery_empty_manifest()
   readme <- file.path(delivery_dir, readme_name)
-  writeLines(bacterial_delivery_readme(project), readme)
+  writeLines(bacterial_delivery_readme(project, delivery_dir, include_manifest), readme)
   rows <- rbind(rows, bacterial_delivery_manifest_row(
     label = "README",
     source = NA_character_,
@@ -1266,7 +1268,7 @@ bacterial_delivery_write_readmes <- function(delivery_dir,
 
   if (!is.null(chinese_readme_name)) {
     readme_zh <- file.path(delivery_dir, chinese_readme_name)
-    writeLines(bacterial_delivery_readme_zh(project), readme_zh)
+    writeLines(bacterial_delivery_readme_zh(project, delivery_dir, include_manifest), readme_zh)
     rows <- rbind(rows, bacterial_delivery_manifest_row(
       label = "README_zh_CN",
       source = NA_character_,
@@ -1297,68 +1299,118 @@ bacterial_delivery_copy_sample_sheet <- function(sample_sheet, delivery_dir) {
   ))
 }
 
-bacterial_delivery_readme <- function(project) {
-  c(
+bacterial_delivery_has_files <- function(delivery_dir, subdir = NULL, pattern = NULL) {
+  path <- if (is.null(subdir)) delivery_dir else file.path(delivery_dir, subdir)
+  if (!dir.exists(path)) return(FALSE)
+  files <- list.files(path, recursive = TRUE, full.names = TRUE, all.files = FALSE)
+  files <- files[file.exists(files) & !dir.exists(files)]
+  if (!is.null(pattern)) {
+    files <- files[grepl(pattern, basename(files), ignore.case = TRUE)]
+  }
+  length(files) > 0L
+}
+
+bacterial_delivery_readme_flags <- function(delivery_dir, include_manifest) {
+  list(
+    has_bam = bacterial_delivery_has_files(delivery_dir, "Bam", "[.]bam([.]bai)?$|[.]bai$"),
+    has_qc = bacterial_delivery_has_files(delivery_dir, "QC", "[.]png$"),
+    has_sequence = bacterial_delivery_has_files(delivery_dir, "Sequence"),
+    has_consensus = bacterial_delivery_has_files(delivery_dir, "Sequence", "[.]consensus[.]fasta$|[.](fa|fasta|fna)$"),
+    has_var = bacterial_delivery_has_files(delivery_dir, "Var"),
+    has_filt_var = bacterial_delivery_has_files(delivery_dir, "Var", "[.]filt[.]var[.]xls$"),
+    has_metadata = bacterial_delivery_has_files(delivery_dir, "Metadata"),
+    has_merged_var = file.exists(file.path(delivery_dir, "merged_data.var.xls")),
+    has_merged_filt = file.exists(file.path(delivery_dir, "merged_data.filt.var.xls")),
+    include_manifest = isTRUE(include_manifest)
+  )
+}
+
+bacterial_delivery_readme <- function(project, delivery_dir, include_manifest) {
+  flags <- bacterial_delivery_readme_flags(delivery_dir, include_manifest)
+  recommended <- c(
+    if (isTRUE(flags$has_consensus)) "- Sequence/*.consensus.fasta: final consensus sequences for each sample.",
+    if (isTRUE(flags$has_filt_var)) "- Var/*.filt.var.xls: filtered per-sample variant tables for routine review.",
+    if (isTRUE(flags$has_merged_filt)) "- merged_data.filt.var.xls: filtered variants merged across delivered samples.",
+    if (isTRUE(flags$has_qc)) "- QC/*.png: quality-control and coverage figures.",
+    if (isTRUE(flags$has_metadata)) "- Metadata/: sample sheet or project metadata table."
+  )
+  contents <- c(
+    if (isTRUE(flags$has_bam)) "- Bam/: read alignments against the consensus sequence and BAM index files.",
+    if (isTRUE(flags$has_qc)) "- QC/: coverage, read-length, or other quality-control figures.",
+    if (isTRUE(flags$has_sequence)) "- Sequence/: consensus FASTA files and synthetic AB1 traces.",
+    if (isTRUE(flags$has_var)) "- Var/: per-sample variant tables and VCF files.",
+    if (isTRUE(flags$has_metadata)) "- Metadata/: sample sheet or project metadata table.",
+    if (isTRUE(flags$has_merged_var)) "- merged_data.var.xls: merged unfiltered variant table.",
+    if (isTRUE(flags$has_merged_filt)) "- merged_data.filt.var.xls: merged filtered variant table.",
+    if (isTRUE(flags$include_manifest)) "- manifest.tsv: file list with source paths.",
+    "- md5/md5.txt: MD5 checksums for delivered files."
+  )
+  variant_columns <- c(
+    "Variant table columns:",
+    "- Chr, Pos, Ref, Alt: reference sequence, position, reference allele, and alternate allele.",
+    "- DP, Ref_dp, Alt_dp, Freq: total depth, reference-supporting depth, alternate-supporting depth, and alternate allele frequency.",
+    "- DP4: strand-level support in the order ref-forward, ref-reverse, alt-forward, alt-reverse.",
+    "- Seq: local sequence context around the variant."
+  )
+  lines <- c(
     paste0("Project: ", project),
     "Bacterial genome/plasmid results delivery package",
     "=================================================",
     "",
     "Recommended files to review:",
-    "- Sequence/*.consensus.fasta: final consensus sequences for each sample.",
-    "- Var/*.filt.var.xls: filtered per-sample variant tables for routine review.",
-    "- merged_data.filt.var.xls: filtered variants merged across delivered samples.",
-    "- QC/*.png: quality-control and coverage figures, when available.",
-    "- Metadata/: sample sheet or sample metadata table, when provided.",
+    recommended,
     "",
     "Directory contents:",
-    "- Bam/: read alignments against the consensus sequence and BAM index files.",
-    "- QC/: coverage, read-length, or other quality-control figures.",
-    "- Sequence/: consensus FASTA files and synthetic AB1 traces, when present.",
-    "- Var/: per-sample variant tables and source VCF files, when generated.",
-    "- Metadata/: sample sheet or project metadata table, when provided.",
-    "- merged_data.var.xls: merged unfiltered variant table, when variant tables are available.",
-    "- merged_data.filt.var.xls: merged filtered variant table, when filtered variant tables are available.",
-    "- manifest.tsv: optional internal file list with source paths, present only when requested.",
-    "- md5/md5.txt: MD5 checksums for delivered files.",
-    "",
-    "Variant table columns:",
-    "- Chr, Pos, Ref, Alt: reference sequence, position, reference allele, and alternate allele.",
-    "- DP, Ref_dp, Alt_dp, Freq: total depth, reference-supporting depth, alternate-supporting depth, and alternate allele frequency.",
-    "- DP4: strand-level support in the order ref-forward, ref-reverse, alt-forward, alt-reverse.",
-    "- Seq: local sequence context around the variant, when available."
+    contents
   )
+  if (isTRUE(flags$has_var) || isTRUE(flags$has_merged_var) || isTRUE(flags$has_merged_filt)) {
+    lines <- c(lines, "", variant_columns)
+  }
+  lines
 }
 
-bacterial_delivery_readme_zh <- function(project) {
-  c(
+bacterial_delivery_readme_zh <- function(project, delivery_dir, include_manifest) {
+  flags <- bacterial_delivery_readme_flags(delivery_dir, include_manifest)
+  recommended <- c(
+    if (isTRUE(flags$has_consensus)) "- Sequence/*.consensus.fasta：每个样本的最终共识序列。",
+    if (isTRUE(flags$has_filt_var)) "- Var/*.filt.var.xls：单样本过滤后的变异表，适合常规查看。",
+    if (isTRUE(flags$has_merged_filt)) "- merged_data.filt.var.xls：所有交付样本合并后的过滤变异表。",
+    if (isTRUE(flags$has_qc)) "- QC/*.png：质控图、覆盖度图或读长分布图。",
+    if (isTRUE(flags$has_metadata)) "- Metadata/：样本信息表或项目 metadata 表。"
+  )
+  contents <- c(
+    if (isTRUE(flags$has_bam)) "- Bam/：reads 回帖到共识序列后的 BAM 比对文件及其索引文件。",
+    if (isTRUE(flags$has_qc)) "- QC/：覆盖度、读长分布或其他质控图片。",
+    if (isTRUE(flags$has_sequence)) "- Sequence/：共识序列 FASTA 文件和合成 AB1 文件。",
+    if (isTRUE(flags$has_var)) "- Var/：单样本变异表以及生成的 VCF 文件。",
+    if (isTRUE(flags$has_metadata)) "- Metadata/：样本信息表或项目 metadata 表。",
+    if (isTRUE(flags$has_merged_var)) "- merged_data.var.xls：合并后的未过滤变异表。",
+    if (isTRUE(flags$has_merged_filt)) "- merged_data.filt.var.xls：合并后的过滤变异表。",
+    if (isTRUE(flags$include_manifest)) "- manifest.tsv：文件清单及来源路径。",
+    "- md5/md5.txt：交付文件的 MD5 校验值。"
+  )
+  variant_columns <- c(
+    "变异表字段说明：",
+    "- Chr、Pos、Ref、Alt：参考序列、位置、参考等位基因和替代等位基因。",
+    "- DP、Ref_dp、Alt_dp、Freq：总深度、支持参考的深度、支持突变的深度和突变频率。",
+    "- DP4：链向支持数，顺序为 ref 正链、ref 负链、alt 正链、alt 负链。",
+    "- Seq：变异位点附近的序列上下文。"
+  )
+  lines <- c(
     paste0("项目：", project),
     "细菌基因组/质粒结果交付包",
     "========================",
     "",
     "建议优先查看：",
-    "- Sequence/*.consensus.fasta：每个样本的最终共识序列。",
-    "- Var/*.filt.var.xls：单样本过滤后的变异表，适合常规查看。",
-    "- merged_data.filt.var.xls：所有交付样本合并后的过滤变异表。",
-    "- QC/*.png：质控图、覆盖度图或读长分布图（如有）。",
-    "- Metadata/：样本信息表或项目 metadata 表（如提供）。",
+    recommended,
     "",
     "目录内容：",
-    "- Bam/：reads 回帖到共识序列后的 BAM 比对文件及其索引文件。",
-    "- QC/：覆盖度、读长分布或其他质控图片。",
-    "- Sequence/：共识序列 FASTA 文件和合成 AB1 文件（如存在）。",
-    "- Var/：单样本变异表以及生成的 VCF 文件（如有）。",
-    "- Metadata/：样本信息表或项目 metadata 表（如提供）。",
-    "- merged_data.var.xls：合并后的未过滤变异表（如有变异表）。",
-    "- merged_data.filt.var.xls：合并后的过滤变异表（如有过滤变异表）。",
-    "- manifest.tsv：可选的内部文件清单及来源路径，仅在请求时提供。",
-    "- md5/md5.txt：交付文件的 MD5 校验值。",
-    "",
-    "变异表字段说明：",
-    "- Chr、Pos、Ref、Alt：参考序列、位置、参考等位基因和替代等位基因。",
-    "- DP、Ref_dp、Alt_dp、Freq：总深度、支持参考的深度、支持突变的深度和突变频率。",
-    "- DP4：链向支持数，顺序为 ref 正链、ref 负链、alt 正链、alt 负链。",
-    "- Seq：变异位点附近的序列上下文（如可获得）。"
+    contents
   )
+  if (isTRUE(flags$has_var) || isTRUE(flags$has_merged_var) || isTRUE(flags$has_merged_filt)) {
+    lines <- c(lines, "", variant_columns)
+  }
+  lines
 }
 
 bacterial_delivery_empty_manifest <- function() {

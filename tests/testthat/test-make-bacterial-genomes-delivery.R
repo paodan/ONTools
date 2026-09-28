@@ -53,6 +53,13 @@ test_that("make_bacterial_genomes_delivery copies files without renaming", {
   readme_zh <- readLines(file.path(delivery, "README.zh-CN.txt"))
   expect_true(any(grepl("Bacterial genome/plasmid results delivery package", readme, fixed = TRUE)))
   expect_true(any(grepl("细菌基因组/质粒结果交付包", readme_zh, fixed = TRUE)))
+  expect_true(any(grepl("- Metadata/：样本信息表或项目 metadata 表。", readme_zh, fixed = TRUE)))
+  expect_false(any(grepl("manifest.tsv", readme, fixed = TRUE)))
+  expect_false(any(grepl("manifest.tsv", readme_zh, fixed = TRUE)))
+  expect_false(any(grepl("when available", readme, fixed = TRUE)))
+  expect_false(any(grepl("when provided", readme, fixed = TRUE)))
+  expect_false(any(grepl("如有", readme_zh, fixed = TRUE)))
+  expect_false(any(grepl("如提供", readme_zh, fixed = TRUE)))
   expect_false(any(grepl("Source filenames are preserved", readme, fixed = TRUE)))
   expect_false(any(grepl("本函数保留源文件名", readme_zh, fixed = TRUE)))
   md5_lines <- readLines(file.path(delivery, "md5", "md5.txt"))
@@ -69,9 +76,11 @@ test_that("make_bacterial_genomes_delivery copies files without renaming", {
     echo = FALSE
   )
   manifest <- utils::read.delim(res_with_manifest$manifest, check.names = FALSE)
+  readme_with_manifest <- readLines(file.path(res_with_manifest$paths$delivery_dir, "README.zh-CN.txt"))
   expect_true("variant_table" %in% manifest$label)
   expect_true("merged_variant_table" %in% manifest$label)
   expect_true("sample_sheet" %in% manifest$label)
+  expect_true(any(grepl("manifest.tsv：文件清单及来源路径。", readme_with_manifest, fixed = TRUE)))
 
   res_with_suffix <- make_bacterial_genomes_delivery(
     input_dir = input,
@@ -83,6 +92,8 @@ test_that("make_bacterial_genomes_delivery copies files without renaming", {
     echo = FALSE
   )
   expect_equal(basename(res_with_suffix$paths$delivery_dir), "PROJECT001_SUFFIX_delivery")
+  readme_without_metadata <- readLines(file.path(res_with_suffix$paths$delivery_dir, "README.zh-CN.txt"))
+  expect_false(any(grepl("Metadata/", readme_without_metadata, fixed = TRUE)))
 })
 
 test_that("make_bacterial_genomes_delivery generates variant tables from VCF", {
