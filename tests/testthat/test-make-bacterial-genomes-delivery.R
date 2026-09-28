@@ -250,6 +250,16 @@ test_that("make_bacterial_genomes_delivery can call variants from consensus and 
   ), fake_bcftools)
   Sys.chmod(fake_bcftools, "0755")
 
+  fake_conda <- file.path(bin, "conda")
+  writeLines(c(
+    "#!/bin/sh",
+    "if [ \"$1\" = \"run\" ] && [ \"$2\" = \"-n\" ]; then",
+    "  shift 3",
+    "fi",
+    "exec \"$@\""
+  ), fake_conda)
+  Sys.chmod(fake_conda, "0755")
+
   res <- make_bacterial_genomes_delivery(
     fastq = fastq,
     output = output,
@@ -259,6 +269,8 @@ test_that("make_bacterial_genomes_delivery can call variants from consensus and 
     run_variant_calling = TRUE,
     samtools = fake_samtools,
     bcftools = fake_bcftools,
+    variant_conda_env = "variant_qc",
+    conda = fake_conda,
     overwrite = TRUE,
     make_archive = FALSE,
     echo = FALSE
@@ -273,4 +285,6 @@ test_that("make_bacterial_genomes_delivery can call variants from consensus and 
   expect_equal(var$Alt_dp, 10L)
   expect_equal(var$Freq, 0.5)
   expect_equal(res$collection$variants$sample1$status, 0L)
+  expect_match(res$collection$variants$sample1$commands$mpileup, "variant_qc", fixed = TRUE)
+  expect_match(res$collection$variants$sample1$commands$mpileup, fake_bcftools, fixed = TRUE)
 })

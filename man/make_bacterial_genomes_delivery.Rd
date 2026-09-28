@@ -34,6 +34,8 @@ make_bacterial_genomes_delivery(
   minimap2 = "minimap2",
   samtools = "samtools",
   bcftools = "bcftools",
+  variant_conda_env = NULL,
+  conda = "conda",
   make_variant_tables = TRUE,
   min_variant_percent = 0.05,
   variant_filter_column = "Freq",
@@ -95,6 +97,13 @@ consensus/BAM pairs that can be matched by basename.}
 
 \item{minimap2, samtools, bcftools}{Command names or paths used by mapping,
 variant calling, and AB1 generation.}
+
+\item{variant_conda_env}{Optional conda environment name used for the
+\code{samtools faidx} and \code{bcftools} commands in variant calling. For example,
+use \code{"variant_qc"} to run \verb{conda run -n variant_qc bcftools ...}.}
+
+\item{conda}{Conda executable name or path used when \code{variant_conda_env} is
+supplied.}
 
 \item{make_variant_tables}{Logical. If \code{TRUE}, generate missing variant
 tables from VCF files found under \code{input_dir}.}

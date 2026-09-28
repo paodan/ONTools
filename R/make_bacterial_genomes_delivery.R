@@ -43,6 +43,11 @@
 #' @param mapping_threads Thread count passed to [map_reads_to_assembly()].
 #' @param minimap2,samtools,bcftools Command names or paths used by mapping,
 #'   variant calling, and AB1 generation.
+#' @param variant_conda_env Optional conda environment name used for the
+#'   `samtools faidx` and `bcftools` commands in variant calling. For example,
+#'   use `"variant_qc"` to run `conda run -n variant_qc bcftools ...`.
+#' @param conda Conda executable name or path used when `variant_conda_env` is
+#'   supplied.
 #' @param make_variant_tables Logical. If `TRUE`, generate missing variant
 #'   tables from VCF files found under `input_dir`.
 #' @param min_variant_percent Minimum value used for the generated filtered
@@ -106,6 +111,8 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
                                             minimap2 = "minimap2",
                                             samtools = "samtools",
                                             bcftools = "bcftools",
+                                            variant_conda_env = NULL,
+                                            conda = "conda",
                                             make_variant_tables = TRUE,
                                             min_variant_percent = 0.05,
                                             variant_filter_column = "Freq",
@@ -132,6 +139,7 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   check_scalar_character(minimap2, "minimap2")
   check_scalar_character(samtools, "samtools")
   check_scalar_character(bcftools, "bcftools")
+  check_scalar_character(conda, "conda")
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(make_archive, "make_archive")
   check_logical_scalar(run_wf, "run_wf")
@@ -146,6 +154,9 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
   check_scalar_character(readme_name, "readme_name")
   if (!is.null(chinese_readme_name)) {
     check_scalar_character(chinese_readme_name, "chinese_readme_name")
+  }
+  if (!is.null(variant_conda_env)) {
+    check_scalar_character(variant_conda_env, "variant_conda_env")
   }
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
@@ -226,6 +237,8 @@ make_bacterial_genomes_delivery <- function(input_dir = NULL,
         minimap2 = minimap2,
         samtools = samtools,
         bcftools = bcftools,
+        variant_conda_env = variant_conda_env,
+        conda = conda,
         overwrite = overwrite,
         dry_run = dry_run,
         echo = echo
@@ -386,6 +399,8 @@ collect_bacterial_genomes_workflow_outputs <- function(wf_out_dir,
                                                        minimap2,
                                                        samtools,
                                                        bcftools,
+                                                       variant_conda_env,
+                                                       conda,
                                                        overwrite,
                                                        dry_run,
                                                        echo) {
@@ -401,6 +416,7 @@ collect_bacterial_genomes_workflow_outputs <- function(wf_out_dir,
       staging_dir = staging_dir,
       plan = plan,
       mapping = list(),
+      variants = list(),
       ab1 = list(),
       qc = NULL,
       status = NA_integer_
@@ -452,6 +468,8 @@ collect_bacterial_genomes_workflow_outputs <- function(wf_out_dir,
       staging_dir = staging_dir,
       samtools = samtools,
       bcftools = bcftools,
+      conda_env = variant_conda_env,
+      conda = conda,
       echo = echo
     )
   }
@@ -714,7 +732,12 @@ bacterial_genomes_generate_missing_coverage_plots <- function(staging_dir, samto
   results
 }
 
-bacterial_genomes_call_variants <- function(staging_dir, samtools, bcftools, echo) {
+bacterial_genomes_call_variants <- function(staging_dir,
+                                            samtools,
+                                            bcftools,
+                                            conda_env,
+                                            conda,
+                                            echo) {
   consensus_files <- list.files(file.path(staging_dir, "Sequence"),
                                 pattern = "[.]consensus[.]fasta$",
                                 full.names = TRUE)
@@ -741,7 +764,16 @@ bacterial_genomes_call_variants <- function(staging_dir, samtools, bcftools, ech
     dir.create(dirname(vcf), recursive = TRUE, showWarnings = FALSE)
     fai <- paste0(consensus, ".fai")
     if (!file.exists(fai)) {
-      faidx_status <- system2(samtools, args = c("faidx", consensus), stderr = "")
+      faidx_call <- dehost_fastq_external_call(
+        command = samtools,
+        args = c("faidx", consensus),
+        conda_env = conda_env,
+        conda = conda
+      )
+      if (isTRUE(echo)) {
+        message(paste(c(shQuote(faidx_call$command), shQuote(faidx_call$args)), collapse = " "))
+      }
+      faidx_status <- system2(faidx_call$command, args = faidx_call$args, stderr = "")
       if (!identical(faidx_status, 0L)) {
         warning("samtools faidx failed for consensus: ", consensus, call. = FALSE)
         next
@@ -753,23 +785,41 @@ bacterial_genomes_call_variants <- function(staging_dir, samtools, bcftools, ech
     mpileup_args <- c("mpileup", "-Ou", "-f", consensus, "-o", tmp_bcf, bam)
     call_args <- c("call", "-mv", "-Oz", "-o", vcf, tmp_bcf)
     index_args <- c("index", vcf)
+    mpileup_call <- dehost_fastq_external_call(
+      command = bcftools,
+      args = mpileup_args,
+      conda_env = conda_env,
+      conda = conda
+    )
+    call_call <- dehost_fastq_external_call(
+      command = bcftools,
+      args = call_args,
+      conda_env = conda_env,
+      conda = conda
+    )
+    index_call <- dehost_fastq_external_call(
+      command = bcftools,
+      args = index_args,
+      conda_env = conda_env,
+      conda = conda
+    )
     if (isTRUE(echo)) {
-      message(paste(c(shQuote(bcftools), shQuote(mpileup_args)), collapse = " "))
-      message(paste(c(shQuote(bcftools), shQuote(call_args)), collapse = " "))
-      message(paste(c(shQuote(bcftools), shQuote(index_args)), collapse = " "))
+      message(paste(c(shQuote(mpileup_call$command), shQuote(mpileup_call$args)), collapse = " "))
+      message(paste(c(shQuote(call_call$command), shQuote(call_call$args)), collapse = " "))
+      message(paste(c(shQuote(index_call$command), shQuote(index_call$args)), collapse = " "))
     }
 
-    mpileup_status <- system2(bcftools, args = mpileup_args, stderr = "")
+    mpileup_status <- system2(mpileup_call$command, args = mpileup_call$args, stderr = "")
     if (!identical(mpileup_status, 0L)) {
       warning("bcftools mpileup failed for BAM: ", bam, call. = FALSE)
       next
     }
-    call_status <- system2(bcftools, args = call_args, stderr = "")
+    call_status <- system2(call_call$command, args = call_call$args, stderr = "")
     if (!identical(call_status, 0L)) {
       warning("bcftools call failed for BAM: ", bam, call. = FALSE)
       next
     }
-    index_status <- system2(bcftools, args = index_args, stderr = "")
+    index_status <- system2(index_call$command, args = index_call$args, stderr = "")
     if (!identical(index_status, 0L)) {
       warning("bcftools index failed for VCF: ", vcf, call. = FALSE)
     }
@@ -778,9 +828,9 @@ bacterial_genomes_call_variants <- function(staging_dir, samtools, bcftools, ech
       status = if (identical(index_status, 0L)) 0L else index_status,
       skipped = FALSE,
       commands = list(
-        mpileup = paste(c(shQuote(bcftools), shQuote(mpileup_args)), collapse = " "),
-        call = paste(c(shQuote(bcftools), shQuote(call_args)), collapse = " "),
-        index = paste(c(shQuote(bcftools), shQuote(index_args)), collapse = " ")
+        mpileup = paste(c(shQuote(mpileup_call$command), shQuote(mpileup_call$args)), collapse = " "),
+        call = paste(c(shQuote(call_call$command), shQuote(call_call$args)), collapse = " "),
+        index = paste(c(shQuote(index_call$command), shQuote(index_call$args)), collapse = " ")
       ),
       paths = list(consensus = consensus, bam = bam, vcf = vcf, index = vcf_index)
     )
