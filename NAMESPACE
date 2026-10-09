@@ -3,6 +3,7 @@
 export(align_contigs_to_reference)
 export(align_sanger_with_full_reference)
 export(annotate_consensus_blast)
+export(bam_to_fastq)
 export(bamsnap_snapshot)
 export(calculate_fastq_read_q)
 export(collect_amplicon_results)

@@ -550,7 +550,7 @@ plot_read_length_peaks <- function(
     plot <- plot + ggplot2::coord_cartesian(xlim = x_limits, clip = "on")
   } else {
     if(!is.null(x_breaks)){
-      x_limits = c(x_breaks[1], tail(x_breaks, 1))
+      x_limits = c(x_breaks[1], utils::tail(x_breaks, 1))
     } else {
       x_limits = c(min(histogram_data$xmin), max(histogram_data$xmax))
     }
