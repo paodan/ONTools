@@ -291,6 +291,14 @@ map_reads_to_assembly <- function(assembly,
       height = plot_height,
       facet_nrow = facet_nrow
     )
+
+    #####-----
+    plot <- plot_coverage(bam_file = align_bam,
+                  min_base_quality = 0, min_mapping_quality = 0,
+                  depth_thresholds = c(10, 20, 50, 100, 200, 500),
+                  major_breaks = 500, minor_breaks = 50)
+    ggplot2::ggsave(filename = depth_plot, plot = plot, width = plot_width, height = plot_height)
+    #####-----
   }
 
   invisible(list(
@@ -342,7 +350,8 @@ plot_read_depth <- function(depth_file, depth_plot, width, height, facet_nrow) {
     ggplot2::facet_wrap(ggplot2::vars(.data$contig), nrow = facet_nrow) +
     ggplot2::xlab("Position") +
     ggplot2::ylab("Depth") +
-    ggplot2::theme_bw()
+    ggplot2::theme_bw() +
+    ggplot2::coord_cartesian(ylim = c(0, max(depth$depth)))
 
   ggplot2::ggsave(filename = depth_plot, plot = plot, width = width, height = height)
   plot
