@@ -284,19 +284,19 @@ map_reads_to_assembly <- function(assembly,
 
   plot <- NULL
   if (isTRUE(plot_depth)) {
-    plot <- plot_read_depth(
-      depth_file = depth_file,
-      depth_plot = depth_plot,
-      width = plot_width,
-      height = plot_height,
-      facet_nrow = facet_nrow
-    )
+    # plot <- plot_read_depth(
+    #   depth_file = depth_file,
+    #   depth_plot = depth_plot,
+    #   width = plot_width,
+    #   height = plot_height,
+    #   facet_nrow = facet_nrow
+    # )
 
     #####-----
     plot <- plot_coverage(bam_file = align_bam,
                   min_base_quality = 0, min_mapping_quality = 0,
                   depth_thresholds = c(10, 20, 50, 100, 200, 500),
-                  major_breaks = 500, minor_breaks = 50)
+                  major_breaks = 200, minor_breaks = 20)
     ggplot2::ggsave(filename = depth_plot, plot = plot, width = plot_width, height = plot_height)
     #####-----
   }
