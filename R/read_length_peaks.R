@@ -547,9 +547,14 @@ plot_read_length_peaks <- function(
     )
   }
   if (!is.null(x_limits)) {
-    plot <- plot + ggplot2::coord_cartesian(xlim = x_limits, clip = "off")
+    plot <- plot + ggplot2::coord_cartesian(xlim = x_limits, clip = "on")
   } else {
-    plot <- plot + ggplot2::coord_cartesian(clip = "off")
+    if(!is.null(x_breaks)){
+      x_limits = c(x_breaks[1], tail(x_breaks, 1))
+    } else {
+      x_limits = c(min(histogram_data$xmin), max(histogram_data$xmax))
+    }
+    plot <- plot + ggplot2::coord_cartesian(xlim = x_limits, clip = "on")
   }
   plot
 }
