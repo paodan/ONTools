@@ -16,8 +16,9 @@ test_that("plot_fastq_read_distribution returns a composed QC plot", {
       stringsAsFactors = FALSE
     )
   )
-  expect_equal(nrow(attr(plot, "quantile_data")), 202L)
+  expect_equal(nrow(attr(plot, "quantile_data")), 101L)
   expect_equal(unique(attr(plot, "quantile_data")$percentile), 0:100)
+  expect_equal(unique(attr(plot, "quantile_data")$type), "Depth")
 })
 
 test_that("plot_fastq_read_distribution supports another barcode column", {

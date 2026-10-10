@@ -18,46 +18,69 @@ identifies the barcode or sample assigned to each read. Missing values and
 empty strings are grouped as \code{"unclassified"}.}
 }
 \value{
-A \code{patchwork} object containing three ggplot panels:
+A \code{patchwork} object containing four ggplot panels:
 \itemize{
-\item barcode depth, with one bar per value in \code{barcode_column};
-\item a histogram of depths across barcodes;
-\item empirical percentiles of absolute depth and depth expressed as a
-percentage of the maximum barcode depth.
+\item a full-width bar chart of read depth for every barcode;
+\item a histogram of barcode-level depths;
+\item an empirical percentile curve of barcode-level depth;
+\item a Lorenz curve, including the summary statistics produced by
+\code{\link[=plot_depth_lorenz]{plot_depth_lorenz()}}.
 }
 
-The per-barcode summary and percentile data are attached as the
-\code{sample_depth} and \code{quantile_data} attributes, respectively. If \code{info}
-contains a \code{ch} column, the histogram is annotated with the number of unique
-non-missing sequencing channels.
+The per-barcode count table and percentile curve data are attached to the
+returned object as the \code{sample_depth} and \code{quantile_data} attributes,
+respectively. If \code{info} contains a \code{ch} column, the histogram is annotated
+with the number of unique non-missing sequencing channels.
 }
 \description{
 \code{plot_fastq_read_distribution()} summarizes the read metadata returned by
-\code{\link[=fastq_read_info]{fastq_read_info()}} and produces a three-panel quality-control figure. The
+\code{\link[=fastq_read_info]{fastq_read_info()}} and produces a four-panel quality-control figure. The
 panels show read depth for each barcode, the distribution of barcode depths,
-and empirical depth percentiles on absolute and relative scales.
+empirical depth percentiles, and a Lorenz curve of depth uniformity.
 }
 \details{
 Read depth is the number of rows assigned to each barcode; therefore, the
 function assumes that every row of \code{info} represents one read. Barcodes with
 no rows cannot be inferred and are not displayed.
 
-The relative-depth curve is calculated as
-\code{100 * depth / max(depth)}. Percentiles from 0 to 100 are evaluated at
+The upper panel displays the number of reads assigned to each barcode. The
+three lower panels provide complementary views of the same barcode-level
+depths: their frequency distribution, empirical percentile curve, and
+overall inequality.
+
+For the percentile panel, percentiles from 0 to 100 are evaluated at
 one-percent intervals using \code{\link[stats:quantile]{stats::quantile()}} with its default
-interpolation method.
+interpolation method. Its x-axis is barcode depth and its y-axis is the
+corresponding percentile. A rapidly increasing curve indicates a wider
+spread between shallow and deeply sequenced barcodes.
+
+The Lorenz panel orders barcode depths from smallest to largest and compares
+cumulative barcode proportion with cumulative read proportion. A curve near
+the diagonal indicates uniform depth, whereas stronger downward curvature
+indicates that a small number of barcodes account for a large proportion of
+reads. The annotation reports sample count, median depth, CV, robust CV,
+Gini coefficient, P95/P5, percentage within 0.5--2 times the median, and
+zero-depth percentage. See \code{\link[=plot_depth_lorenz]{plot_depth_lorenz()}} for definitions and
+interpretation of these statistics.
+
+Missing or empty values in \code{barcode_column} are counted together as
+\code{"unclassified"}. Because the function summarizes rows actually present in
+\code{info}, expected barcodes with no reads cannot be inferred automatically.
+For a between-project comparison that must include expected zero-depth
+samples, construct the complete depth vector separately and pass it to
+\code{\link[=plot_depth_lorenz]{plot_depth_lorenz()}}.
 
 The function does not modify \code{info}. It uses \code{patchwork} to assemble the
-three ggplot panels.
+four ggplot panels, with the per-barcode bar chart above the three summary
+panels.
 }
 \examples{
+barcode_depth <- c(120, 116, 110, 105, 101, 98, 94, 90, 86, 80, 72, 60)
+barcode <- sprintf("barcode\%02d", seq_along(barcode_depth))
 info <- data.frame(
-  read = paste0("read", seq_len(360)),
-  barcode = rep(
-    c("barcode01", "barcode02", "barcode03", "barcode04"),
-    times = c(120, 100, 80, 60)
-  ),
-  ch = rep(seq_len(24), length.out = 360),
+  read = paste0("read", seq_len(sum(barcode_depth))),
+  barcode = rep(barcode, times = barcode_depth),
+  ch = rep(seq_len(24), length.out = sum(barcode_depth)),
   stringsAsFactors = FALSE
 )
 
@@ -74,5 +97,10 @@ p <- plot_fastq_read_distribution(
   barcode_column = "sample"
 )
 attr(p, "sample_depth")
+head(attr(p, "quantile_data"))
 
+}
+\seealso{
+\code{\link[=fastq_read_info]{fastq_read_info()}}, \code{\link[=plot_depth_lorenz]{plot_depth_lorenz()}},
+\code{\link[=summarize_depth_uniformity]{summarize_depth_uniformity()}}
 }
