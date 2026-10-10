@@ -2,141 +2,125 @@
 % Please edit documentation in R/fastq_read_info2.R
 \name{fastq_read_info2}
 \alias{fastq_read_info2}
-\title{Extract metadata from legacy and SAM-tag-style ONT FASTQ headers}
+\title{Extract metadata from MinKNOW/Dorado FASTQ headers}
 \usage{
 fastq_read_info2(path, file_format = ".fastq.gz", plot_time = TRUE)
 }
 \arguments{
-\item{path}{Directory containing the FASTQ files.}
+\item{path}{Directory containing FASTQ files.}
 
 \item{file_format}{Literal, case-sensitive file-name suffix used to select
 files, for example \code{".fastq.gz"}, \code{".fastq"}, or \code{".fq.gz"}.}
 
 \item{plot_time}{Logical. If \code{TRUE}, draw cumulative read count against
-\code{start_time}, using one base-R plot per value of the standardized
-\code{barcode} column. No plot is produced when valid start times are absent.}
+\code{start_time}, with one base-R plot per standardized \code{barcode} value. No
+plot is produced when valid start times are absent.}
 }
 \value{
-A data frame with one row per FASTQ record. The columns \code{read},
-\code{source_file}, and \code{header_format} identify the read, its input file, and
-the detected metadata convention. Other columns are added when their
-source fields occur in at least one header. Integer and floating-point SAM
-fields are converted to numeric columns where appropriate; time fields are
-returned as \code{POSIXct} in UTC.
+A data frame with one row per FASTQ record. \code{read} contains the UUID
+or identifier following \code{@}, \code{source_file} contains the input file name,
+and \code{header_format} is \code{"sam_tag"}. MinKNOW/Dorado tags are returned under
+the standardized names described below. Integer and floating-point fields
+are converted to the corresponding R types, and time fields are returned
+as \code{POSIXct} in UTC.
 
-If no files match \code{file_format}, an empty data frame with the core columns is
-returned.
+Optional fields that are absent from every header are retained as typed
+\code{NA} columns, giving different runs a consistent output schema. If no files
+match \code{file_format}, an empty data frame with the core columns is returned.
 }
 \description{
-\code{fastq_read_info2()} reads Oxford Nanopore FASTQ headers and automatically
-recognizes both the legacy \code{key=value} convention used by many
-MinKNOW/Guppy outputs and the \code{TAG:TYPE:VALUE} convention used by recent
-MinKNOW/Dorado outputs. Source fields from both conventions are translated
-to a common set of descriptive column names.
+\code{fastq_read_info2()} is a vectorized parser for recent MinKNOW/Dorado FASTQ
+headers that use SAM auxiliary-field syntax (\code{TAG:TYPE:VALUE}). Unlike
+\code{\link[=fastq_read_info]{fastq_read_info()}}, it does not parse legacy \code{key=value} metadata.
 }
 \details{
-FASTQ itself standardizes the four-line record structure but does not
-standardize metadata following the read identifier on the first line. The
-two header conventions therefore describe similar information with
-different encodings. This function standardizes the metadata without
-changing \code{\link[=fastq_read_info]{fastq_read_info()}}, which continues to implement its original
-\code{key=value} behavior.
+The parser extracts one complete output column at a time. It therefore
+avoids calling an R parser for every read and avoids constructing a large
+list containing one small list per read. This is substantially faster and
+more memory-efficient when all input files use the same MinKNOW/Dorado
+header convention.
 
 Files are processed in sorted file-name order. Both plain-text and
 gzip-compressed FASTQ files are supported. A complete four-line FASTQ record
 is required; malformed or incomplete records produce an error.
 }
-\section{Header formats}{
+\section{Expected header format}{
 
 
-A legacy header uses whitespace-separated \code{key=value} fields, for example:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{"@read-id runid=RUN1 read=42 ch=1803 start_time=2026-09-20T14:53:20+08:00 barcode=barcode86"
-}\if{html}{\out{</div>}}
-
-A recent MinKNOW/Dorado header uses SAM auxiliary-field syntax,
-\code{TAG:TYPE:VALUE}, for example:
+The first whitespace-delimited token is the read identifier. Remaining
+tokens must use \code{TAG:TYPE:VALUE}, for example:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{"@read-id qs:f:15.7 ch:i:1803 st:Z:2026-09-20T14:53:20+08:00 SM:Z:barcode86"
 }\if{html}{\out{</div>}}
 
-In SAM-style fields, \code{i} denotes an integer, \code{f} a floating-point number,
-and \code{Z} a string. Detection is performed independently for every read, so a
-directory may contain old-format and new-format FASTQ files. The value of
-\code{header_format} is \code{"key_value"}, \code{"sam_tag"}, \code{"mixed"}, or \code{"none"}.
+In these fields, \code{i} denotes an integer, \code{f} a floating-point number, and
+\code{Z} a string. Field order may vary and optional fields may be absent. If any
+read lacks SAM-style metadata, the function stops instead of silently
+returning missing values. Use \code{\link[=fastq_read_info]{fastq_read_info()}} for legacy \code{key=value}
+headers.
 }
 
 \section{Standardized fields and their origins}{
 
-
-The following MinKNOW/Dorado fields are renamed when present:
 \itemize{
-\item \code{read}: the UUID or identifier immediately following \code{@}; it is not the
-same as the acquisition read number.
-\item \code{mean_qscore}: legacy \code{mean_qscore_template} or SAM \code{qs:f}; mean basecall
-Q-score for the read.
-\item \code{mux}: legacy \code{mux} or SAM \code{mx:i}; mux/well number used by the channel.
-\item \code{ch}: legacy \code{ch} or SAM \code{ch:i}; flow-cell channel number.
-\item \code{read_number}: legacy \code{read} or SAM \code{rn:i}; acquisition read number
-assigned by MinKNOW.
-\item \code{start_time}: legacy \code{start_time} or SAM \code{st:Z}; start time of the read.
-\item \code{duration}: legacy \code{duration} or SAM \code{du:f}; read duration in seconds.
-\item \code{signal_start} and \code{signal_end}: SAM \code{ts:i} and \code{ns:i}. The basecalled
-sequence corresponds to the raw-signal interval \code{signal[ts:ns]}.
-\code{signal_samples} is derived as \code{signal_end - signal_start}. These values
-count signal samples, not DNA bases.
-\item \code{scaling_midpoint}, \code{scaling_dispersion}, and \code{scaling_version}: SAM
-\code{sm:f}, \code{sd:f}, and \code{sv:Z}; parameters describing conversion and
-normalization of the raw current signal.
-\item \code{duplex}: SAM \code{dx:i}; duplex indicator, normally zero for simplex and one
-for duplex reads.
-\item \code{read_group}: SAM \code{RG:Z}; read-group identifier, normally composed from
-the run ID, basecalling model, and barcode arrangement.
-\item \code{run_id}: legacy \code{runid}. For SAM-style headers the complete run/model
-identifier remains in \code{read_group} rather than being split heuristically.
-\item \code{experiment_start_time}: SAM \code{DT:Z}; experiment start time.
-\item \code{flow_cell_id}: legacy \code{flow_cell_id} or SAM \code{PU:Z}.
-\item \code{device_id}: SAM \code{PM:Z}; sequencing device identifier, when supplied.
-\item \code{sample_id}: legacy \code{sample_id} or SAM \code{LB:Z} in the ONT read-group
-convention.
-\item \code{barcode}: legacy \code{barcode} or SAM \code{SM:Z}; classified barcode name.
-\item \code{barcode_alias}: legacy \code{barcode_alias} or SAM \code{al:Z}; alias from the
-sample sheet. If \code{SM} is absent, a non-missing alias is also used as the
-standardized \code{barcode} value.
-\item \code{barcode_kit} and \code{trimming}: SAM \code{bk:Z} and \code{tm:Z}; barcode kit and the
-requested adapter/primer/barcode trimming configuration.
-\item \code{source_signal_file}: SAM \code{fn:Z}; original signal file name.
-\item \code{parent_read_id} and \code{parent_signal_start}: SAM \code{pi:Z} and \code{sp:i} for a
-read created by signal splitting.
-\item \code{bed_hits}, \code{minknow_events}, \code{pore_type}, \code{end_reason},
-\code{barcode_variant}, and \code{polya_length}: SAM \code{bh:i}, \code{me:i}, \code{po:Z}, \code{er:Z},
-\code{bv:Z}, and \code{pt:i}, respectively.
+\item \code{mean_qscore}: \code{qs:f}; mean basecall Q-score for the read.
+\item \code{mux}: \code{mx:i}; mux/well number used by the channel.
+\item \code{ch}: \code{ch:i}; flow-cell channel number.
+\item \code{read_number}: \code{rn:i}; acquisition read number assigned by MinKNOW.
+\item \code{start_time}: \code{st:Z}; start time of the read.
+\item \code{signal_start} and \code{signal_end}: \code{ts:i} and \code{ns:i}. The basecalled
+sequence corresponds to \code{signal[ts:ns]}. \code{signal_samples} is calculated as
+\code{signal_end - signal_start}; these are signal samples, not DNA bases.
+\item \code{duration}: \code{du:f}; read duration in seconds.
+\item \code{scaling_midpoint}, \code{scaling_dispersion}, and \code{scaling_version}: \code{sm:f},
+\code{sd:f}, and \code{sv:Z}; raw-current scaling and normalization parameters.
+\item \code{duplex}: \code{dx:i}; normally zero for simplex and one for duplex reads.
+\item \code{read_group}: \code{RG:Z}; normally combines the run ID, basecalling model, and
+barcode arrangement.
+\item \code{experiment_start_time}: \code{DT:Z}; experiment start time.
+\item \code{flow_cell_id}: \code{PU:Z}; flow-cell identifier.
+\item \code{device_id}: \code{PM:Z}; sequencing device identifier, when supplied.
+\item \code{sample_id}: \code{LB:Z} in the ONT read-group convention.
+\item \code{barcode}: \code{SM:Z}; classified barcode name. When \code{SM} is absent,
+\code{barcode_alias} is used as a fallback.
+\item \code{barcode_alias}: \code{al:Z}; alias defined in the sample sheet.
+\item \code{barcode_kit} and \code{trimming}: \code{bk:Z} and \code{tm:Z}; barcode kit and requested
+adapter/primer/barcode trimming configuration.
+\item \code{source_signal_file}: \code{fn:Z}; original signal file name.
+\item \code{parent_read_id} and \code{parent_signal_start}: \code{pi:Z} and \code{sp:i} for reads
+created by signal splitting.
+\item \code{bed_hits}: \code{bh:i}; number of detected BED-file hits.
+\item \code{minknow_events}: \code{me:i}; number of MinKNOW events detected during
+sequencing.
+\item \code{pore_type}: \code{po:Z}; detected pore type.
+\item \code{end_reason}: \code{er:Z}; reason the read ended.
+\item \code{barcode_variant}: \code{bv:Z}; detected barcode-arrangement variant.
+\item \code{polya_length}: \code{pt:i}; estimated poly(A/T) length when enabled.
+\item \code{read_group_description}: \code{DS:Z}; read-group description when copied into
+the FASTQ header.
 }
 
-Field names are case-sensitive. In particular, SAM \code{sm:f} is the signal
-scaling midpoint, whereas \code{SM:Z} is the barcode/sample name. Recognized
-legacy fields not listed above retain their original names. Unrecognized
-SAM fields are retained with a \code{tag_} prefix, such as \code{tag_XY}.
-
-The SAM tag definitions follow the
+Tags are case-sensitive: \code{sm:f} is the signal-scaling midpoint, whereas
+\code{SM:Z} is the barcode/sample name. Tags not listed above are not returned.
+Definitions follow the
 \href{https://software-docs.nanoporetech.com/dorado/latest/basecaller/sam_spec/}{Dorado SAM specification}.
 }
 
 \examples{
 fastq_dir <- tempfile("fastq2-")
 dir.create(fastq_dir)
-
 writeLines(
   c(
     paste0(
       "@new-read qs:f:15.715393 mx:i:4 ch:i:1803 rn:i:438 ",
       "st:Z:2026-09-20T14:53:20.912722+08:00 ts:i:10 ns:i:3694 ",
-      "du:f:0.7388 dx:i:0 PU:Z:PBO11046 LB:Z:20260920pcr ",
-      "SM:Z:barcode86 al:Z:barcode86"
+      "du:f:0.7388 sm:f:93.99999 sd:f:24 sv:Z:pa dx:i:0 ",
+      "RG:Z:run_model_barcode86 DT:Z:2026-09-20T14:27:18+08:00 ",
+      "PU:Z:PBO11046 LB:Z:20260920pcr SM:Z:barcode86 al:Z:barcode86"
     ),
     "ACGT", "+", "!!!!"
   ),
-  file.path(fastq_dir, "new.fastq")
+  file.path(fastq_dir, "reads.fastq")
 )
 
 info <- fastq_read_info2(
@@ -145,27 +129,9 @@ info <- fastq_read_info2(
   plot_time = FALSE
 )
 info[, c(
-  "read", "header_format", "mean_qscore", "ch", "read_number",
-  "start_time", "signal_samples", "barcode"
+  "read", "mean_qscore", "ch", "read_number", "start_time",
+  "signal_samples", "duration", "flow_cell_id", "barcode"
 )]
-
-# The same call also recognizes legacy key=value metadata.
-writeLines(
-  c(
-    paste0(
-      "@old-read runid=RUN1 read=12 ch=7 ",
-      "start_time=2026-09-20T15:00:00+08:00 barcode=barcode01"
-    ),
-    "TGCA", "+", "####"
-  ),
-  file.path(fastq_dir, "old.fastq")
-)
-mixed_info <- fastq_read_info2(
-  fastq_dir,
-  file_format = ".fastq",
-  plot_time = FALSE
-)
-mixed_info[, c("read", "header_format", "ch", "barcode")]
 
 }
 \seealso{

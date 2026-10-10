@@ -1,108 +1,91 @@
-#' Extract metadata from legacy and SAM-tag-style ONT FASTQ headers
+#' Extract metadata from MinKNOW/Dorado FASTQ headers
 #'
-#' `fastq_read_info2()` reads Oxford Nanopore FASTQ headers and automatically
-#' recognizes both the legacy `key=value` convention used by many
-#' MinKNOW/Guppy outputs and the `TAG:TYPE:VALUE` convention used by recent
-#' MinKNOW/Dorado outputs. Source fields from both conventions are translated
-#' to a common set of descriptive column names.
+#' `fastq_read_info2()` is a vectorized parser for recent MinKNOW/Dorado FASTQ
+#' headers that use SAM auxiliary-field syntax (`TAG:TYPE:VALUE`). Unlike
+#' [fastq_read_info()], it does not parse legacy `key=value` metadata.
 #'
-#' @param path Directory containing the FASTQ files.
+#' @param path Directory containing FASTQ files.
 #' @param file_format Literal, case-sensitive file-name suffix used to select
 #'   files, for example `".fastq.gz"`, `".fastq"`, or `".fq.gz"`.
 #' @param plot_time Logical. If `TRUE`, draw cumulative read count against
-#'   `start_time`, using one base-R plot per value of the standardized
-#'   `barcode` column. No plot is produced when valid start times are absent.
+#'   `start_time`, with one base-R plot per standardized `barcode` value. No
+#'   plot is produced when valid start times are absent.
 #'
-#' @return A data frame with one row per FASTQ record. The columns `read`,
-#'   `source_file`, and `header_format` identify the read, its input file, and
-#'   the detected metadata convention. Other columns are added when their
-#'   source fields occur in at least one header. Integer and floating-point SAM
-#'   fields are converted to numeric columns where appropriate; time fields are
-#'   returned as `POSIXct` in UTC.
+#' @return A data frame with one row per FASTQ record. `read` contains the UUID
+#'   or identifier following `@`, `source_file` contains the input file name,
+#'   and `header_format` is `"sam_tag"`. MinKNOW/Dorado tags are returned under
+#'   the standardized names described below. Integer and floating-point fields
+#'   are converted to the corresponding R types, and time fields are returned
+#'   as `POSIXct` in UTC.
 #'
-#' If no files match `file_format`, an empty data frame with the core columns is
-#' returned.
+#' Optional fields that are absent from every header are retained as typed
+#' `NA` columns, giving different runs a consistent output schema. If no files
+#' match `file_format`, an empty data frame with the core columns is returned.
 #'
-#' @section Header formats:
+#' @section Expected header format:
 #'
-#' A legacy header uses whitespace-separated `key=value` fields, for example:
-#'
-#' ```
-#' "@read-id runid=RUN1 read=42 ch=1803 start_time=2026-09-20T14:53:20+08:00 barcode=barcode86"
-#' ```
-#'
-#' A recent MinKNOW/Dorado header uses SAM auxiliary-field syntax,
-#' `TAG:TYPE:VALUE`, for example:
+#' The first whitespace-delimited token is the read identifier. Remaining
+#' tokens must use `TAG:TYPE:VALUE`, for example:
 #'
 #' ```
 #' "@read-id qs:f:15.7 ch:i:1803 st:Z:2026-09-20T14:53:20+08:00 SM:Z:barcode86"
 #' ```
 #'
-#' In SAM-style fields, `i` denotes an integer, `f` a floating-point number,
-#' and `Z` a string. Detection is performed independently for every read, so a
-#' directory may contain old-format and new-format FASTQ files. The value of
-#' `header_format` is `"key_value"`, `"sam_tag"`, `"mixed"`, or `"none"`.
+#' In these fields, `i` denotes an integer, `f` a floating-point number, and
+#' `Z` a string. Field order may vary and optional fields may be absent. If any
+#' read lacks SAM-style metadata, the function stops instead of silently
+#' returning missing values. Use [fastq_read_info()] for legacy `key=value`
+#' headers.
 #'
 #' @section Standardized fields and their origins:
 #'
-#' The following MinKNOW/Dorado fields are renamed when present:
+#' * `mean_qscore`: `qs:f`; mean basecall Q-score for the read.
+#' * `mux`: `mx:i`; mux/well number used by the channel.
+#' * `ch`: `ch:i`; flow-cell channel number.
+#' * `read_number`: `rn:i`; acquisition read number assigned by MinKNOW.
+#' * `start_time`: `st:Z`; start time of the read.
+#' * `signal_start` and `signal_end`: `ts:i` and `ns:i`. The basecalled
+#'   sequence corresponds to `signal[ts:ns]`. `signal_samples` is calculated as
+#'   `signal_end - signal_start`; these are signal samples, not DNA bases.
+#' * `duration`: `du:f`; read duration in seconds.
+#' * `scaling_midpoint`, `scaling_dispersion`, and `scaling_version`: `sm:f`,
+#'   `sd:f`, and `sv:Z`; raw-current scaling and normalization parameters.
+#' * `duplex`: `dx:i`; normally zero for simplex and one for duplex reads.
+#' * `read_group`: `RG:Z`; normally combines the run ID, basecalling model, and
+#'   barcode arrangement.
+#' * `experiment_start_time`: `DT:Z`; experiment start time.
+#' * `flow_cell_id`: `PU:Z`; flow-cell identifier.
+#' * `device_id`: `PM:Z`; sequencing device identifier, when supplied.
+#' * `sample_id`: `LB:Z` in the ONT read-group convention.
+#' * `barcode`: `SM:Z`; classified barcode name. When `SM` is absent,
+#'   `barcode_alias` is used as a fallback.
+#' * `barcode_alias`: `al:Z`; alias defined in the sample sheet.
+#' * `barcode_kit` and `trimming`: `bk:Z` and `tm:Z`; barcode kit and requested
+#'   adapter/primer/barcode trimming configuration.
+#' * `source_signal_file`: `fn:Z`; original signal file name.
+#' * `parent_read_id` and `parent_signal_start`: `pi:Z` and `sp:i` for reads
+#'   created by signal splitting.
+#' * `bed_hits`: `bh:i`; number of detected BED-file hits.
+#' * `minknow_events`: `me:i`; number of MinKNOW events detected during
+#'   sequencing.
+#' * `pore_type`: `po:Z`; detected pore type.
+#' * `end_reason`: `er:Z`; reason the read ended.
+#' * `barcode_variant`: `bv:Z`; detected barcode-arrangement variant.
+#' * `polya_length`: `pt:i`; estimated poly(A/T) length when enabled.
+#' * `read_group_description`: `DS:Z`; read-group description when copied into
+#'   the FASTQ header.
 #'
-#' * `read`: the UUID or identifier immediately following `@`; it is not the
-#'   same as the acquisition read number.
-#' * `mean_qscore`: legacy `mean_qscore_template` or SAM `qs:f`; mean basecall
-#'   Q-score for the read.
-#' * `mux`: legacy `mux` or SAM `mx:i`; mux/well number used by the channel.
-#' * `ch`: legacy `ch` or SAM `ch:i`; flow-cell channel number.
-#' * `read_number`: legacy `read` or SAM `rn:i`; acquisition read number
-#'   assigned by MinKNOW.
-#' * `start_time`: legacy `start_time` or SAM `st:Z`; start time of the read.
-#' * `duration`: legacy `duration` or SAM `du:f`; read duration in seconds.
-#' * `signal_start` and `signal_end`: SAM `ts:i` and `ns:i`. The basecalled
-#'   sequence corresponds to the raw-signal interval `signal[ts:ns]`.
-#'   `signal_samples` is derived as `signal_end - signal_start`. These values
-#'   count signal samples, not DNA bases.
-#' * `scaling_midpoint`, `scaling_dispersion`, and `scaling_version`: SAM
-#'   `sm:f`, `sd:f`, and `sv:Z`; parameters describing conversion and
-#'   normalization of the raw current signal.
-#' * `duplex`: SAM `dx:i`; duplex indicator, normally zero for simplex and one
-#'   for duplex reads.
-#' * `read_group`: SAM `RG:Z`; read-group identifier, normally composed from
-#'   the run ID, basecalling model, and barcode arrangement.
-#' * `run_id`: legacy `runid`. For SAM-style headers the complete run/model
-#'   identifier remains in `read_group` rather than being split heuristically.
-#' * `experiment_start_time`: SAM `DT:Z`; experiment start time.
-#' * `flow_cell_id`: legacy `flow_cell_id` or SAM `PU:Z`.
-#' * `device_id`: SAM `PM:Z`; sequencing device identifier, when supplied.
-#' * `sample_id`: legacy `sample_id` or SAM `LB:Z` in the ONT read-group
-#'   convention.
-#' * `barcode`: legacy `barcode` or SAM `SM:Z`; classified barcode name.
-#' * `barcode_alias`: legacy `barcode_alias` or SAM `al:Z`; alias from the
-#'   sample sheet. If `SM` is absent, a non-missing alias is also used as the
-#'   standardized `barcode` value.
-#' * `barcode_kit` and `trimming`: SAM `bk:Z` and `tm:Z`; barcode kit and the
-#'   requested adapter/primer/barcode trimming configuration.
-#' * `source_signal_file`: SAM `fn:Z`; original signal file name.
-#' * `parent_read_id` and `parent_signal_start`: SAM `pi:Z` and `sp:i` for a
-#'   read created by signal splitting.
-#' * `bed_hits`, `minknow_events`, `pore_type`, `end_reason`,
-#'   `barcode_variant`, and `polya_length`: SAM `bh:i`, `me:i`, `po:Z`, `er:Z`,
-#'   `bv:Z`, and `pt:i`, respectively.
-#'
-#' Field names are case-sensitive. In particular, SAM `sm:f` is the signal
-#' scaling midpoint, whereas `SM:Z` is the barcode/sample name. Recognized
-#' legacy fields not listed above retain their original names. Unrecognized
-#' SAM fields are retained with a `tag_` prefix, such as `tag_XY`.
-#'
-#' The SAM tag definitions follow the
+#' Tags are case-sensitive: `sm:f` is the signal-scaling midpoint, whereas
+#' `SM:Z` is the barcode/sample name. Tags not listed above are not returned.
+#' Definitions follow the
 #' [Dorado SAM specification](https://software-docs.nanoporetech.com/dorado/latest/basecaller/sam_spec/).
 #'
 #' @details
-#' FASTQ itself standardizes the four-line record structure but does not
-#' standardize metadata following the read identifier on the first line. The
-#' two header conventions therefore describe similar information with
-#' different encodings. This function standardizes the metadata without
-#' changing [fastq_read_info()], which continues to implement its original
-#' `key=value` behavior.
+#' The parser extracts one complete output column at a time. It therefore
+#' avoids calling an R parser for every read and avoids constructing a large
+#' list containing one small list per read. This is substantially faster and
+#' more memory-efficient when all input files use the same MinKNOW/Dorado
+#' header convention.
 #'
 #' Files are processed in sorted file-name order. Both plain-text and
 #' gzip-compressed FASTQ files are supported. A complete four-line FASTQ record
@@ -111,18 +94,18 @@
 #' @examples
 #' fastq_dir <- tempfile("fastq2-")
 #' dir.create(fastq_dir)
-#'
 #' writeLines(
 #'   c(
 #'     paste0(
 #'       "@new-read qs:f:15.715393 mx:i:4 ch:i:1803 rn:i:438 ",
 #'       "st:Z:2026-09-20T14:53:20.912722+08:00 ts:i:10 ns:i:3694 ",
-#'       "du:f:0.7388 dx:i:0 PU:Z:PBO11046 LB:Z:20260920pcr ",
-#'       "SM:Z:barcode86 al:Z:barcode86"
+#'       "du:f:0.7388 sm:f:93.99999 sd:f:24 sv:Z:pa dx:i:0 ",
+#'       "RG:Z:run_model_barcode86 DT:Z:2026-09-20T14:27:18+08:00 ",
+#'       "PU:Z:PBO11046 LB:Z:20260920pcr SM:Z:barcode86 al:Z:barcode86"
 #'     ),
 #'     "ACGT", "+", "!!!!"
 #'   ),
-#'   file.path(fastq_dir, "new.fastq")
+#'   file.path(fastq_dir, "reads.fastq")
 #' )
 #'
 #' info <- fastq_read_info2(
@@ -131,27 +114,9 @@
 #'   plot_time = FALSE
 #' )
 #' info[, c(
-#'   "read", "header_format", "mean_qscore", "ch", "read_number",
-#'   "start_time", "signal_samples", "barcode"
+#'   "read", "mean_qscore", "ch", "read_number", "start_time",
+#'   "signal_samples", "duration", "flow_cell_id", "barcode"
 #' )]
-#'
-#' # The same call also recognizes legacy key=value metadata.
-#' writeLines(
-#'   c(
-#'     paste0(
-#'       "@old-read runid=RUN1 read=12 ch=7 ",
-#'       "start_time=2026-09-20T15:00:00+08:00 barcode=barcode01"
-#'     ),
-#'     "TGCA", "+", "####"
-#'   ),
-#'   file.path(fastq_dir, "old.fastq")
-#' )
-#' mixed_info <- fastq_read_info2(
-#'   fastq_dir,
-#'   file_format = ".fastq",
-#'   plot_time = FALSE
-#' )
-#' mixed_info[, c("read", "header_format", "ch", "barcode")]
 #'
 #' @seealso [fastq_read_info()], [plot_fastq_read_distribution()]
 #' @export
@@ -180,147 +145,127 @@ fastq_read_info2 <- function(path,
   header_list <- lapply(files, read_fastq_headers)
   headers <- unlist(header_list, use.names = FALSE)
   source_file <- rep(basename(files), lengths(header_list))
-  records <- Map(parse_fastq_header2, headers, source_file)
-  out <- fastq_header_records_to_data_frame(records)
-
-  if ("barcode_alias" %in% names(out)) {
-    if (!"barcode" %in% names(out)) {
-      out$barcode <- out$barcode_alias
-    } else {
-      missing_barcode <- is.na(out$barcode) | !nzchar(out$barcode)
-      out$barcode[missing_barcode] <- out$barcode_alias[missing_barcode]
-    }
-  }
-
-  if (all(c("signal_start", "signal_end") %in% names(out))) {
-    out$signal_samples <- out$signal_end - out$signal_start
-    after <- match("signal_end", names(out))
-    out <- out[c(
-      names(out)[seq_len(after)],
-      "signal_samples",
-      names(out)[seq.int(after + 1L, ncol(out))]
-    )]
-  }
+  out <- parse_minknow_fastq_headers(headers, source_file)
 
   if (isTRUE(plot_time)) plot_fastq_start_times(out)
   out
 }
 
-parse_fastq_header2 <- function(header, source_file) {
-  tokens <- strsplit(trimws(header), "[[:space:]]+", perl = TRUE)[[1L]]
-  record <- list(
-    read = tokens[[1L]],
-    source_file = source_file
-  )
-  tokens <- tokens[-1L]
-  has_key_value <- grepl("=", tokens, fixed = TRUE)
-  sam_match <- regexec(
-    "^([[:alnum:]]{2}):([AifZHBcCsSI]):(.*)$",
-    tokens,
+parse_minknow_fastq_headers <- function(headers, source_file = NULL) {
+  if (!is.character(headers)) {
+    stop("`headers` must be a character vector.", call. = FALSE)
+  }
+  n <- length(headers)
+  if (is.null(source_file)) source_file <- rep(NA_character_, n)
+  if (length(source_file) == 1L) source_file <- rep(source_file, n)
+  if (length(source_file) != n) {
+    stop(
+      "`source_file` must have length 1 or the same length as `headers`.",
+      call. = FALSE
+    )
+  }
+
+  is_sam_style <- grepl(
+    "(^|[[:space:]])[[:alnum:]]{2}:[AifZHBcCsSI]:[^[:space:]]+",
+    headers,
     perl = TRUE
   )
-  sam_parts <- regmatches(tokens, sam_match)
-  has_sam_tag <- lengths(sam_parts) == 4L
-
-  record$header_format <- if (any(has_key_value) && any(has_sam_tag)) {
-    "mixed"
-  } else if (any(has_sam_tag)) {
-    "sam_tag"
-  } else if (any(has_key_value)) {
-    "key_value"
-  } else {
-    "none"
+  if (any(!is_sam_style)) {
+    stop(
+      sum(!is_sam_style),
+      " FASTQ header(s) do not contain MinKNOW/Dorado SAM-style metadata. ",
+      "Use `fastq_read_info()` for legacy `key=value` headers.",
+      call. = FALSE
+    )
   }
 
-  for (token in tokens[has_key_value & !has_sam_tag]) {
-    separator <- regexpr("=", token, fixed = TRUE)[[1L]]
-    key <- substring(token, 1L, separator - 1L)
-    value <- substring(token, separator + 1L)
-    name <- fastq_header2_legacy_name(key)
-    record[[name]] <- value
-  }
-
-  for (parts in sam_parts[has_sam_tag]) {
-    tag <- parts[[2L]]
-    type <- parts[[3L]]
-    value <- parts[[4L]]
-    name <- fastq_header2_sam_name(tag)
-    record[[name]] <- value
-    attr(record[[name]], "sam_type") <- type
-  }
-  record
-}
-
-fastq_header2_legacy_name <- function(key) {
-  mapping <- c(
-    runid = "run_id",
-    read = "read_number",
-    mean_qscore_template = "mean_qscore",
-    mux = "mux",
-    ch = "ch",
-    start_time = "start_time",
-    duration = "duration",
-    flow_cell_id = "flow_cell_id",
-    sample_id = "sample_id",
-    barcode = "barcode",
-    barcode_alias = "barcode_alias"
+  field_spec <- minknow_fastq_field_spec()
+  parsed <- Map(
+    function(tag, sam_type, r_type) {
+      extract_and_convert_minknow_tag(headers, tag, sam_type, r_type)
+    },
+    field_spec$tag,
+    field_spec$sam_type,
+    field_spec$r_type
   )
-  if (key %in% names(mapping)) unname(mapping[[key]]) else key
-}
+  names(parsed) <- field_spec$column
 
-fastq_header2_sam_name <- function(tag) {
-  mapping <- c(
-    qs = "mean_qscore", mx = "mux", ch = "ch", rn = "read_number",
-    st = "start_time", ts = "signal_start", ns = "signal_end",
-    du = "duration", sm = "scaling_midpoint", sd = "scaling_dispersion",
-    sv = "scaling_version", dx = "duplex", RG = "read_group",
-    DT = "experiment_start_time", PU = "flow_cell_id", PM = "device_id",
-    LB = "sample_id", SM = "barcode", al = "barcode_alias",
-    bk = "barcode_kit", tm = "trimming", fn = "source_signal_file",
-    pi = "parent_read_id", sp = "parent_signal_start", bh = "bed_hits",
-    me = "minknow_events", po = "pore_type", er = "end_reason",
-    bv = "barcode_variant", pt = "polya_length", DS = "read_group_description"
+  missing_barcode <- is.na(parsed$barcode) | !nzchar(parsed$barcode)
+  parsed$barcode[missing_barcode] <- parsed$barcode_alias[missing_barcode]
+  signal_samples <- parsed$signal_end - parsed$signal_start
+  signal_end_position <- match("signal_end", names(parsed))
+  parsed <- append(
+    parsed,
+    list(signal_samples = signal_samples),
+    after = signal_end_position
   )
-  if (tag %in% names(mapping)) unname(mapping[[tag]]) else paste0("tag_", tag)
-}
 
-fastq_header_records_to_data_frame <- function(records) {
-  columns <- unique(unlist(lapply(records, names), use.names = FALSE))
-  out <- as.data.frame(
-    matrix(
-      NA_character_,
-      nrow = length(records),
-      ncol = length(columns),
-      dimnames = list(NULL, columns)
-    ),
+  read_id <- sub("[[:space:]].*$", "", headers)
+  read_id <- sub("^@", "", read_id)
+  data.frame(
+    read = read_id,
+    source_file = source_file,
+    header_format = rep("sam_tag", n),
+    parsed,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
-  for (i in seq_along(records)) {
-    for (name in names(records[[i]])) {
-      out[[name]][[i]] <- as.character(records[[i]][[name]])
-    }
-  }
+}
 
-  integer_columns <- intersect(
-    c(
-      "mux", "ch", "read_number", "signal_start", "signal_end", "duplex",
-      "parent_signal_start", "bed_hits", "minknow_events", "polya_length"
+minknow_fastq_field_spec <- function() {
+  data.frame(
+    column = c(
+      "mean_qscore", "mux", "ch", "read_number", "start_time",
+      "signal_start", "signal_end", "duration", "scaling_midpoint",
+      "scaling_dispersion", "scaling_version", "duplex", "read_group",
+      "experiment_start_time", "flow_cell_id", "device_id", "sample_id",
+      "barcode", "barcode_alias", "barcode_kit", "trimming",
+      "source_signal_file", "parent_read_id", "parent_signal_start",
+      "bed_hits", "minknow_events", "pore_type", "end_reason",
+      "barcode_variant", "polya_length", "read_group_description"
     ),
-    names(out)
+    tag = c(
+      "qs", "mx", "ch", "rn", "st", "ts", "ns", "du", "sm", "sd",
+      "sv", "dx", "RG", "DT", "PU", "PM", "LB", "SM", "al", "bk",
+      "tm", "fn", "pi", "sp", "bh", "me", "po", "er", "bv", "pt", "DS"
+    ),
+    sam_type = c(
+      "f", "i", "i", "i", "Z", "i", "i", "f", "f", "f", "Z", "i",
+      "Z", "Z", "Z", "Z", "Z", "Z", "Z", "Z", "Z", "Z", "Z", "i",
+      "i", "i", "Z", "Z", "Z", "i", "Z"
+    ),
+    r_type = c(
+      "double", "integer", "integer", "integer", "datetime", "integer",
+      "integer", "double", "double", "double", "character", "integer",
+      "character", "datetime", "character", "character", "character",
+      "character", "character", "character", "character", "character",
+      "character", "integer", "integer", "integer", "character",
+      "character", "character", "integer", "character"
+    ),
+    stringsAsFactors = FALSE
   )
-  numeric_columns <- intersect(
-    c("mean_qscore", "duration", "scaling_midpoint", "scaling_dispersion"),
-    names(out)
+}
+
+extract_minknow_tag <- function(headers, tag, sam_type) {
+  pattern <- paste0(
+    ".*[[:space:]]", tag, ":", sam_type, ":([^[:space:]]+).*"
   )
-  for (name in integer_columns) {
-    out[[name]] <- suppressWarnings(as.integer(out[[name]]))
-  }
-  for (name in numeric_columns) {
-    out[[name]] <- suppressWarnings(as.numeric(out[[name]]))
-  }
-  for (name in intersect(c("start_time", "experiment_start_time"), names(out))) {
-    out[[name]] <- parse_fastq_start_time(out[[name]])
-  }
-  out
+  value <- sub(pattern, "\\1", headers, perl = TRUE)
+  value[value == headers] <- NA_character_
+  value
+}
+
+extract_and_convert_minknow_tag <- function(headers,
+                                            tag,
+                                            sam_type,
+                                            r_type) {
+  value <- extract_minknow_tag(headers, tag, sam_type)
+  switch(
+    r_type,
+    integer = suppressWarnings(as.integer(value)),
+    double = suppressWarnings(as.numeric(value)),
+    datetime = parse_fastq_start_time(value),
+    character = value,
+    stop("Unsupported R type: ", r_type, call. = FALSE)
+  )
 }
