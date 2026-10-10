@@ -168,6 +168,7 @@ plot_fastq_read_distribution <- function(info,
     ggplot2::labs(title = title, x = "Samples", y = "Depth") +
     base_theme +
     ggplot2::theme(
+      plot.title = ggplot2::element_text(hjust = 0.5),
       axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, size = 6),
       plot.margin = ggplot2::margin(10, 10, 2, 5, unit = "pt")
     )
