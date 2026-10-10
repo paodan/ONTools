@@ -179,7 +179,8 @@ plot_fastq_read_distribution <- function(info,
     ggplot2::geom_histogram(bins = 30, fill = "grey", colour = "white") +
     ggplot2::labs(x = "Depth", y = "Number of samples") +
     base_theme +
-    ggplot2::theme(plot.margin = ggplot2::margin(2, 5, 2, 5, unit = "pt"))
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30, hjust = 1, vjust = 1),
+                   plot.margin = ggplot2::margin(2, 5, 2, 5, unit = "pt"))
   if (!is.null(channel_label)) {
     g2 <- g2 + ggplot2::annotate(
       "text",
@@ -196,10 +197,11 @@ plot_fastq_read_distribution <- function(info,
     quantile_data,
     ggplot2::aes(x = .data$value, y = .data$percentile)) +
     ggplot2::geom_line(colour = "blue") +
-    ggplot2::facet_wrap(~type, nrow = 2, scales = "free_x") +
-    ggplot2::labs(x = "Depth or % of maximum depth", y = "Percentile (%)") +
+    # ggplot2::facet_wrap(~type, nrow = 2, scales = "free_x") +
+    ggplot2::labs(x = "Depth", y = "Percentile (%)") +
     base_theme +
-    ggplot2::theme(plot.margin = ggplot2::margin(2, 15, 2, 5, unit = "pt"))
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30, hjust = 1, vjust = 1),
+                   plot.margin = ggplot2::margin(2, 15, 2, 5, unit = "pt"))
 
   g4 = plot_depth_lorenz(sample_depth$depth)
 

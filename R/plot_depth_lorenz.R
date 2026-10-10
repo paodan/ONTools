@@ -383,8 +383,8 @@ plot_depth_lorenz <- function(
     ) +
     ggplot2::labs(
       title = title,
-      x = "Cumulative proportion of samples",
-      y = "Cumulative proportion of sequencing depth"
+      x = "Cumulative % of samples",
+      y = "Cumulative % of sequencing depth"
     )
 
   if (isTRUE(show_summary)) {
