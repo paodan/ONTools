@@ -203,10 +203,20 @@ plot_fastq_read_distribution <- function(info,
 
   g4 = plot_depth_lorenz(sample_depth$depth)
 
-  plot <- g1 / (g2 | g3 | g4) +
+  bottom <- (g2 | g3 | g4) +
     patchwork::plot_layout(
-      widths = c(0.6, .8, 1),
-      heights = c(0.2, 1))
+      widths = c(0.6, 0.8, 1)
+    )
+
+  plot <- g1 / bottom +
+    patchwork::plot_layout(
+      heights = c(0.25, 1)
+    )
+
+  # plot <- g1 / (g2 | g3 | g4) +
+  #   patchwork::plot_layout(
+  #     widths = c(0.6, .8, 1),
+  #     heights = c(0.2, 1))
   attr(plot, "sample_depth") <- sample_depth
   attr(plot, "quantile_data") <- quantile_data
   plot
