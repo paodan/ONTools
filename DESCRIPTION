@@ -17,6 +17,7 @@ Imports:
     Biostrings,
     DECIPHER,
     ggplot2,
+    patchwork,
     pwalign,
     readxl,
     rlang,
