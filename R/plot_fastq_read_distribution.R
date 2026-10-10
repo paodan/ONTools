@@ -113,19 +113,26 @@ plot_fastq_read_distribution <- function(info,
   } else {
     rep(0, length(depth_quantile))
   }
-  quantile_data <- rbind(
-    data.frame(
-      percentile = p * 100,
-      value = depth_quantile,
-      type = "Depth",
-      stringsAsFactors = FALSE
-    ),
-    data.frame(
-      percentile = p * 100,
-      value = relative_quantile,
-      type = "Depth (% of maximum)",
-      stringsAsFactors = FALSE
-    )
+  # quantile_data <- rbind(
+  #   data.frame(
+  #     percentile = p * 100,
+  #     value = depth_quantile,
+  #     type = "Depth",
+  #     stringsAsFactors = FALSE
+  #   ),
+  #   data.frame(
+  #     percentile = p * 100,
+  #     value = relative_quantile,
+  #     type = "Depth (% of maximum)",
+  #     stringsAsFactors = FALSE
+  #   )
+  # )
+
+  quantile_data <- data.frame(
+    percentile = p * 100,
+    value = depth_quantile,
+    type = "Depth",
+    stringsAsFactors = FALSE
   )
 
   base_theme <- ggplot2::theme_classic() +
@@ -191,10 +198,12 @@ plot_fastq_read_distribution <- function(info,
       plot.margin = ggplot2::margin(2, 15, 2, 5, unit = "pt")
     )
 
-  plot <- g1 / (g2 | g3) +
+  g4 = plot_depth_lorenz(sample_depth$depth)
+
+  plot <- g1 / (g2 | g3 | g4) +
     patchwork::plot_layout(
-      widths = c(1.2, 1),
-      heights = c(0.5, 1.5)
+      widths = c(0.8, 1, 1),
+      heights = c(0.2, 1)
     )
   attr(plot, "sample_depth") <- sample_depth
   attr(plot, "quantile_data") <- quantile_data
