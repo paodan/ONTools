@@ -33,6 +33,7 @@
 fastq_read_info <- function(path,
                             file_format = ".fastq.gz",
                             plot_time = TRUE,
+                            barcode_column = "barcode",
                             ...) {
   file_format_missing <- missing(file_format)
   plot_time_missing <- missing(plot_time)
@@ -92,7 +93,7 @@ fastq_read_info <- function(path,
   }
 
   if (isTRUE(plot_time)) {
-    plot_fastq_start_times(out)
+    plot_fastq_start_times(out, barcode_column = "barcode")
   }
 
   out
@@ -179,26 +180,24 @@ parse_fastq_start_time <- function(x) {
   out
 }
 
-plot_fastq_start_times <- function(info) {
-  if (!"start_time" %in% names(info) || nrow(info) == 0L) return(invisible(NULL))
 
-  group <- if ("barcode" %in% names(info)) info$barcode else "all_reads"
-  group[is.na(group) | !nzchar(group)] <- "unclassified"
+plot_fastq_start_times = function (info, barcode_column = "barcode") {
+  if (!"start_time" %in% names(info) || nrow(info) == 0L)
+    return(invisible(NULL))
+  group <- if (barcode_column %in% names(info))
+    info[[barcode_column]]
+  else "all_reads"
+  group[is.na(group) | !nzchar(group)] <- "all_reads"
   valid <- !is.na(info$start_time)
   if (!any(valid)) {
     warning("No valid `start_time` values to plot.", call. = FALSE)
     return(invisible(NULL))
   }
-
   for (label in unique(group[valid])) {
     times <- sort(info$start_time[valid & group == label])
-    graphics::plot(
-      times,
-      seq_along(times),
-      main = label,
-      xlab = "Start time",
-      ylab = "Cumulative reads"
-    )
+    graphics::plot(times, seq_along(times), main = label,
+                   xlab = "Start time", ylab = "Cumulative reads")
   }
   invisible(NULL)
 }
+

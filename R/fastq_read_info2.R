@@ -122,7 +122,8 @@
 #' @export
 fastq_read_info2 <- function(path,
                              file_format = ".fastq.gz",
-                             plot_time = TRUE) {
+                             plot_time = TRUE,
+                             barcode_column = "source_file") {
   check_scalar_character(path, "path")
   check_scalar_character(file_format, "file_format")
   check_logical_scalar(plot_time, "plot_time")
@@ -147,7 +148,7 @@ fastq_read_info2 <- function(path,
   source_file <- rep(basename(files), lengths(header_list))
   out <- parse_minknow_fastq_headers(headers, source_file)
 
-  if (isTRUE(plot_time)) plot_fastq_start_times(out)
+  if (isTRUE(plot_time)) plot_fastq_start_times(out, barcode_column = barcode_column)
   out
 }
 
