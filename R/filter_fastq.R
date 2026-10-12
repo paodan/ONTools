@@ -122,6 +122,7 @@ filter_fastq <- function(fastq,
 
   seqkit_args <- build_filter_fastq_args(
     fastq = fastq,
+    output_fastq = output_fastq,
     min_length = min_length,
     max_length = max_length,
     min_quality = min_quality,
@@ -153,7 +154,7 @@ filter_fastq <- function(fastq,
   )
 
   command_string <- paste(
-    c(shQuote(seqkit_call$command), shQuote(seqkit_call$args), ">", shQuote(output_fastq)),
+    c(shQuote(seqkit_call$command), shQuote(seqkit_call$args)),
     collapse = " "
   )
 
@@ -192,7 +193,6 @@ filter_fastq <- function(fastq,
   status <- system2(
     seqkit_call$command,
     args = seqkit_call$args,
-    stdout = output_fastq,
     stderr = stderr
   )
   if (!identical(status, 0L)) {
@@ -240,6 +240,7 @@ filter_fastq_by_length <- function(fastq,
 }
 
 build_filter_fastq_args <- function(fastq,
+                                    output_fastq,
                                     min_length,
                                     max_length,
                                     min_quality,
@@ -287,7 +288,7 @@ build_filter_fastq_args <- function(fastq,
     args <- c(args, "--compress-level", as.character(compress_level))
   }
   if (!is.null(extra_args)) args <- c(args, extra_args)
-  c(args, fastq)
+  c(args, "-o", output_fastq, fastq)
 }
 
 validate_optional_positive_integer <- function(x, name) {

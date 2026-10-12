@@ -25,9 +25,11 @@ test_that("filter_fastq builds the expected dry-run command", {
   expect_true("--upper-case" %in% res$args)
   expect_true("--threads" %in% res$args)
   expect_true("--seq-type" %in% res$args)
+  expect_equal(res$args[match("-o", res$args) + 1L], res$paths$output_fastq)
   expect_equal(res$paths$fastq, normalizePath(fastq))
   expect_equal(res$paths$output_fastq, normalizePath(output_fastq, mustWork = FALSE))
   expect_match(res$command_string, "seqkit", fixed = TRUE)
+  expect_false(grepl(">", res$command_string, fixed = TRUE))
 })
 
 test_that("filter_fastq dry-run supports conda_env", {
@@ -62,7 +64,8 @@ test_that("filter_fastq runs seqkit", {
       "[[ \"$1\" == 'seq' ]]",
       "[[ \"$2\" == '-m' ]]",
       "[[ \"$3\" == '5000' ]]",
-      "cat \"$4\""
+      "[[ \"$4\" == '-o' ]]",
+      "cp \"$6\" \"$5\""
     ),
     file.path(fake_bin, "seqkit")
   )
@@ -81,6 +84,46 @@ test_that("filter_fastq runs seqkit", {
 
   expect_equal(res$status, 0L)
   expect_equal(readLines(output_fastq), readLines(fastq))
+})
+
+test_that("filter_fastq creates genuine gzip output for a .gz path", {
+  fastq <- tempfile(fileext = ".fastq")
+  output_fastq <- tempfile(fileext = ".fastq.gz")
+  fake_bin <- tempfile("seqkit-bin-")
+  dir.create(fake_bin)
+  records <- c("@read1", "ACGT", "+", "!!!!")
+  writeLines(records, fastq)
+
+  writeLines(
+    c(
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "[[ \"$1\" == 'seq' ]]",
+      "[[ \"$2\" == '-o' ]]",
+      "case \"$3\" in",
+      "  *.gz) gzip -c \"$4\" > \"$3\" ;;",
+      "  *) cp \"$4\" \"$3\" ;;",
+      "esac"
+    ),
+    file.path(fake_bin, "seqkit")
+  )
+  Sys.chmod(file.path(fake_bin, "seqkit"), mode = "0755")
+
+  old_path <- Sys.getenv("PATH")
+  on.exit(Sys.setenv(PATH = old_path), add = TRUE)
+  Sys.setenv(PATH = paste(fake_bin, old_path, sep = .Platform$path.sep))
+
+  res <- filter_fastq(
+    fastq = fastq,
+    output_fastq = output_fastq,
+    echo = FALSE
+  )
+
+  con <- file(output_fastq, open = "rb")
+  on.exit(close(con), add = TRUE)
+  expect_equal(readBin(con, what = "raw", n = 2L), as.raw(c(0x1f, 0x8b)))
+  expect_equal(readLines(gzfile(output_fastq)), records)
+  expect_equal(res$status, 0L)
 })
 
 test_that("filter_fastq_by_length remains available as a compatibility wrapper", {
