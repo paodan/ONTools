@@ -23,7 +23,8 @@ Imports:
     rlang,
     Rsamtools,
     scales,
-    stringr
+    stringr,
+    R.utils
 Suggests:
     pagedown,
     ShortRead,
