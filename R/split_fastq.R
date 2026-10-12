@@ -39,7 +39,7 @@
 #' @param echo Logical. If `TRUE`, print each planned `seqkit` command.
 #' @param stderr Passed to [system2()] by [filter_fastq()].
 #'
-#' @return Invisibly returns a list with:
+#' @return For a non-empty input, invisibly returns a list with:
 #'
 #' * `input_fastq`: normalized input path.
 #' * `output_dir`: normalized output-directory path.
@@ -51,6 +51,10 @@
 #' * `plot`: the peak plot when peak detection was performed, otherwise `NULL`.
 #' * `read_count`: total number of input FASTQ records.
 #' * `dry_run`: the supplied dry-run setting.
+#'
+#' If the input contains no FASTQ records, the function issues a warning,
+#' creates no output files, and invisibly returns `NULL`. This allows a batch
+#' loop to skip samples with no reads while continuing with later inputs.
 #'
 #' Output files retain the compression format of the input and are named
 #' `<input>_peak_<index>_<length>bp.fastq[.gz]`. The first output always
@@ -183,7 +187,12 @@ split_fastq <- function(fastq_file,
 
   read_length <- read_fastq_lengths(fastq_file)
   if (length(read_length) == 0L) {
-    stop("`fastq_file` contains no FASTQ records.", call. = FALSE)
+    warning(
+      "`fastq_file` contains no FASTQ records; skipping: ",
+      fastq_file,
+      call. = FALSE
+    )
+    return(invisible(NULL))
   }
 
   peak_counts <- data.frame(

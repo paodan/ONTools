@@ -77,7 +77,7 @@ and return the planned \code{\link[=filter_fastq]{filter_fastq()}} calls without
 \item{stderr}{Passed to \code{\link[=system2]{system2()}} by \code{\link[=filter_fastq]{filter_fastq()}}.}
 }
 \value{
-Invisibly returns a list with:
+For a non-empty input, invisibly returns a list with:
 \itemize{
 \item \code{input_fastq}: normalized input path.
 \item \code{output_dir}: normalized output-directory path.
@@ -90,6 +90,10 @@ and percentage of all input reads.
 \item \code{read_count}: total number of input FASTQ records.
 \item \code{dry_run}: the supplied dry-run setting.
 }
+
+If the input contains no FASTQ records, the function issues a warning,
+creates no output files, and invisibly returns \code{NULL}. This allows a batch
+loop to skip samples with no reads while continuing with later inputs.
 
 Output files retain the compression format of the input and are named
 \verb{<input>_peak_<index>_<length>bp.fastq[.gz]}. The first output always

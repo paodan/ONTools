@@ -143,3 +143,15 @@ test_that("split_fastq validates file format, records, and ranges", {
     "expected_size"
   )
 })
+
+test_that("split_fastq warns and skips an empty FASTQ", {
+  fastq <- tempfile(fileext = ".fastq.gz")
+  con <- gzfile(fastq, open = "wt")
+  close(con)
+
+  expect_warning(
+    result <- split_fastq(fastq, dry_run = TRUE, echo = FALSE),
+    "contains no FASTQ records; skipping"
+  )
+  expect_null(result)
+})
