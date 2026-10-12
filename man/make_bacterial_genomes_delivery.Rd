@@ -92,8 +92,8 @@ before final packaging when \code{fastq} is supplied.}
 \item{run_mapping}{Logical. If \code{TRUE}, run \code{\link[=map_reads_to_assembly]{map_reads_to_assembly()}} for
 consensus FASTA files that can be matched to FASTQ files by basename.}
 
-\item{run_variant_calling}{Logical. If \code{TRUE}, run \code{bcftools mpileup} and
-\code{bcftools call} for consensus/BAM pairs to generate VCF files before
+\item{run_variant_calling}{Logical. If \code{TRUE}, run \verb{bcftools mpileup} and
+\verb{bcftools call} for consensus/BAM pairs to generate VCF files before
 creating variant tables.}
 
 \item{make_ab1}{Logical. If \code{TRUE}, run \code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}} for
@@ -108,7 +108,7 @@ consensus/BAM pairs that can be matched by basename.}
 variant calling, and AB1 generation.}
 
 \item{variant_conda_env}{Optional conda environment name used for the
-\code{samtools faidx} and \code{bcftools} commands in variant calling. For example,
+\verb{samtools faidx} and \code{bcftools} commands in variant calling. For example,
 use \code{"variant_qc"} to run \verb{conda run -n variant_qc bcftools ...}.}
 
 \item{conda}{Conda executable name or path used when \code{variant_conda_env} is
@@ -147,9 +147,9 @@ and \code{status}.
 \description{
 \code{make_bacterial_genomes_delivery()} collects bacterial genome analysis
 deliverables into a stable customer-facing directory layout. Existing sample
-filenames are preserved; files are only sorted into \code{Bam/}, \code{QC/},
-\code{Sequence/}, and \code{Var/} directories. When variant tables are not already
-present, the function can generate simple \code{*.var.xls} and \code{*.filt.var.xls}
+filenames are preserved; files are only sorted into \verb{Bam/}, \verb{QC/},
+\verb{Sequence/}, and \verb{Var/} directories. When variant tables are not already
+present, the function can generate simple \verb{*.var.xls} and \verb{*.filt.var.xls}
 tables from VCF files with \code{\link[=read_vcf]{read_vcf()}}.
 }
 \examples{

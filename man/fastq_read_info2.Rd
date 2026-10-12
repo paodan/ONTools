@@ -4,7 +4,12 @@
 \alias{fastq_read_info2}
 \title{Extract metadata from MinKNOW/Dorado FASTQ headers}
 \usage{
-fastq_read_info2(path, file_format = ".fastq.gz", plot_time = TRUE)
+fastq_read_info2(
+  path,
+  file_format = ".fastq.gz",
+  plot_time = TRUE,
+  barcode_column = "source_file"
+)
 }
 \arguments{
 \item{path}{Directory containing FASTQ files.}

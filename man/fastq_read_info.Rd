@@ -4,7 +4,13 @@
 \alias{fastq_read_info}
 \title{Extract Oxford Nanopore read metadata from FASTQ headers}
 \usage{
-fastq_read_info(path, file_format = ".fastq.gz", plot_time = TRUE, ...)
+fastq_read_info(
+  path,
+  file_format = ".fastq.gz",
+  plot_time = TRUE,
+  barcode_column = "barcode",
+  ...
+)
 }
 \arguments{
 \item{path}{Directory containing FASTQ files.}

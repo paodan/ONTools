@@ -37,7 +37,7 @@ run_wf_bacterial_genomes(
 }
 \arguments{
 \item{fastq}{Path to a demultiplexed FASTQ directory containing
-\code{barcode*/barcode*.fastq.gz} files.}
+\verb{barcode*/barcode*.fastq.gz} files.}
 
 \item{out_dir}{Output directory passed to \code{--out_dir}.}
 
@@ -104,10 +104,9 @@ Invisibly returns a list with the Nextflow command, filtering
 commands, paths, environment, and status values.
 }
 \description{
-\code{run_wf_bacterial_genomes()} wraps \code{nextflow run
-epi2me-labs/wf-bacterial-genomes}. The workflow exposes a minimum read length
+\code{run_wf_bacterial_genomes()} wraps \verb{nextflow run epi2me-labs/wf-bacterial-genomes}. The workflow exposes a minimum read length
 filter, but not a maximum read length filter, so this wrapper can optionally
-pre-filter per-barcode FASTQ files with \code{seqkit seq -m/-M} before launching
+pre-filter per-barcode FASTQ files with \verb{seqkit seq -m/-M} before launching
 Nextflow.
 }
 \examples{
@@ -120,4 +119,5 @@ res <- run_wf_bacterial_genomes(
 )
 res$command_string
 }
+
 }
