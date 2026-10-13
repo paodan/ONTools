@@ -246,56 +246,62 @@ plot_peaks_statistics <- function(
   )
   major_peaks <- peaks[peaks$major, , drop = FALSE]
 
-  list(
-    peak_num_hist = ggplot2::ggplot(
-      peaks_per_file,
-      ggplot2::aes(x = .data$peak_count)
+  peak_num_hist = ggplot2::ggplot(
+    peaks_per_file,
+    ggplot2::aes(x = .data$peak_count)
+  ) +
+    ggplot2::geom_histogram(
+      binwidth = 1,
+      boundary = 0.5,
+      colour = "white",
+      alpha = 0.7
     ) +
-      ggplot2::geom_histogram(
-        binwidth = 1,
-        boundary = 0.5,
-        colour = "white",
-        alpha = 0.7
-      ) +
-      ggplot2::labs(
-        title = "Distribution of peak counts",
-        x = "Number of peaks",
-        y = "Number of FASTQ files"
-      ) +
-      base_theme(x_angle = 0, ...),
+    ggplot2::labs(
+      title = "Distribution of peak counts",
+      x = "Number of peaks",
+      y = "Number of FASTQ files"
+    ) +
+    base_theme(x_angle = 0, ...)
 
-    peak_pos_hist = ggplot2::ggplot(
-      peaks,
-      ggplot2::aes(x = .data$read_length)
+  peak_pos_hist = ggplot2::ggplot(
+    peaks,
+    ggplot2::aes(x = .data$read_length)
+  ) +
+    ggplot2::geom_histogram(
+      bins = 30,
+      colour = "white",
+      alpha = 0.7
     ) +
-      ggplot2::geom_histogram(
-        bins = 30,
-        colour = "white",
-        alpha = 0.7
-      ) +
-      ggplot2::labs(
-        title = "Distribution of peak positions",
-        x = "Peak read length (bp)",
-        y = "Number of peaks"
-      ) +
-      base_theme(...),
+    ggplot2::labs(
+      title = "Distribution of peak positions",
+      x = "Peak read length (bp)",
+      y = "Number of peaks"
+    ) +
+    base_theme(...)
 
-    peak_pos_hist_major = ggplot2::ggplot(
-      major_peaks,
-      ggplot2::aes(x = .data$read_length)
+  peak_pos_hist_major = ggplot2::ggplot(
+    major_peaks,
+    ggplot2::aes(x = .data$read_length)
+  ) +
+    ggplot2::geom_histogram(
+      bins = 30,
+      colour = "white",
+      alpha = 0.7
     ) +
-      ggplot2::geom_histogram(
-        bins = 30,
-        colour = "white",
-        alpha = 0.7
-      ) +
-      ggplot2::labs(
-        title = "Distribution of major peak positions",
-        x = "Major peak read length (bp)",
-        y = "Number of peaks"
-      ) +
-      base_theme(...)
-  )
+    ggplot2::labs(
+      title = "Distribution of major peak positions",
+      x = "Major peak read length (bp)",
+      y = "Number of peaks"
+    ) +
+    base_theme(...)
+
+
+  plot <- (peak_num_hist | peak_pos_hist | peak_pos_hist_major) +
+    patchwork::plot_layout(
+      widths = c(0.3, 0.35, 0.35)
+    )
+
+  return(plot)
 }
 
 empty_peaks_info <- function() {
