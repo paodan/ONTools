@@ -2,8 +2,9 @@
 #'
 #' `split_fastq()` creates one length-filtered FASTQ file for a user-supplied
 #' expected range and, optionally, one file for every read-length peak detected
-#' by [plot_read_length_peaks()]. Input records are validated and read in
-#' chunks, so the complete FASTQ sequence data are not held in memory.
+#' by [plot_read_length_peaks()]. Input records are validated and read in chunks
+#' by [read_fastq_lengths()], so the complete FASTQ sequence data are not held
+#' in memory.
 #'
 #' @param fastq_file Path to an input `.fastq` or `.fastq.gz` file. Records must
 #'   use the standard four-line FASTQ representation.
@@ -301,7 +302,7 @@ split_fastq <- function(fastq_file,
   ))
 }
 
-split_fastq_suffix <- function(path) {
+split_fastq_suffix <- function(path, name = "fastq_file") {
   filename <- basename(path)
   if (grepl("[.]fastq[.]gz$", filename, ignore.case = TRUE)) {
     return(".fastq.gz")
@@ -309,10 +310,60 @@ split_fastq_suffix <- function(path) {
   if (grepl("[.]fastq$", filename, ignore.case = TRUE)) {
     return(".fastq")
   }
-  stop("`fastq_file` must end in `.fastq` or `.fastq.gz`.", call. = FALSE)
+  stop("`", name, "` must end in `.fastq` or `.fastq.gz`.", call. = FALSE)
 }
 
+#' Read sequence lengths from a FASTQ file
+#'
+#' `read_fastq_lengths()` extracts the sequence length of every record in a
+#' four-line FASTQ or FASTQ.GZ file. Records are read and validated in chunks,
+#' so sequence and quality strings from the complete file are never held in
+#' memory at the same time.
+#'
+#' @param path Path to an input `.fastq` or `.fastq.gz` file.
+#' @param chunk_records Positive integer giving the maximum number of FASTQ
+#'   records read and validated per chunk. Larger values may improve throughput
+#'   at the cost of temporary memory use. This does not limit the total number
+#'   of records returned.
+#'
+#' @return An integer vector containing one sequence length in base pairs per
+#' FASTQ record, in input order. An empty FASTQ returns `integer(0)`.
+#'
+#' @details
+#' Each record must use the standard four-line FASTQ representation: a header
+#' beginning with `@`, one unwrapped sequence line, a separator beginning with
+#' `+`, and one unwrapped quality line. Sequence and quality strings must have
+#' identical byte lengths. Wrapped FASTQ records are not supported.
+#'
+#' Both plain-text and gzip-compressed inputs are supported. Quality strings are
+#' read as literal text; quotation marks and other valid Phred+33 characters are
+#' not interpreted as table delimiters or quoting syntax.
+#'
+#' @examples
+#' reads <- tempfile(fileext = ".fastq")
+#' writeLines(
+#'   c(
+#'     "@read1", "ACGT", "+", "!!!!",
+#'     "@read2", "ACGTAC", "+", "!!!!!!"
+#'   ),
+#'   reads
+#' )
+#' read_fastq_lengths(reads)
+#'
+#' compressed <- tempfile(fileext = ".fastq.gz")
+#' con <- gzfile(compressed, open = "wt")
+#' writeLines(c("@read3", "ACGTA", "+", "!!!!!"), con)
+#' close(con)
+#' read_fastq_lengths(compressed, chunk_records = 1)
+#'
+#' @seealso [split_fastq()], [plot_fastq_peaks()]
+#' @export
 read_fastq_lengths <- function(path, chunk_records = 100000L) {
+  check_file_arg(path, "path")
+  split_fastq_suffix(path, name = "path")
+  chunk_records <- validate_positive_integer(chunk_records, "chunk_records")
+  path <- normalizePath(path, mustWork = TRUE)
+
   con <- if (grepl("[.]gz$", path, ignore.case = TRUE)) {
     gzfile(path, open = "rt")
   } else {

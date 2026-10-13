@@ -103,8 +103,9 @@ peaks follow in decreasing read-length order. Range boundaries are inclusive.
 \description{
 \code{split_fastq()} creates one length-filtered FASTQ file for a user-supplied
 expected range and, optionally, one file for every read-length peak detected
-by \code{\link[=plot_read_length_peaks]{plot_read_length_peaks()}}. Input records are validated and read in
-chunks, so the complete FASTQ sequence data are not held in memory.
+by \code{\link[=plot_read_length_peaks]{plot_read_length_peaks()}}. Input records are validated and read in chunks
+by \code{\link[=read_fastq_lengths]{read_fastq_lengths()}}, so the complete FASTQ sequence data are not held
+in memory.
 }
 \details{
 FASTQ validation checks that every record has four lines, headers begin with
