@@ -5,35 +5,59 @@
 \title{Extract Oxford Nanopore read metadata from FASTQ headers}
 \usage{
 fastq_read_info(
-  path,
+  path = NULL,
   file_format = ".fastq.gz",
+  fastqs = NULL,
   plot_time = TRUE,
   barcode_column = "barcode",
   ...
 )
 }
 \arguments{
-\item{path}{Directory containing FASTQ files.}
+\item{path}{Optional directory containing FASTQ files. When \code{fastqs} is
+\code{NULL}, \code{path} is required and the directory is scanned non-recursively.
+When \code{fastqs} is supplied, relative entries in \code{fastqs} are resolved
+relative to \code{path}; if \code{path} is \code{NULL}, they are resolved relative to the
+current working directory.}
 
 \item{file_format}{File-name suffix used to select input files. Matching is
-literal and case-sensitive.}
+literal and case-sensitive. It is used only when \code{fastqs} is \code{NULL}.}
+
+\item{fastqs}{Optional non-empty character vector specifying the FASTQ files
+to read. Files may reside in different directories and may use \code{.fastq},
+\code{.fastq.gz}, \code{.fq}, or \code{.fq.gz}. Input order is preserved. Every file must
+exist, be a regular file, and occur only once.}
 
 \item{plot_time}{Logical. If \code{TRUE}, plot cumulative read count against
 \code{start_time}, with one plot per barcode when a \code{barcode} field is present.}
+
+\item{barcode_column}{Character scalar naming the parsed metadata column used
+to group cumulative start-time plots. If the column is absent, all reads
+are plotted as one group. Used only when \code{plot_time = TRUE}.}
 
 \item{...}{Deprecated compatibility arguments \code{fileFormat} and \code{plotTime}.}
 }
 \value{
 A data frame with one row per FASTQ record. The first column, \code{read},
-contains the read identifier without the leading \code{@}; remaining columns
-contain metadata parsed from the header. \code{start_time}, when present, is
-converted to \code{POSIXct} in UTC. If no files match, an empty data frame is
-returned.
+contains the read identifier without the leading \code{@}; \code{source_file}
+contains the base name of its input file; remaining columns contain
+metadata parsed from the header. \code{start_time}, when present, is converted
+to \code{POSIXct} in UTC. If no files match during directory scanning, an empty
+data frame is returned.
 }
 \description{
 \code{fastq_read_info()} reads the header of every record in matching FASTQ files
 and expands the space-separated \code{key=value} metadata into columns. Both
 uncompressed FASTQ files and gzip-compressed FASTQ files are supported.
+}
+\details{
+Supply either a directory in \code{path} or explicit files in \code{fastqs}. If both
+are supplied, \code{path} acts only as the base directory for relative \code{fastqs};
+the directory is not scanned. Explicit inputs are validated strictly, so a
+missing, duplicated, unsupported, or non-regular file produces an error.
+
+Directory scanning is non-recursive and processes matching files in sorted
+path order. Explicit \code{fastqs} are processed in the order supplied.
 }
 \examples{
 fastq_dir <- tempfile("fastq-")
@@ -46,5 +70,12 @@ writeLines(
   file.path(fastq_dir, "reads.fastq")
 )
 fastq_read_info(fastq_dir, file_format = ".fastq", plot_time = FALSE)
+
+# Read an explicit selection. Relative names can be resolved against path.
+fastq_read_info(
+  path = fastq_dir,
+  fastqs = "reads.fastq",
+  plot_time = FALSE
+)
 
 }

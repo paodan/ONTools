@@ -29,6 +29,7 @@ test_that("fastq_read_info parses plain and compressed FASTQ headers", {
   )
 
   expect_equal(plain_info$read, c("read1", "read2"))
+  expect_equal(plain_info$source_file, rep("a.fastq", 2L))
   expect_equal(plain_info$runid, c("run-a", "run-a"))
   expect_equal(plain_info$extra, c(NA_character_, "a=b"))
   expect_s3_class(plain_info$start_time, "POSIXct")
@@ -62,7 +63,7 @@ test_that("fastq_read_info handles no matches and validates FASTQ records", {
 
   empty <- fastq_read_info(fastq_dir, plot_time = FALSE)
   expect_equal(nrow(empty), 0L)
-  expect_named(empty, c("read", "start_time"))
+  expect_named(empty, c("read", "source_file", "start_time"))
 
   bad_fastq <- file.path(fastq_dir, "bad.fastq")
   writeLines(c("@read1", "ACGT", "+"), bad_fastq)
@@ -77,5 +78,54 @@ test_that("fastq_read_info handles no matches and validates FASTQ records", {
   expect_error(
     fastq_read_info(fastq_dir, plot_time = NA),
     "plot_time"
+  )
+})
+
+test_that("fastq_read_info accepts validated explicit FASTQ files", {
+  fastq_dir <- tempfile("fastq-info-explicit-")
+  dir.create(fastq_dir)
+  files <- file.path(fastq_dir, c("b.fastq", "a.fastq"))
+  writeLines(
+    c("@read-b barcode=b", "ACGT", "+", "!!!!"),
+    files[[1L]]
+  )
+  writeLines(
+    c("@read-a barcode=a", "TGCA", "+", "####"),
+    files[[2L]]
+  )
+
+  info <- fastq_read_info(
+    path = fastq_dir,
+    fastqs = basename(files),
+    plot_time = FALSE
+  )
+  expect_equal(info$read, c("read-b", "read-a"))
+  expect_equal(info$source_file, c("b.fastq", "a.fastq"))
+
+  expect_error(
+    fastq_read_info(fastqs = c(files[[1L]], files[[1L]]), plot_time = FALSE),
+    "duplicated"
+  )
+  expect_error(
+    fastq_read_info(fastqs = file.path(fastq_dir, "missing.fastq"), plot_time = FALSE),
+    "do not exist"
+  )
+  expect_error(
+    fastq_read_info(fastqs = fastq_dir, plot_time = FALSE),
+    "not directories"
+  )
+  non_fastq <- file.path(fastq_dir, "notes.txt")
+  writeLines("not FASTQ", non_fastq)
+  expect_error(
+    fastq_read_info(fastqs = non_fastq, plot_time = FALSE),
+    "Unsupported FASTQ"
+  )
+  expect_error(
+    fastq_read_info(fastqs = files[[1L]], plot_time = NA),
+    "plot_time"
+  )
+  expect_error(
+    fastq_read_info(fastqs = files[[1L]], barcode_column = NA_character_),
+    "barcode_column"
   )
 })

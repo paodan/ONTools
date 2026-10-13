@@ -5,21 +5,36 @@
 \title{Extract metadata from MinKNOW/Dorado FASTQ headers}
 \usage{
 fastq_read_info2(
-  path,
+  path = NULL,
   file_format = ".fastq.gz",
+  fastqs = NULL,
   plot_time = TRUE,
   barcode_column = "source_file"
 )
 }
 \arguments{
-\item{path}{Directory containing FASTQ files.}
+\item{path}{Optional directory containing FASTQ files. When \code{fastqs} is
+\code{NULL}, \code{path} is required and the directory is scanned non-recursively.
+When \code{fastqs} is supplied, relative entries in \code{fastqs} are resolved
+relative to \code{path}; if \code{path} is \code{NULL}, they are resolved relative to the
+current working directory.}
 
 \item{file_format}{Literal, case-sensitive file-name suffix used to select
-files, for example \code{".fastq.gz"}, \code{".fastq"}, or \code{".fq.gz"}.}
+files, for example \code{".fastq.gz"}, \code{".fastq"}, or \code{".fq.gz"}. It is used
+only when \code{fastqs} is \code{NULL}.}
+
+\item{fastqs}{Optional non-empty character vector specifying the FASTQ files
+to read. Files may reside in different directories and may use \code{.fastq},
+\code{.fastq.gz}, \code{.fq}, or \code{.fq.gz}. Input order is preserved. Every file must
+exist, be a regular file, and occur only once.}
 
 \item{plot_time}{Logical. If \code{TRUE}, draw cumulative read count against
-\code{start_time}, with one base-R plot per standardized \code{barcode} value. No
-plot is produced when valid start times are absent.}
+\code{start_time}, with one base-R plot per value of \code{barcode_column}. No plot
+is produced when valid start times are absent.}
+
+\item{barcode_column}{Character scalar naming the output column used to
+group cumulative start-time plots. If the column is absent, all reads are
+plotted as one group. Used only when \code{plot_time = TRUE}.}
 }
 \value{
 A data frame with one row per FASTQ record. \code{read} contains the UUID
@@ -31,7 +46,8 @@ as \code{POSIXct} in UTC.
 
 Optional fields that are absent from every header are retained as typed
 \code{NA} columns, giving different runs a consistent output schema. If no files
-match \code{file_format}, an empty data frame with the core columns is returned.
+match \code{file_format}, an empty data frame with the complete typed output
+schema is returned.
 }
 \description{
 \code{fastq_read_info2()} is a vectorized parser for recent MinKNOW/Dorado FASTQ
@@ -45,9 +61,16 @@ list containing one small list per read. This is substantially faster and
 more memory-efficient when all input files use the same MinKNOW/Dorado
 header convention.
 
-Files are processed in sorted file-name order. Both plain-text and
-gzip-compressed FASTQ files are supported. A complete four-line FASTQ record
-is required; malformed or incomplete records produce an error.
+Files found by directory scanning are processed in sorted file-name order.
+Both plain-text and gzip-compressed FASTQ files are supported. A complete
+four-line FASTQ record is required; malformed or incomplete records produce
+an error.
+
+Supply either a directory in \code{path} or explicit files in \code{fastqs}. If both
+are supplied, \code{path} acts only as the base directory for relative \code{fastqs};
+the directory is not scanned. Explicit inputs are validated strictly, so a
+missing, duplicated, unsupported, or non-regular file produces an error.
+Explicit \code{fastqs} are processed in the order supplied.
 }
 \section{Expected header format}{
 
@@ -137,6 +160,14 @@ info[, c(
   "read", "mean_qscore", "ch", "read_number", "start_time",
   "signal_samples", "duration", "flow_cell_id", "barcode"
 )]
+
+# Read one explicitly selected file relative to fastq_dir.
+selected <- fastq_read_info2(
+  path = fastq_dir,
+  fastqs = "reads.fastq",
+  plot_time = FALSE
+)
+selected[, c("read", "source_file", "mean_qscore", "barcode")]
 
 }
 \seealso{

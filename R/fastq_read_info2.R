@@ -4,12 +4,24 @@
 #' headers that use SAM auxiliary-field syntax (`TAG:TYPE:VALUE`). Unlike
 #' [fastq_read_info()], it does not parse legacy `key=value` metadata.
 #'
-#' @param path Directory containing FASTQ files.
+#' @param path Optional directory containing FASTQ files. When `fastqs` is
+#'   `NULL`, `path` is required and the directory is scanned non-recursively.
+#'   When `fastqs` is supplied, relative entries in `fastqs` are resolved
+#'   relative to `path`; if `path` is `NULL`, they are resolved relative to the
+#'   current working directory.
 #' @param file_format Literal, case-sensitive file-name suffix used to select
-#'   files, for example `".fastq.gz"`, `".fastq"`, or `".fq.gz"`.
+#'   files, for example `".fastq.gz"`, `".fastq"`, or `".fq.gz"`. It is used
+#'   only when `fastqs` is `NULL`.
+#' @param fastqs Optional non-empty character vector specifying the FASTQ files
+#'   to read. Files may reside in different directories and may use `.fastq`,
+#'   `.fastq.gz`, `.fq`, or `.fq.gz`. Input order is preserved. Every file must
+#'   exist, be a regular file, and occur only once.
 #' @param plot_time Logical. If `TRUE`, draw cumulative read count against
-#'   `start_time`, with one base-R plot per standardized `barcode` value. No
-#'   plot is produced when valid start times are absent.
+#'   `start_time`, with one base-R plot per value of `barcode_column`. No plot
+#'   is produced when valid start times are absent.
+#' @param barcode_column Character scalar naming the output column used to
+#'   group cumulative start-time plots. If the column is absent, all reads are
+#'   plotted as one group. Used only when `plot_time = TRUE`.
 #'
 #' @return A data frame with one row per FASTQ record. `read` contains the UUID
 #'   or identifier following `@`, `source_file` contains the input file name,
@@ -20,7 +32,8 @@
 #'
 #' Optional fields that are absent from every header are retained as typed
 #' `NA` columns, giving different runs a consistent output schema. If no files
-#' match `file_format`, an empty data frame with the core columns is returned.
+#' match `file_format`, an empty data frame with the complete typed output
+#' schema is returned.
 #'
 #' @section Expected header format:
 #'
@@ -87,9 +100,16 @@
 #' more memory-efficient when all input files use the same MinKNOW/Dorado
 #' header convention.
 #'
-#' Files are processed in sorted file-name order. Both plain-text and
-#' gzip-compressed FASTQ files are supported. A complete four-line FASTQ record
-#' is required; malformed or incomplete records produce an error.
+#' Files found by directory scanning are processed in sorted file-name order.
+#' Both plain-text and gzip-compressed FASTQ files are supported. A complete
+#' four-line FASTQ record is required; malformed or incomplete records produce
+#' an error.
+#'
+#' Supply either a directory in `path` or explicit files in `fastqs`. If both
+#' are supplied, `path` acts only as the base directory for relative `fastqs`;
+#' the directory is not scanned. Explicit inputs are validated strictly, so a
+#' missing, duplicated, unsupported, or non-regular file produces an error.
+#' Explicit `fastqs` are processed in the order supplied.
 #'
 #' @examples
 #' fastq_dir <- tempfile("fastq2-")
@@ -118,29 +138,28 @@
 #'   "signal_samples", "duration", "flow_cell_id", "barcode"
 #' )]
 #'
+#' # Read one explicitly selected file relative to fastq_dir.
+#' selected <- fastq_read_info2(
+#'   path = fastq_dir,
+#'   fastqs = "reads.fastq",
+#'   plot_time = FALSE
+#' )
+#' selected[, c("read", "source_file", "mean_qscore", "barcode")]
+#'
 #' @seealso [fastq_read_info()], [plot_fastq_read_distribution()]
 #' @export
-fastq_read_info2 <- function(path,
+fastq_read_info2 <- function(path = NULL,
                              file_format = ".fastq.gz",
+                             fastqs = NULL,
                              plot_time = TRUE,
                              barcode_column = "source_file") {
-  check_scalar_character(path, "path")
   check_scalar_character(file_format, "file_format")
   check_logical_scalar(plot_time, "plot_time")
-  if (!dir.exists(path)) {
-    stop("`path` is not an existing directory: ", path, call. = FALSE)
-  }
+  check_scalar_character(barcode_column, "barcode_column")
+  files <- resolve_fastq_info_files(path, file_format, fastqs)
 
-  files <- list.files(path, full.names = TRUE, recursive = FALSE)
-  files <- sort(files[endsWith(basename(files), file_format)])
   if (length(files) == 0L) {
-    return(data.frame(
-      read = character(),
-      source_file = character(),
-      header_format = character(),
-      start_time = as.POSIXct(character(), tz = "UTC"),
-      stringsAsFactors = FALSE
-    ))
+    return(parse_minknow_fastq_headers(character(), character()))
   }
 
   header_list <- lapply(files, read_fastq_headers)

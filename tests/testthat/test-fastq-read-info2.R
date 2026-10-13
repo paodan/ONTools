@@ -73,7 +73,10 @@ test_that("fastq_read_info2 handles empty input and validates arguments", {
   dir.create(fastq_dir)
   empty <- fastq_read_info2(fastq_dir, file_format = ".fq", plot_time = FALSE)
   expect_equal(nrow(empty), 0L)
-  expect_named(empty, c("read", "source_file", "header_format", "start_time"))
+  expect_true(all(c(
+    "read", "source_file", "header_format", "start_time", "mean_qscore",
+    "barcode"
+  ) %in% names(empty)))
 
   expect_error(fastq_read_info2(tempfile(), plot_time = FALSE), "existing directory")
   expect_error(fastq_read_info2(fastq_dir, plot_time = NA), "plot_time")
@@ -85,5 +88,45 @@ test_that("fastq_read_info2 handles empty input and validates arguments", {
   expect_error(
     fastq_read_info2(fastq_dir, file_format = ".fastq", plot_time = FALSE),
     "Incomplete FASTQ record"
+  )
+})
+
+test_that("fastq_read_info2 accepts validated explicit FASTQ files", {
+  fastq_dir <- tempfile("fastq-info2-explicit-")
+  dir.create(fastq_dir)
+  files <- file.path(fastq_dir, c("b.fastq", "a.fastq"))
+  writeLines(
+    c("@read-b ch:i:2 SM:Z:b", "ACGT", "+", "!!!!"),
+    files[[1L]]
+  )
+  writeLines(
+    c("@read-a ch:i:1 SM:Z:a", "TGCA", "+", "####"),
+    files[[2L]]
+  )
+
+  info <- fastq_read_info2(
+    path = fastq_dir,
+    fastqs = basename(files),
+    plot_time = FALSE
+  )
+  expect_equal(info$read, c("read-b", "read-a"))
+  expect_equal(info$source_file, c("b.fastq", "a.fastq"))
+  expect_equal(info$ch, c(2L, 1L))
+
+  expect_error(
+    fastq_read_info2(fastqs = c(files[[1L]], files[[1L]]), plot_time = FALSE),
+    "duplicated"
+  )
+  expect_error(
+    fastq_read_info2(fastqs = file.path(fastq_dir, "missing.fastq"), plot_time = FALSE),
+    "do not exist"
+  )
+  expect_error(
+    fastq_read_info2(fastqs = files[[1L]], plot_time = NA),
+    "plot_time"
+  )
+  expect_error(
+    fastq_read_info2(fastqs = files[[1L]], barcode_column = NA_character_),
+    "barcode_column"
   )
 })
