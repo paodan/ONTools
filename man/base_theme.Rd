@@ -8,6 +8,7 @@ base_theme(
   base_size = 11,
   base_family = "",
   title_hjust = 0.5,
+  title_size = 11,
   x_angle = 20,
   x_hjust = 0.5,
   x_vjust = 0.5,

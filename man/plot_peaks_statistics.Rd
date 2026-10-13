@@ -17,6 +17,7 @@ plot_peaks_statistics(
   right_offset = 150,
   binwidth = 10,
   verbose = FALSE,
+  combine_plot = TRUE,
   ...
 )
 }
