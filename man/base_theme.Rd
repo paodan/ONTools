@@ -28,6 +28,8 @@ plot title, passed to \code{\link[ggplot2:element]{ggplot2::element_text()}}. Co
 left alignment, \code{0.5} for centered alignment (the default), and \code{1} for
 right alignment.}
 
+\item{title_size}{Positive number giving the plot-title font size in points.}
+
 \item{x_angle}{Numeric scalar giving the rotation angle of x-axis labels in
 degrees.}
 

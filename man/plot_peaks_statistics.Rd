@@ -63,17 +63,25 @@ shared reads independently.}
 
 \item{verbose}{Logical. If \code{TRUE}, report each FASTQ file as it is processed.}
 
+\item{combine_plot}{Logical. If \code{TRUE} (the default), return the three panels
+combined in one row as a \code{patchwork} object. If \code{FALSE}, return a named
+list containing the three individual ggplot objects.}
+
 \item{...}{Additional arguments passed to \code{\link[=base_theme]{base_theme()}}, for example
 \code{base_size}, \code{base_family}, \code{title_hjust}, or \code{x_angle}.}
 }
 \value{
-A \code{patchwork} object containing three ggplot panels:
+When \code{combine_plot = TRUE}, a \code{patchwork} object containing three
+ggplot panels:
 \itemize{
 \item the distribution of the number of detected peaks per FASTQ
 file;
 \item the distribution of all detected peak lengths in base pairs;
 \item the distribution of major peak lengths in base pairs.
 }
+
+When \code{combine_plot = FALSE}, a named list with elements \code{peak_num_hist},
+\code{peak_pos_hist}, and \code{peak_pos_hist_major}.
 }
 \description{
 \code{plot_peaks_statistics()} runs \code{\link[=get_peaks_info]{get_peaks_info()}} and summarizes the

@@ -154,15 +154,22 @@ get_peaks_info <- function(
 #' counts per file, all peak lengths, and major peak lengths.
 #'
 #' @inheritParams get_peaks_info
+#' @param combine_plot Logical. If `TRUE` (the default), return the three panels
+#'   combined in one row as a `patchwork` object. If `FALSE`, return a named
+#'   list containing the three individual ggplot objects.
 #' @param ... Additional arguments passed to [base_theme()], for example
 #'   `base_size`, `base_family`, `title_hjust`, or `x_angle`.
 #'
-#' @return A `patchwork` object containing three ggplot panels:
+#' @return When `combine_plot = TRUE`, a `patchwork` object containing three
+#' ggplot panels:
 #'
 #' * the distribution of the number of detected peaks per FASTQ
 #'   file;
 #' * the distribution of all detected peak lengths in base pairs;
 #' * the distribution of major peak lengths in base pairs.
+#'
+#' When `combine_plot = FALSE`, a named list with elements `peak_num_hist`,
+#' `peak_pos_hist`, and `peak_pos_hist_major`.
 #'
 #' @details
 #' A major peak is the peak whose counting window contains the most reads in a
@@ -223,6 +230,7 @@ plot_peaks_statistics <- function(
     verbose = FALSE,
     combine_plot = TRUE,
     ...) {
+  check_logical_scalar(combine_plot, "combine_plot")
   peaks <- get_peaks_info(
     fastqs = fastqs,
     path = path,
@@ -296,21 +304,23 @@ plot_peaks_statistics <- function(
     ) +
     base_theme(...)
 
-  if(combine_plot){
-  plot <- patchwork::wrap_plots(
-    peak_num_hist,
-    peak_pos_hist,
-    peak_pos_hist_major,
-    nrow = 1,
-    widths = c(0.24, 0.38, 0.38)
-  )
+  if (combine_plot) {
+    plot <- patchwork::wrap_plots(
+      peak_num_hist,
+      peak_pos_hist,
+      peak_pos_hist_major,
+      nrow = 1,
+      widths = c(0.24, 0.38, 0.38)
+    )
   } else {
-    plot = list(peak_num_hist = peak_num_hist,
-                peak_pos_hist = peak_pos_hist,
-                peak_pos_hist_major = peak_pos_hist_major)
+    plot <- list(
+      peak_num_hist = peak_num_hist,
+      peak_pos_hist = peak_pos_hist,
+      peak_pos_hist_major = peak_pos_hist_major
+    )
   }
 
-  return(plot)
+  plot
 }
 
 empty_peaks_info <- function() {

@@ -13,6 +13,7 @@
 #'   plot title, passed to [ggplot2::element_text()]. Common values are `0` for
 #'   left alignment, `0.5` for centered alignment (the default), and `1` for
 #'   right alignment.
+#' @param title_size Positive number giving the plot-title font size in points.
 #' @param x_angle Numeric scalar giving the rotation angle of x-axis labels in
 #'   degrees.
 #' @param x_hjust,x_vjust Numeric scalars giving the horizontal and vertical
