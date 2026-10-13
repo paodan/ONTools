@@ -221,6 +221,7 @@ plot_peaks_statistics <- function(
     right_offset = 150,
     binwidth = 10,
     verbose = FALSE,
+    combine_plot = TRUE,
     ...) {
   peaks <- get_peaks_info(
     fastqs = fastqs,
@@ -257,9 +258,9 @@ plot_peaks_statistics <- function(
       alpha = 0.7
     ) +
     ggplot2::labs(
-      title = "Distribution of peak counts",
-      x = "Peak counts in a file",
-      y = "Number of FASTQ files"
+      title = "Distribution of peak #",
+      x = "Sample peak counts",
+      y = "Number of samples"
     ) +
     base_theme(x_angle = 0, ...)
 
@@ -295,7 +296,7 @@ plot_peaks_statistics <- function(
     ) +
     base_theme(...)
 
-
+  if(combine_plot){
   plot <- patchwork::wrap_plots(
     peak_num_hist,
     peak_pos_hist,
@@ -303,6 +304,11 @@ plot_peaks_statistics <- function(
     nrow = 1,
     widths = c(0.24, 0.38, 0.38)
   )
+  } else {
+    plot = list(peak_num_hist = peak_num_hist,
+                peak_pos_hist = peak_pos_hist,
+                peak_pos_hist_major = peak_pos_hist_major)
+  }
 
   return(plot)
 }

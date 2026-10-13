@@ -44,7 +44,7 @@
 #'   base_theme(title_hjust = 0)
 #'
 #' @export
-base_theme <- function(base_size = 11, base_family = "", title_hjust = 0.5,
+base_theme <- function(base_size = 11, base_family = "", title_hjust = 0.5, title_size = 11,
                        x_angle = 20, x_hjust = 0.5, x_vjust = 0.5, x_size = 11) {
   if (!is.numeric(base_size) || length(base_size) != 1L ||
       is.na(base_size) || !is.finite(base_size) || base_size <= 0) {
@@ -69,7 +69,7 @@ base_theme <- function(base_size = 11, base_family = "", title_hjust = 0.5,
         fill = "transparent",
         colour = NA
       ),
-      plot.title = ggplot2::element_text(hjust = title_hjust),
+      plot.title = ggplot2::element_text(hjust = title_hjust, size = title_size),
       axis.text.x = ggplot2::element_text(
         angle = x_angle,
         hjust = x_hjust,
