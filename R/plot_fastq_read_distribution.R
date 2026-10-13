@@ -147,26 +147,13 @@ plot_fastq_read_distribution <- function(info,
     stringsAsFactors = FALSE
   )
 
-  base_theme <- ggplot2::theme_classic() +
-    ggplot2::theme(
-      panel.grid.major = ggplot2::element_line(
-        colour = "grey85",
-        linewidth = 0.2
-      ),
-      panel.grid.minor = ggplot2::element_blank(),
-      plot.background = ggplot2::element_rect(
-        fill = "transparent",
-        colour = NA
-      )
-    )
-
   g1 <- ggplot2::ggplot(
     sample_depth,
     ggplot2::aes(x = .data$sample, y = .data$depth)
   ) +
     ggplot2::geom_col(fill = "lightblue") +
     ggplot2::labs(title = title, x = "Samples", y = "Depth") +
-    base_theme +
+    base_theme() +
     ggplot2::theme(
       plot.title = ggplot2::element_text(hjust = 0.5),
       axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, size = 6),
@@ -179,7 +166,7 @@ plot_fastq_read_distribution <- function(info,
   ) +
     ggplot2::geom_histogram(bins = 30, fill = "grey", colour = "white") +
     ggplot2::labs(x = "Depth", y = "Number of samples") +
-    base_theme +
+    base_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30),
                    plot.margin = ggplot2::margin(2, 5, 2, 5, unit = "pt"))
   if (!is.null(channel_label)) {
@@ -200,7 +187,7 @@ plot_fastq_read_distribution <- function(info,
     ggplot2::geom_line(colour = "blue") +
     # ggplot2::facet_wrap(~type, nrow = 2, scales = "free_x") +
     ggplot2::labs(x = "Depth", y = "Percentile (%)") +
-    base_theme +
+    base_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30),
                    plot.margin = ggplot2::margin(2, 15, 2, 5, unit = "pt"))
 
