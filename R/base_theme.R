@@ -45,7 +45,7 @@
 #'
 #' @export
 base_theme <- function(base_size = 11, base_family = "", title_hjust = 0.5,
-                       x_angle = 20, x_hjust = 0.5, x_vjust = 0, x_size = 11) {
+                       x_angle = 20, x_hjust = 0.5, x_vjust = 0.5, x_size = 11) {
   if (!is.numeric(base_size) || length(base_size) != 1L ||
       is.na(base_size) || !is.finite(base_size) || base_size <= 0) {
     stop("`base_size` must be a single positive number.", call. = FALSE)
