@@ -75,7 +75,7 @@ test_that("get_peaks_info returns a typed empty data frame", {
   expect_type(peaks$major, "logical")
 })
 
-test_that("plot_peaks_statistics returns three named ggplots", {
+test_that("plot_peaks_statistics returns a three-panel patchwork", {
   fastq <- tempfile(fileext = ".fastq")
   write_peaks_info_fastq(fastq, c(95:105, 295:305))
 
@@ -86,13 +86,9 @@ test_that("plot_peaks_statistics returns three named ggplots", {
     title_hjust = 0
   )
 
-  expect_named(
-    plots,
-    c("peak_num_hist", "peak_pos_hist", "peak_pos_hist_major")
-  )
-  expect_true(all(vapply(plots, inherits, logical(1), "ggplot")))
-  expect_equal(plots$peak_pos_hist$labels$x, "Peak read length (bp)")
-  expect_equal(plots$peak_pos_hist_major$labels$x, "Major peak read length (bp)")
+  expect_s3_class(plots, "patchwork")
+  expect_s3_class(plots, "ggplot")
+  expect_length(plots$patches$plots, 2L)
 })
 
 test_that("plot_peaks_statistics errors clearly when no peaks are available", {

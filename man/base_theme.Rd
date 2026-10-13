@@ -10,7 +10,7 @@ base_theme(
   title_hjust = 0.5,
   x_angle = 20,
   x_hjust = 0.5,
-  x_vjust = 0,
+  x_vjust = 0.5,
   x_size = 11
 )
 }

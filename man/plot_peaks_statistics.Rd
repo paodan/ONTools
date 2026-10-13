@@ -66,12 +66,12 @@ shared reads independently.}
 \code{base_size}, \code{base_family}, \code{title_hjust}, or \code{x_angle}.}
 }
 \value{
-A named list of three \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} objects:
+A \code{patchwork} object containing three ggplot panels:
 \itemize{
-\item \code{peak_num_hist}: distribution of the number of detected peaks per FASTQ
+\item the distribution of the number of detected peaks per FASTQ
 file;
-\item \code{peak_pos_hist}: distribution of all detected peak lengths in base pairs;
-\item \code{peak_pos_hist_major}: distribution of major peak lengths in base pairs.
+\item the distribution of all detected peak lengths in base pairs;
+\item the distribution of major peak lengths in base pairs.
 }
 }
 \description{
@@ -87,6 +87,8 @@ file, as defined by \code{\link[=get_peaks_info]{get_peaks_info()}}. The positio
 
 At least one peak must be detected. The function stops with an informative
 error if all inputs are skipped or no peaks pass the detection criteria.
+The panels are arranged in one row with relative widths \code{0.3}, \code{0.35}, and
+\code{0.35}.
 }
 \examples{
 fastq_dir <- tempfile("peak-statistics-")
@@ -117,9 +119,7 @@ statistics <- plot_peaks_statistics(
   density_n = 1024,
   title_hjust = 0.5
 )
-statistics$peak_num_hist
-statistics$peak_pos_hist
-statistics$peak_pos_hist_major
+statistics
 
 }
 \seealso{

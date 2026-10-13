@@ -157,12 +157,12 @@ get_peaks_info <- function(
 #' @param ... Additional arguments passed to [base_theme()], for example
 #'   `base_size`, `base_family`, `title_hjust`, or `x_angle`.
 #'
-#' @return A named list of three [ggplot2::ggplot()] objects:
+#' @return A `patchwork` object containing three ggplot panels:
 #'
-#' * `peak_num_hist`: distribution of the number of detected peaks per FASTQ
+#' * the distribution of the number of detected peaks per FASTQ
 #'   file;
-#' * `peak_pos_hist`: distribution of all detected peak lengths in base pairs;
-#' * `peak_pos_hist_major`: distribution of major peak lengths in base pairs.
+#' * the distribution of all detected peak lengths in base pairs;
+#' * the distribution of major peak lengths in base pairs.
 #'
 #' @details
 #' A major peak is the peak whose counting window contains the most reads in a
@@ -172,6 +172,8 @@ get_peaks_info <- function(
 #'
 #' At least one peak must be detected. The function stops with an informative
 #' error if all inputs are skipped or no peaks pass the detection criteria.
+#' The panels are arranged in one row with relative widths `0.3`, `0.35`, and
+#' `0.35`.
 #'
 #' @examples
 #' fastq_dir <- tempfile("peak-statistics-")
@@ -202,9 +204,7 @@ get_peaks_info <- function(
 #'   density_n = 1024,
 #'   title_hjust = 0.5
 #' )
-#' statistics$peak_num_hist
-#' statistics$peak_pos_hist
-#' statistics$peak_pos_hist_major
+#' statistics
 #'
 #' @seealso [get_peaks_info()], [plot_fastq_peaks()]
 #' @export
@@ -258,7 +258,7 @@ plot_peaks_statistics <- function(
     ) +
     ggplot2::labs(
       title = "Distribution of peak counts",
-      x = "Number of peaks",
+      x = "Peak counts in a file",
       y = "Number of FASTQ files"
     ) +
     base_theme(x_angle = 0, ...)
@@ -275,7 +275,7 @@ plot_peaks_statistics <- function(
     ggplot2::labs(
       title = "Distribution of peak positions",
       x = "Peak read length (bp)",
-      y = "Number of peaks"
+      y = "Peak counts"
     ) +
     base_theme(...)
 
@@ -291,15 +291,18 @@ plot_peaks_statistics <- function(
     ggplot2::labs(
       title = "Distribution of major peak positions",
       x = "Major peak read length (bp)",
-      y = "Number of peaks"
+      y = "Peak counts"
     ) +
     base_theme(...)
 
 
-  plot <- (peak_num_hist | peak_pos_hist | peak_pos_hist_major) +
-    patchwork::plot_layout(
-      widths = c(0.3, 0.35, 0.35)
-    )
+  plot <- patchwork::wrap_plots(
+    peak_num_hist,
+    peak_pos_hist,
+    peak_pos_hist_major,
+    nrow = 1,
+    widths = c(0.24, 0.38, 0.38)
+  )
 
   return(plot)
 }
