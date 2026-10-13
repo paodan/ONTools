@@ -13,6 +13,11 @@
 #'   plot title, passed to [ggplot2::element_text()]. Common values are `0` for
 #'   left alignment, `0.5` for centered alignment (the default), and `1` for
 #'   right alignment.
+#' @param x_angle Numeric scalar giving the rotation angle of x-axis labels in
+#'   degrees.
+#' @param x_hjust,x_vjust Numeric scalars giving the horizontal and vertical
+#'   justification of x-axis labels.
+#' @param x_size Positive number giving the x-axis label font size in points.
 #'
 #' @return A complete ggplot2 theme object. The theme uses:
 #'
@@ -65,6 +70,11 @@ base_theme <- function(base_size = 11, base_family = "", title_hjust = 0.5,
         colour = NA
       ),
       plot.title = ggplot2::element_text(hjust = title_hjust),
-      axis.text.x = ggplot2::element_text(angle = x_angle, hjust = x_hjust, size = x_size)
+      axis.text.x = ggplot2::element_text(
+        angle = x_angle,
+        hjust = x_hjust,
+        vjust = x_vjust,
+        size = x_size
+      )
     )
 }

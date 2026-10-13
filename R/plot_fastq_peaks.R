@@ -72,7 +72,8 @@
 #' names(plots)
 #' attr(plots[[1L]], "peak_counts")
 #'
-#' @seealso [plot_read_length_peaks()], [split_fastq()]
+#' @seealso [plot_read_length_peaks()], [get_peaks_info()],
+#'   [plot_peaks_statistics()], [split_fastq()]
 #' @export
 plot_fastq_peaks <- function(
     fastqs,

@@ -172,5 +172,6 @@ attr(plots[[1L]], "peak_counts")
 
 }
 \seealso{
-\code{\link[=plot_read_length_peaks]{plot_read_length_peaks()}}, \code{\link[=split_fastq]{split_fastq()}}
+\code{\link[=plot_read_length_peaks]{plot_read_length_peaks()}}, \code{\link[=get_peaks_info]{get_peaks_info()}},
+\code{\link[=plot_peaks_statistics]{plot_peaks_statistics()}}, \code{\link[=split_fastq]{split_fastq()}}
 }

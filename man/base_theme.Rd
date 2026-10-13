@@ -4,7 +4,15 @@
 \alias{base_theme}
 \title{Base ggplot2 theme used by ONTools plots}
 \usage{
-base_theme(base_size = 11, base_family = "", title_hjust = 0.5)
+base_theme(
+  base_size = 11,
+  base_family = "",
+  title_hjust = 0.5,
+  x_angle = 20,
+  x_hjust = 0.5,
+  x_vjust = 0,
+  x_size = 11
+)
 }
 \arguments{
 \item{base_size}{Positive number giving the base font size in points, passed
@@ -18,6 +26,14 @@ default font family.}
 plot title, passed to \code{\link[ggplot2:element]{ggplot2::element_text()}}. Common values are \code{0} for
 left alignment, \code{0.5} for centered alignment (the default), and \code{1} for
 right alignment.}
+
+\item{x_angle}{Numeric scalar giving the rotation angle of x-axis labels in
+degrees.}
+
+\item{x_hjust, x_vjust}{Numeric scalars giving the horizontal and vertical
+justification of x-axis labels.}
+
+\item{x_size}{Positive number giving the x-axis label font size in points.}
 }
 \value{
 A complete ggplot2 theme object. The theme uses:
