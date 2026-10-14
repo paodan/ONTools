@@ -153,7 +153,7 @@ plot_fastq_read_distribution <- function(info,
   ) +
     ggplot2::geom_col(fill = "lightblue") +
     ggplot2::labs(title = title, x = "Samples", y = "Depth") +
-    base_theme() +
+    base_theme(title_size = 13) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(hjust = 0.5),
       axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, size = 6),
@@ -166,7 +166,7 @@ plot_fastq_read_distribution <- function(info,
   ) +
     ggplot2::geom_histogram(bins = 30, fill = "grey", colour = "white") +
     ggplot2::labs(x = "Depth", y = "Number of samples") +
-    base_theme(title_size = 13) +
+    base_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30),
                    plot.margin = ggplot2::margin(2, 5, 2, 5, unit = "pt"))
   if (!is.null(channel_label)) {
@@ -185,7 +185,6 @@ plot_fastq_read_distribution <- function(info,
     quantile_data,
     ggplot2::aes(x = .data$value, y = .data$percentile)) +
     ggplot2::geom_line(colour = "blue") +
-    # ggplot2::facet_wrap(~type, nrow = 2, scales = "free_x") +
     ggplot2::labs(x = "Depth", y = "Percentile (%)") +
     base_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30),
@@ -203,10 +202,6 @@ plot_fastq_read_distribution <- function(info,
       heights = c(0.25, 1)
     )
 
-  # plot <- g1 / (g2 | g3 | g4) +
-  #   patchwork::plot_layout(
-  #     widths = c(0.6, .8, 1),
-  #     heights = c(0.2, 1))
   attr(plot, "sample_depth") <- sample_depth
   attr(plot, "quantile_data") <- quantile_data
   plot
