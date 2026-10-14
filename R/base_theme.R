@@ -77,6 +77,6 @@ base_theme <- function(base_size = 11, base_family = "", title_hjust = 0.5, titl
         vjust = x_vjust,
         size = x_size
       ),
-      axis.title.x = ggplot2::element_text(margin = ggplot2::margin(t = 10))
+      axis.title.x = ggplot2::element_text(margin = ggplot2::margin(t = 5))
     )
 }
