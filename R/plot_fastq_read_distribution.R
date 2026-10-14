@@ -152,7 +152,7 @@ plot_fastq_read_distribution <- function(info,
     ggplot2::aes(x = .data$sample, y = .data$depth)
   ) +
     ggplot2::geom_col(fill = "lightblue") +
-    ggplot2::labs(title = title, x = "Samples", y = "Depth") +
+    ggplot2::labs(title = title, x = "Samples", y = "Read #") +
     base_theme(title_size = 13) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(hjust = 0.5),
@@ -165,7 +165,7 @@ plot_fastq_read_distribution <- function(info,
     ggplot2::aes(x = .data$depth)
   ) +
     ggplot2::geom_histogram(bins = 30, fill = "grey", colour = "white") +
-    ggplot2::labs(x = "Depth", y = "Number of samples") +
+    ggplot2::labs(x = "Read #", y = "Number of samples") +
     base_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30),
                    plot.margin = ggplot2::margin(2, 5, 2, 5, unit = "pt"))
@@ -185,7 +185,7 @@ plot_fastq_read_distribution <- function(info,
     quantile_data,
     ggplot2::aes(x = .data$value, y = .data$percentile)) +
     ggplot2::geom_line(colour = "blue") +
-    ggplot2::labs(x = "Depth", y = "Percentile (%)") +
+    ggplot2::labs(x = "Read #", y = "Percentile (%)") +
     base_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30),
                    plot.margin = ggplot2::margin(2, 15, 2, 5, unit = "pt"))
