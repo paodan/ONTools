@@ -136,13 +136,90 @@ test_that("summarise_variant_events excludes every NO_CALL subtype", {
   no_call$type <- "NO_CALL"
   no_call$label <- "NO_CALL_N_skip"
 
-  summary <- summarise_variant_events(rbind(events, no_call), min_ratio = 1)
+  summary <- summarise_variant_events(
+    rbind(events, no_call),
+    min_ratio = 1,
+    min_event_reads = 1,
+    min_callable_reads = 1
+  )
 
   expect_equal(unique(summary$event_frequency$Callable_reads), 2L)
   expect_false("NO_CALL_N_skip" %in% summary$event_frequency$label)
   expect_equal(sum(summary$var_info$Read_count), 2L)
   expect_error(summarise_variant_events(events, min_ratio = 101),
                "between 0 and 100")
+})
+
+test_that("event filtering combines absolute support and relative frequency", {
+  singleton_labels <- paste0(
+    "SNP_", seq_len(10), "_", seq_len(10), ":A>C"
+  )
+  events <- data.frame(
+    read_id = paste0("read", seq_len(13)),
+    type = "SNP",
+    label = c(singleton_labels, rep("SNP_20_20:G>T", 3)),
+    sample_id = "sample",
+    Ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 30L,
+    stringsAsFactors = FALSE
+  )
+
+  summary <- summarise_variant_events(
+    events,
+    min_ratio = 1,
+    min_event_reads = 3,
+    min_callable_reads = 10
+  )
+
+  common <- summary$event_frequency$label == "SNP_20_20:G>T"
+  singletons <- summary$event_frequency$label %in% singleton_labels
+  expect_true(summary$event_frequency$Pass_filter[common])
+  expect_true(all(!summary$event_frequency$Pass_filter[singletons]))
+  expect_equal(
+    summary$var_info$Read_count[
+      summary$var_info$Variation_combination == "WT"
+    ],
+    10L
+  )
+  expect_equal(
+    summary$var_info$Read_count[
+      summary$var_info$Variation_combination == "SNP_20_20:G>T"
+    ],
+    3L
+  )
+})
+
+test_that("groups below callable-read threshold are not summarized", {
+  events <- data.frame(
+    read_id = paste0("read", seq_len(5)),
+    type = "SNP",
+    label = rep("SNP_3_3:G>A", 5),
+    sample_id = "sample",
+    Ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 8L,
+    stringsAsFactors = FALSE
+  )
+
+  summary <- summarise_variant_events(
+    events,
+    min_ratio = 1,
+    min_event_reads = 3,
+    min_callable_reads = 10
+  )
+
+  expect_equal(summary$event_frequency$Callable_reads, 5L)
+  expect_false(summary$event_frequency$Pass_filter)
+  expect_equal(nrow(summary$var_info), 0L)
+  expect_error(
+    summarise_variant_events(events, min_event_reads = 0),
+    "positive integer"
+  )
+  expect_error(
+    summarise_variant_events(events, min_callable_reads = 0),
+    "positive integer"
+  )
 })
 
 test_that("editing caches are invalidated by signature changes", {

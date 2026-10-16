@@ -12,6 +12,8 @@ run_editing_batch(
   cache_dir = file.path(bam_root, "event_cache"),
   min_anchor = 0L,
   min_ratio = 1,
+  min_event_reads = 3L,
+  min_callable_reads = 10L,
   min_mapq = 20L,
   mc.cores = NULL,
   force_rebuild = FALSE,
@@ -42,6 +44,12 @@ calling interval.}
 
 \item{min_ratio}{Percentage threshold passed to
 \code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
+
+\item{min_event_reads}{Minimum number of distinct reads supporting a non-WT
+event label. Passed to \code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
+
+\item{min_callable_reads}{Minimum callable read depth required to summarize a
+sample/reference group. Passed to \code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
 
 \item{min_mapq}{Integer between 0 and 255. Alignments below this mapping
 quality are excluded.}
@@ -87,6 +95,8 @@ result <- run_editing_batch(
   bam_root = "/path/to/barcode-directories",
   min_anchor = 10,
   min_ratio = 1,
+  min_event_reads = 3,
+  min_callable_reads = 10,
   min_mapq = 20,
   colored_xlsx = "editing-summary.xlsx"
 )

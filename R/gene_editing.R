@@ -749,6 +749,7 @@ empty_event_frequency <- function() {
     Supporting_reads = integer(),
     Callable_reads = integer(),
     Ratio = numeric(),
+    Pass_filter = logical(),
     stringsAsFactors = FALSE
   )
 }
@@ -770,19 +771,30 @@ validate_min_ratio <- function(min_ratio) {
 #' Summarize per-read gene-editing events
 #'
 #' `summarise_variant_events()` first calculates read support for each event
-#' label. Labels below `min_ratio` are removed from read-level combinations;
-#' reads with no retained non-WT label are classified as WT. It then counts each
-#' retained event combination per sample and reference.
+#' label. A non-WT label is retained only when it reaches both the absolute
+#' support threshold `min_event_reads` and the relative threshold `min_ratio`.
+#' Reads with no retained non-WT label are classified as WT. Sample/reference
+#' groups with fewer than `min_callable_reads` callable reads are retained in
+#' `event_frequency` for inspection but omitted from the combination tables.
 #'
 #' @param events_all Event data frame returned by [make_variant_events()].
 #' @param min_ratio Number between 0 and 100. An individual event label must
 #'   reach this percentage of callable reads to be retained, and the final
 #'   combination table is filtered at the same percentage.
+#' @param min_event_reads Positive integer. Minimum number of distinct callable
+#'   reads that must support a non-WT event label. This absolute threshold
+#'   prevents singleton sequencing errors from passing when total read depth is
+#'   low.
+#' @param min_callable_reads Positive integer. Minimum number of callable reads
+#'   required for a sample/reference group to produce `var_info`. Groups below
+#'   this depth remain visible in `event_frequency` with `Pass_filter = FALSE`.
 #'
 #' @return A list containing the original `events_all`, per-label
 #' `event_frequency`, the complete combination table `var_info`, and its
-#' thresholded form `var_info_filtered`. Reads with `type = "NO_CALL"` are
-#' excluded from all denominators.
+#' thresholded form `var_info_filtered`. `event_frequency$Pass_filter` indicates
+#' whether each label passed the callable-depth, support-count, and percentage
+#' requirements. Reads with `type = "NO_CALL"` are excluded from all
+#' denominators.
 #'
 #' @examples
 #' aln <- data.frame(
@@ -800,11 +812,27 @@ validate_min_ratio <- function(min_ratio) {
 #'   min_anchor = 0,
 #'   mc.cores = 1
 #' )
-#' summarise_variant_events(events, min_ratio = 1)$var_info
+#' summarise_variant_events(
+#'   events,
+#'   min_ratio = 1,
+#'   min_event_reads = 1,
+#'   min_callable_reads = 1
+#' )$var_info
 #'
 #' @export
-summarise_variant_events <- function(events_all, min_ratio = 1) {
+summarise_variant_events <- function(events_all,
+                                     min_ratio = 1,
+                                     min_event_reads = 3L,
+                                     min_callable_reads = 10L) {
   min_ratio <- validate_min_ratio(min_ratio)
+  min_event_reads <- validate_positive_integer(
+    min_event_reads,
+    "min_event_reads"
+  )
+  min_callable_reads <- validate_positive_integer(
+    min_callable_reads,
+    "min_callable_reads"
+  )
   if (!is.data.frame(events_all)) {
     stop("`events_all` must be a data frame.", call. = FALSE)
   }
@@ -888,8 +916,43 @@ summarise_variant_events <- function(events_all, min_ratio = 1) {
   event_frequency$Ratio <- 100 * event_frequency$Supporting_reads /
     event_frequency$Callable_reads
 
+  group_key <- function(sample_id, reference_name) {
+    paste(sample_id, reference_name, sep = "\034")
+  }
+  eligible_groups <- denominators[
+    denominators$Callable_reads >= min_callable_reads,
+    ,
+    drop = FALSE
+  ]
+  eligible_group_key <- group_key(
+    eligible_groups$sample_id,
+    eligible_groups$Ref_name
+  )
+  frequency_group_key <- group_key(
+    event_frequency$sample_id,
+    event_frequency$Ref_name
+  )
+  event_frequency$Pass_filter <-
+    frequency_group_key %in% eligible_group_key &
+    (
+      event_frequency$label == "WT" |
+        (
+          event_frequency$Supporting_reads >= min_event_reads &
+            event_frequency$Ratio >= min_ratio
+        )
+    )
+
+  if (length(eligible_group_key) == 0L) {
+    return(list(
+      events_all = events_all,
+      event_frequency = event_frequency,
+      var_info = empty_summary,
+      var_info_filtered = empty_summary
+    ))
+  }
+
   frequent_labels <- event_frequency[
-    event_frequency$Ratio >= min_ratio,
+    event_frequency$Pass_filter,
     c("sample_id", "Ref_name", "label"),
     drop = FALSE
   ]
@@ -899,27 +962,36 @@ summarise_variant_events <- function(events_all, min_ratio = 1) {
     frequent_labels$label,
     sep = "\034"
   )
-  event_key <- paste(
+  callable_group_key <- group_key(
     callable_events$sample_id,
-    callable_events$Ref_name,
-    callable_events$label,
+    callable_events$Ref_name
+  )
+  analysis_events <- callable_events[
+    callable_group_key %in% eligible_group_key,
+    ,
+    drop = FALSE
+  ]
+  event_key <- paste(
+    analysis_events$sample_id,
+    analysis_events$Ref_name,
+    analysis_events$label,
     sep = "\034"
   )
   keep_event <- event_key %in% frequent_key
   read_key <- paste(
-    callable_events$sample_id,
-    callable_events$Ref_name,
-    callable_events$read_id,
+    analysis_events$sample_id,
+    analysis_events$Ref_name,
+    analysis_events$read_id,
     sep = "\034"
   )
-  read_groups <- split(seq_len(nrow(callable_events)), read_key)
+  read_groups <- split(seq_len(nrow(analysis_events)), read_key)
 
   first_column <- function(data, column) {
     if (column %in% names(data)) as.character(data[[column]][[1L]]) else
       NA_character_
   }
   combinations <- lapply(read_groups, function(index) {
-    events <- callable_events[index, , drop = FALSE]
+    events <- analysis_events[index, , drop = FALSE]
     retained <- unique(events$label[keep_event[index]])
     retained <- retained[retained != "WT"]
     if (length(retained) == 0L) retained <- "WT"
@@ -1237,6 +1309,10 @@ normalize_editing_sample_info <- function(sample_info) {
 #'   calling interval.
 #' @param min_ratio Percentage threshold passed to
 #'   [summarise_variant_events()].
+#' @param min_event_reads Minimum number of distinct reads supporting a non-WT
+#'   event label. Passed to [summarise_variant_events()].
+#' @param min_callable_reads Minimum callable read depth required to summarize a
+#'   sample/reference group. Passed to [summarise_variant_events()].
 #' @param min_mapq Integer between 0 and 255. Alignments below this mapping
 #'   quality are excluded.
 #' @param mc.cores Optional worker count passed to [make_variant_events()].
@@ -1271,6 +1347,8 @@ normalize_editing_sample_info <- function(sample_info) {
 #'   bam_root = "/path/to/barcode-directories",
 #'   min_anchor = 10,
 #'   min_ratio = 1,
+#'   min_event_reads = 3,
+#'   min_callable_reads = 10,
 #'   min_mapq = 20,
 #'   colored_xlsx = "editing-summary.xlsx"
 #' )
@@ -1286,6 +1364,8 @@ run_editing_batch <- function(sample_info,
                               cache_dir = file.path(bam_root, "event_cache"),
                               min_anchor = 0L,
                               min_ratio = 1,
+                              min_event_reads = 3L,
+                              min_callable_reads = 10L,
                               min_mapq = 20L,
                               mc.cores = NULL,
                               force_rebuild = FALSE,
@@ -1309,6 +1389,14 @@ run_editing_batch <- function(sample_info,
   check_scalar_character(cache_dir, "cache_dir")
   min_anchor <- validate_nonnegative_integer(min_anchor, "min_anchor")
   min_ratio <- validate_min_ratio(min_ratio)
+  min_event_reads <- validate_positive_integer(
+    min_event_reads,
+    "min_event_reads"
+  )
+  min_callable_reads <- validate_positive_integer(
+    min_callable_reads,
+    "min_callable_reads"
+  )
   min_mapq <- validate_nonnegative_integer(min_mapq, "min_mapq")
   if (min_mapq > 255L) stop("`min_mapq` cannot exceed 255.", call. = FALSE)
   cores <- normalize_editing_cores(mc.cores)
@@ -1453,7 +1541,12 @@ run_editing_batch <- function(sample_info,
     for (reference_name in reference_names) {
       events <- cached_events[[reference_name]]
       if (is.null(events) || nrow(events) == 0L) next
-      summary_result <- summarise_variant_events(events, min_ratio = min_ratio)
+      summary_result <- summarise_variant_events(
+        events,
+        min_ratio = min_ratio,
+        min_event_reads = min_event_reads,
+        min_callable_reads = min_callable_reads
+      )
       table <- summary_result$var_info_filtered
       if (nrow(table) == 0L) next
       table$barcode <- barcode

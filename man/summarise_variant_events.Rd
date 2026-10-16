@@ -4,7 +4,12 @@
 \alias{summarise_variant_events}
 \title{Summarize per-read gene-editing events}
 \usage{
-summarise_variant_events(events_all, min_ratio = 1)
+summarise_variant_events(
+  events_all,
+  min_ratio = 1,
+  min_event_reads = 3L,
+  min_callable_reads = 10L
+)
 }
 \arguments{
 \item{events_all}{Event data frame returned by \code{\link[=make_variant_events]{make_variant_events()}}.}
@@ -12,18 +17,31 @@ summarise_variant_events(events_all, min_ratio = 1)
 \item{min_ratio}{Number between 0 and 100. An individual event label must
 reach this percentage of callable reads to be retained, and the final
 combination table is filtered at the same percentage.}
+
+\item{min_event_reads}{Positive integer. Minimum number of distinct callable
+reads that must support a non-WT event label. This absolute threshold
+prevents singleton sequencing errors from passing when total read depth is
+low.}
+
+\item{min_callable_reads}{Positive integer. Minimum number of callable reads
+required for a sample/reference group to produce \code{var_info}. Groups below
+this depth remain visible in \code{event_frequency} with \code{Pass_filter = FALSE}.}
 }
 \value{
 A list containing the original \code{events_all}, per-label
 \code{event_frequency}, the complete combination table \code{var_info}, and its
-thresholded form \code{var_info_filtered}. Reads with \code{type = "NO_CALL"} are
-excluded from all denominators.
+thresholded form \code{var_info_filtered}. \code{event_frequency$Pass_filter} indicates
+whether each label passed the callable-depth, support-count, and percentage
+requirements. Reads with \code{type = "NO_CALL"} are excluded from all
+denominators.
 }
 \description{
 \code{summarise_variant_events()} first calculates read support for each event
-label. Labels below \code{min_ratio} are removed from read-level combinations;
-reads with no retained non-WT label are classified as WT. It then counts each
-retained event combination per sample and reference.
+label. A non-WT label is retained only when it reaches both the absolute
+support threshold \code{min_event_reads} and the relative threshold \code{min_ratio}.
+Reads with no retained non-WT label are classified as WT. Sample/reference
+groups with fewer than \code{min_callable_reads} callable reads are retained in
+\code{event_frequency} for inspection but omitted from the combination tables.
 }
 \examples{
 aln <- data.frame(
@@ -41,6 +59,11 @@ events <- make_variant_events(
   min_anchor = 0,
   mc.cores = 1
 )
-summarise_variant_events(events, min_ratio = 1)$var_info
+summarise_variant_events(
+  events,
+  min_ratio = 1,
+  min_event_reads = 1,
+  min_callable_reads = 1
+)$var_info
 
 }
