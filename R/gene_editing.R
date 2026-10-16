@@ -557,6 +557,337 @@ process_one_read2 <- function(
   )
 }
 
+filter_reads_by_region <- function(
+    aln,
+    region_start,
+    region_end,
+    min_anchor = 2
+) {
+  # 解析每条 CIGAR 中消耗 reference 坐标的部分
+  ref_length <- vapply(as.character(aln$cigar), function(cigar) {
+    ops <- regmatches(
+      cigar,
+      gregexpr("[0-9]+[MIDNSHP=X]", cigar)
+    )[[1]]
+
+    lens <- as.integer(sub("[A-Z=]$", "", ops))
+    codes <- sub("^[0-9]+", "", ops)
+
+    sum(lens[codes %in% c("M", "D", "N", "=", "X")])
+  }, integer(1))
+
+  read_start <- as.integer(aln$pos)
+  read_end <- read_start + ref_length - 1L
+
+  required_start <- max(1L, region_start - min_anchor)
+  required_end <- region_end + min_anchor
+
+  keep <- read_start <= required_start &
+    read_end >= required_end
+
+  aln[keep]
+}
+
+# 第一步：逐 read 解析一次，生成事件表
+make_variant_events <- function(
+    aln_valid,
+    reference = ref,
+    region_start = 50,
+    region_end = 220,
+    min_anchor = 2,
+    sample_id = "sample",
+    mc.cores = NULL
+) {
+  reference_name <- names(reference)
+
+  if (length(reference_name) != 1L) {
+    stop("reference 必须是一个带名称的序列。")
+  }
+
+  if (is.null(mc.cores)) {
+    ncores <- parallel::detectCores() - 1L
+    if (is.na(ncores) || ncores < 1L) ncores <- 1L
+  } else {
+    ncores <- max(1L, as.integer(mc.cores))
+  }
+
+  aln_valid <- filter_reads_by_region(
+    aln = aln_valid,
+    region_start = region_start,
+    region_end = region_end,
+    min_anchor = min_anchor
+  )
+
+  events <- parallel::mclapply(
+    seq_along(aln_valid$qname),
+    function(i) {
+      one_read <- process_one_read2(
+        read_id = aln_valid$qname[i],
+        read_seq = as.character(aln_valid$seq[i]),
+        cigar = as.character(aln_valid$cigar[i]),
+        ref_start = as.integer(aln_valid$pos[i]),
+        reference = reference,
+        region_start = region_start,
+        region_end = region_end,
+        min_anchor = min_anchor
+      )
+
+      one_read$events
+    },
+    mc.cores = ncores
+  )
+
+  events <- Filter(Negate(is.null), events)
+
+  if (length(events) == 0L) {
+    return(data.frame())
+  }
+
+  events_all <- do.call(rbind, events)
+
+  # 给结果附上样本和分析区域信息，方便合并不同 BAM
+  events_all$sample_id <- sample_id
+  events_all$Ref_name <- reference_name
+  events_all$region_start <- region_start
+  events_all$region_end <- region_end
+
+  rownames(events_all) <- NULL
+  events_all
+}
+
+
+# 第二步：对已生成的事件表汇总，并按 min_ratio 过滤
+summarise_variant_events <- function(events_all, min_ratio = 1) {
+  if (min_ratio > 20) {
+    warning("min_ratio = ", min_ratio, "%，请确认这个阈值是否符合预期。")
+  }
+
+  empty_summary <- data.frame(
+    sample_id = character(),
+    Ref_name = character(),
+    Index = integer(),
+    Read_count = integer(),
+    Ratio = numeric(),
+    Variation_count = integer(),
+    Variation_combination = character(),
+    region_start = integer(),
+    region_end = integer(),
+    reference_aligned_trim = character(),
+    read_aligned_trim = character(),
+    stringsAsFactors = FALSE
+  )
+
+  if (nrow(events_all) == 0L) {
+    return(list(
+      events_all = events_all,
+      event_frequency = data.frame(),
+      var_info = empty_summary,
+      var_info_filtered = empty_summary
+    ))
+  }
+
+  # 兼容旧事件表：没有 sample_id 时，全部视为一个样本
+  if (!"sample_id" %in% names(events_all)) {
+    events_all$sample_id <- "sample"
+  }
+
+  events_exclude_no_call <- events_all[
+    events_all$label != "NO_CALL",
+    ,
+    drop = FALSE
+  ]
+
+  if (nrow(events_exclude_no_call) == 0L) {
+    return(list(
+      events_all = events_all,
+      event_frequency = data.frame(),
+      var_info = empty_summary,
+      var_info_filtered = empty_summary
+    ))
+  }
+
+  # 每个 label 在每个样本、参考序列中支持的 read 数
+  support_data <- unique(events_exclude_no_call[
+    , c("sample_id", "Ref_name", "read_id", "label"),
+    drop = FALSE
+  ])
+
+  event_frequency <- stats::aggregate(
+    read_id ~ sample_id + Ref_name + label,
+    data = support_data,
+    FUN = length
+  )
+  names(event_frequency)[names(event_frequency) == "read_id"] <-
+    "Supporting_reads"
+
+  callable_reads <- unique(events_exclude_no_call[
+    , c("sample_id", "Ref_name", "read_id"),
+    drop = FALSE
+  ])
+
+  denominators <- stats::aggregate(
+    read_id ~ sample_id + Ref_name,
+    data = callable_reads,
+    FUN = length
+  )
+  names(denominators)[names(denominators) == "read_id"] <-
+    "Callable_reads"
+
+  event_frequency <- merge(
+    event_frequency,
+    denominators,
+    by = c("sample_id", "Ref_name"),
+    all.x = TRUE
+  )
+  event_frequency$Ratio <- 100 *
+    event_frequency$Supporting_reads / event_frequency$Callable_reads
+
+  # 低频 label 不纳入组合
+  frequent_labels <- event_frequency[
+    event_frequency$Ratio >= min_ratio,
+    c("sample_id", "Ref_name", "label"),
+    drop = FALSE
+  ]
+
+  frequent_key <- paste(
+    frequent_labels$sample_id,
+    frequent_labels$Ref_name,
+    frequent_labels$label,
+    sep = "\034"
+  )
+
+  event_key <- paste(
+    events_exclude_no_call$sample_id,
+    events_exclude_no_call$Ref_name,
+    events_exclude_no_call$label,
+    sep = "\034"
+  )
+
+  keep_event <- event_key %in% frequent_key
+
+  # 按样本、参考序列和 read 汇总事件组合
+  read_key <- paste(
+    events_exclude_no_call$sample_id,
+    events_exclude_no_call$Ref_name,
+    events_exclude_no_call$read_id,
+    sep = "\034"
+  )
+
+  read_groups <- split(seq_len(nrow(events_exclude_no_call)), read_key)
+
+  get_first_column <- function(x, column) {
+    if (column %in% names(x)) as.character(x[[column]][1]) else NA_character_
+  }
+
+  comb <- lapply(read_groups, function(idx) {
+    ev <- events_exclude_no_call[idx, , drop = FALSE]
+    retained_labels <- unique(ev$label[keep_event[idx]])
+
+    if (length(retained_labels) == 0L) {
+      retained_labels <- "WT"
+    }
+
+    # 按事件在表中的顺序保留组合标签
+    combination <- paste(retained_labels, collapse = ";")
+    variation_count <- sum(retained_labels != "WT")
+
+    data.frame(
+      sample_id = as.character(ev$sample_id[1]),
+      Ref_name = as.character(ev$Ref_name[1]),
+      read_id = as.character(ev$read_id[1]),
+      Variation_combination = combination,
+      Variation_count = variation_count,
+      region_start = as.integer(ev$region_start[1]),
+      region_end = as.integer(ev$region_end[1]),
+      reference_aligned_trim =
+        get_first_column(ev, "reference_aligned_trim"),
+      read_aligned_trim =
+        get_first_column(ev, "read_aligned_trim"),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  comb <- do.call(rbind, comb)
+  rownames(comb) <- NULL
+
+  # 汇总每种 read 组合的数量和比例
+  combo_key <- paste(
+    comb$sample_id,
+    comb$Ref_name,
+    comb$Variation_combination,
+    sep = "\034"
+  )
+  combo_groups <- split(seq_len(nrow(comb)), combo_key)
+
+  mode_or_na <- function(x) {
+    x <- x[!is.na(x) & nzchar(x)]
+    if (length(x) == 0L) return(NA_character_)
+    names(which.max(table(x)))
+  }
+
+  var_info <- lapply(combo_groups, function(idx) {
+    z <- comb[idx, , drop = FALSE]
+
+    denominator <- denominators$Callable_reads[
+      denominators$sample_id == z$sample_id[1] &
+        denominators$Ref_name == z$Ref_name[1]
+    ][1]
+
+    data.frame(
+      sample_id = z$sample_id[1],
+      Ref_name = z$Ref_name[1],
+      Read_count = nrow(z),
+      Ratio = round(100 * nrow(z) / denominator, 2),
+      Variation_count = z$Variation_count[1],
+      Variation_combination = z$Variation_combination[1],
+      region_start = z$region_start[1],
+      region_end = z$region_end[1],
+      reference_aligned_trim = mode_or_na(z$reference_aligned_trim),
+      read_aligned_trim = mode_or_na(z$read_aligned_trim),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  var_info <- do.call(rbind, var_info)
+  rownames(var_info) <- NULL
+
+  order_idx <- order(
+    var_info$sample_id,
+    var_info$Ref_name,
+    -var_info$Read_count
+  )
+  var_info <- var_info[order_idx, , drop = FALSE]
+
+  group_key <- paste(var_info$sample_id, var_info$Ref_name, sep = "\034")
+  var_info$Index <- ave(
+    seq_len(nrow(var_info)),
+    group_key,
+    FUN = seq_along
+  )
+
+  var_info <- var_info[
+    , c(
+      "sample_id", "Ref_name", "Index", "Read_count", "Ratio",
+      "Variation_count", "Variation_combination",
+      "region_start", "region_end",
+      "reference_aligned_trim", "read_aligned_trim"
+    ),
+    drop = FALSE
+  ]
+
+  var_info_filtered <- var_info[
+    var_info$Ratio >= min_ratio,
+    ,
+    drop = FALSE
+  ]
+
+  list(
+    events_all = events_all,
+    event_frequency = event_frequency,
+    var_info = var_info,
+    var_info_filtered = var_info_filtered
+  )
+}
 
 variant_table = function(aln_valid, reference = ref, region_start = 50,
                          region_end = 220,
