@@ -585,7 +585,7 @@ filter_reads_by_region <- function(
   keep <- read_start <= required_start &
     read_end >= required_end
 
-  aln[keep]
+  aln[keep,,drop = FALSE]
 }
 
 # 第一步：逐 read 解析一次，生成事件表
