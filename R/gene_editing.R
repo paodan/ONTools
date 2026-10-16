@@ -1040,3 +1040,238 @@ color_excel_by_barcode_ref <- function(
 
   invisible(file)
 }
+
+run_editing_batch <- function(
+    sample_info,
+    ref_all,
+    re_names,
+    bam_root = "/data/project_delivery/20260904PCR/PM202609003NS_100bp_bkup_original/variant_results",
+    cache_dir = "event_cache",
+    min_anchor = 0,
+    min_ratio = 1,
+    mc.cores = NULL,
+    force_rebuild = FALSE,
+    colored_xlsx = NULL
+) {
+  # sample_info 可以是 Excel 路径，也可以是 data.frame
+  if (is.character(sample_info) && length(sample_info) == 1L) {
+    sample_info_0 <- as.data.frame(
+      readxl::read_excel(sample_info)
+    )
+  } else {
+    sample_info_0 <- as.data.frame(sample_info)
+  }
+
+  if (!"barcode" %in% names(sample_info_0)) {
+    stop("sample_info 中缺少 barcode 列。")
+  }
+
+  # 兼容 Excel 原始列名和已经整理过的列名
+  if (!"ref_name" %in% names(sample_info_0)) {
+    sample_info_0$ref_name <- sample_info_0$Reference_name
+  }
+  if (!"region_start" %in% names(sample_info_0)) {
+    sample_info_0$region_start <-
+      sample_info_0$Reference_Region_Start
+  }
+  if (!"region_end" %in% names(sample_info_0)) {
+    sample_info_0$region_end <-
+      sample_info_0$Reference_Region_End
+  }
+
+  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+  bam_param <- Rsamtools::ScanBamParam(
+    flag = Rsamtools::scanBamFlag(
+      isUnmappedQuery = FALSE,
+      isSecondaryAlignment = FALSE,
+      isSupplementaryAlignment = FALSE,
+      isDuplicate = FALSE,
+      isNotPassingQualityControls = FALSE
+    ),
+    what = c("qname", "rname", "pos", "cigar", "mapq", "seq", "flag")
+  )
+
+  output_rows <- list()
+  per_sample_results <- list()
+  out_i <- 1L
+
+  safe_name <- function(x) {
+    gsub("[^A-Za-z0-9_.-]", "_", x)
+  }
+
+  for (i in seq_len(nrow(sample_info_0))) {
+    barcode <- as.character(sample_info_0$barcode[i])
+
+    ref_names <- strsplit(
+      as.character(sample_info_0$ref_name[i]),
+      split = "\\|"
+    )[[1]]
+    ref_names <- trimws(ref_names)
+    ref_names <- ref_names[nzchar(ref_names)]
+
+    region_start <- as.integer(sample_info_0$region_start[i])
+    region_end <- as.integer(sample_info_0$region_end[i])
+
+    message("Processing ", barcode, ": ", paste(ref_names, collapse = ", "))
+
+    cache_files <- setNames(
+      file.path(
+        cache_dir,
+        paste0(
+          safe_name(barcode), "__",
+          safe_name(ref_names), "__",
+          region_start, "_", region_end, "__anchor",
+          min_anchor, ".events.rds"
+        )
+      ),
+      ref_names
+    )
+
+    # 缓存有缺失时才读取该 barcode 的 BAM
+    need_bam <- force_rebuild || any(!file.exists(cache_files))
+
+    if (need_bam) {
+      bam_file <- file.path(
+        bam_root,
+        barcode,
+        "alignments",
+        paste0(barcode, ".aligned.sorted.bam")
+      )
+
+      if (!file.exists(bam_file)) {
+        warning("找不到 BAM，跳过：", bam_file)
+        next
+      }
+
+      aln <- as.data.frame(
+        Rsamtools::scanBam(bam_file, param = bam_param)[[1]]
+      )
+
+      original_rname <- as.character(aln$rname)
+      mapped_rname <- unname(re_names[original_rname])
+      mapped_rname[is.na(mapped_rname)] <-
+        original_rname[is.na(mapped_rname)]
+      aln$rname <- mapped_rname
+
+      for (ref_name in ref_names) {
+        cache_file <- cache_files[[ref_name]]
+
+        if (!force_rebuild && file.exists(cache_file)) {
+          next
+        }
+
+        if (!ref_name %in% names(ref_all)) {
+          warning("ref_all 中找不到参考序列：", ref_name)
+          next
+        }
+
+        aln_ref <- aln[
+          !is.na(aln$rname) & aln$rname == ref_name,
+          ,
+          drop = FALSE
+        ]
+
+        if (nrow(aln_ref) > 0L) {
+          aln_ref <- filter_reads_by_region(
+            aln = aln_ref,
+            region_start = region_start,
+            region_end = region_end,
+            min_anchor = min_anchor
+          )
+        }
+
+        if (nrow(aln_ref) == 0L) {
+          events_all <- data.frame()
+        } else {
+          events_all <- make_variant_events(
+            aln_valid = aln_ref,
+            reference = ref_all[ref_name],
+            region_start = region_start,
+            region_end = region_end,
+            min_anchor = min_anchor,
+            sample_id = barcode,
+            mc.cores = mc.cores
+          )
+        }
+
+        saveRDS(events_all, cache_file)
+      }
+    }
+
+    barcode_result <- list()
+
+    for (ref_name in ref_names) {
+      cache_file <- cache_files[[ref_name]]
+
+      if (!file.exists(cache_file)) {
+        next
+      }
+
+      events_all <- readRDS(cache_file)
+
+      if (nrow(events_all) == 0L) {
+        next
+      }
+
+      summary_result <- summarise_variant_events(
+        events_all = events_all,
+        min_ratio = min_ratio
+      )
+
+      tab <- summary_result$var_info_filtered
+
+      if (nrow(tab) == 0L) {
+        next
+      }
+
+      tab$barcode <- barcode
+
+      if ("Sample_HiTOM" %in% names(sample_info_0)) {
+        tab$Sample_HiTOM <- as.character(sample_info_0$Sample_HiTOM[i])
+      }
+
+      barcode_result[[ref_name]] <- tab
+      output_rows[[out_i]] <- tab
+      out_i <- out_i + 1L
+    }
+
+    per_sample_results[[paste0(barcode, "_", i)]] <- barcode_result
+  }
+
+  if (length(output_rows) == 0L) {
+    result_table <- data.frame()
+  } else {
+    result_table <- do.call(rbind, output_rows)
+    rownames(result_table) <- NULL
+
+    front_cols <- intersect(
+      c("Sample_HiTOM", "barcode"),
+      names(result_table)
+    )
+
+    result_table <- result_table[
+      , c(front_cols, setdiff(names(result_table), front_cols)),
+      drop = FALSE
+    ]
+  }
+
+  if (!is.null(colored_xlsx)) {
+    if (!exists("color_excel_by_barcode_ref", mode = "function")) {
+      stop("请先定义 color_excel_by_barcode_ref()。")
+    }
+
+    color_excel_by_barcode_ref(
+      data = result_table,
+      file = colored_xlsx,
+      barcode_col = "barcode",
+      ref_col = "Ref_name",
+      sheet = "Results"
+    )
+  }
+
+  list(
+    table = result_table,
+    per_sample = per_sample_results
+  )
+}
