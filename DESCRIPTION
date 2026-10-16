@@ -26,6 +26,7 @@ Imports:
     stringr,
     R.utils
 Suggests:
+    openxlsx,
     pagedown,
     ShortRead,
     testthat (>= 3.0.0)

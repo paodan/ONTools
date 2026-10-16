@@ -1,139 +1,147 @@
-extract_read_region <- function(
-    read_seq,
-    cigar,
-    ref_start,
-    x,
-    y,
-    include_insertions = TRUE
-) {
-  read_seq <- toupper(as.character(read_seq))
-  ref_start <- as.integer(ref_start)
-  x <- as.integer(x)
-  y <- as.integer(y)
-
-  # 拆解 CIGAR，例如 3M2I2M2D3M
-  ops <- regmatches(
-    cigar,
-    gregexpr("[0-9]+[MIDNSHP=X]", cigar)
-  )[[1]]
-
-  if (length(ops) == 0L || identical(ops, character(0))) {
-    stop("无法解析 CIGAR：", cigar)
+parse_cigar_operations <- function(cigar) {
+  if (!is.character(cigar) || length(cigar) != 1L || is.na(cigar) ||
+      !nzchar(cigar) || identical(cigar, "*")) {
+    stop("`cigar` must be one non-empty aligned CIGAR string.", call. = FALSE)
   }
 
-  op_len <- as.integer(sub("[A-Z=]$", "", ops))
-  op_code <- sub("^[0-9]+", "", ops)
+  operations <- regmatches(
+    cigar,
+    gregexpr("[0-9]+[MIDNSHP=X]", cigar, perl = TRUE)
+  )[[1L]]
+  if (length(operations) == 0L ||
+      !identical(paste0(operations, collapse = ""), cigar)) {
+    stop("Could not parse the complete CIGAR string: ", cigar,
+         call. = FALSE)
+  }
 
-  # 检查 read 的比对范围是否覆盖完整的 [x, y]
-  ref_consumed <- sum(
-    op_len[op_code %in% c("M", "D", "N", "=", "X")]
+  operation_length <- suppressWarnings(
+    as.integer(sub("[MIDNSHP=X]$", "", operations))
   )
-  ref_end <- ref_start + ref_consumed - 1L
-
-  if (x < ref_start || y > ref_end) {
-    return(NA_character_)
+  operation_code <- sub("^[0-9]+", "", operations)
+  if (anyNA(operation_length) || any(operation_length <= 0L)) {
+    stop("CIGAR operation lengths must be positive integers: ", cigar,
+         call. = FALSE)
   }
 
-  # r：当前参考坐标；q：当前 read 序列坐标
-  r <- ref_start
-  q <- 1L
-  out <- character()
-
-  for (i in seq_along(ops)) {
-    n <- op_len[i]
-    code <- op_code[i]
-
-    if (code %in% c("M", "=", "X")) {
-      # 逐碱基检查是否落在目标参考区间
-      for (offset in seq_len(n)) {
-        ref_pos <- r + offset - 1L
-        read_pos <- q + offset - 1L
-
-        if (ref_pos >= x && ref_pos <= y) {
-          out <- c(out, substr(read_seq, read_pos, read_pos))
-        }
-      }
-
-      r <- r + n
-      q <- q + n
-
-    } else if (code == "I") {
-      # 插入位于 r-1 与 r 之间。
-      # 纳入区间起点前的边界（x-1/x），以及区间内部的插入；
-      # 不纳入 y 之后的插入。
-      position_after <- r - 1L
-
-      if (include_insertions &&
-          position_after >= x - 1L &&
-          position_after < y) {
-        inserted_seq <- substr(read_seq, q, q + n - 1L)
-        out <- c(out, strsplit(inserted_seq, "", fixed = TRUE)[[1]])
-      }
-
-      q <- q + n
-
-    } else if (code == "D" || code == "N") {
-      # D/N 消耗参考坐标，但不消耗 read 序列。
-      # 落在目标区间的每个参考位置用一个横线表示。
-      overlap_start <- max(r, x)
-      overlap_end <- min(r + n - 1L, y)
-
-      if (overlap_start <= overlap_end) {
-        out <- c(out, rep("-", overlap_end - overlap_start + 1L))
-      }
-
-      r <- r + n
-
-    } else if (code == "S") {
-      # 软剪切碱基在 read 序列中，但没有比对到参考序列
-      q <- q + n
-
-    } else if (code %in% c("H", "P")) {
-      # H 和 P 不消耗 read 或参考坐标
-      next
-    }
-  }
-
-  paste0(out, collapse = "")
+  list(
+    table = data.frame(
+      length = operation_length,
+      operation = operation_code,
+      stringsAsFactors = FALSE
+    ),
+    reference_length = sum(
+      operation_length[operation_code %in% c("M", "D", "N", "=", "X")]
+    ),
+    query_length = sum(
+      operation_length[operation_code %in% c("M", "I", "S", "=", "X")]
+    )
+  )
 }
 
-extract_aligned_region <- function(
-    reference,
-    read_seq,
-    cigar,
-    ref_start,
-    x,
-    y,
-    include_insertions = TRUE
-) {
+validate_editing_region <- function(reference, region_start, region_end,
+                                    min_anchor = 0L) {
   reference <- toupper(as.character(reference))
+  if (length(reference) != 1L || is.na(reference) || !nzchar(reference)) {
+    stop("`reference` must contain exactly one non-empty sequence.",
+         call. = FALSE)
+  }
+  region_start <- validate_positive_integer(region_start, "region_start")
+  region_end <- validate_positive_integer(region_end, "region_end")
+  min_anchor <- validate_nonnegative_integer(min_anchor, "min_anchor")
+  if (region_end < region_start) {
+    stop("`region_end` must be greater than or equal to `region_start`.",
+         call. = FALSE)
+  }
+  if (region_end > nchar(reference, type = "bytes")) {
+    stop("`region_end` exceeds the reference sequence length.",
+         call. = FALSE)
+  }
+  list(
+    reference = reference,
+    region_start = region_start,
+    region_end = region_end,
+    min_anchor = min_anchor
+  )
+}
+
+#' Extract an aligned read and reference region
+#'
+#' `extract_aligned_region()` applies a read's CIGAR string and returns aligned
+#' reference and read strings for a closed reference interval. Insertions are
+#' represented by gaps in the reference, while deletions and skipped reference
+#' positions are represented by gaps in the read.
+#'
+#' @param reference A single reference sequence, supplied as a character string
+#'   or an object coercible to one.
+#' @param read_seq The read sequence in BAM alignment orientation.
+#' @param cigar A single SAM/BAM CIGAR string.
+#' @param ref_start Positive 1-based reference coordinate at which the alignment
+#'   starts.
+#' @param x,y Positive 1-based coordinates defining the closed reference
+#'   interval `[x, y]`.
+#' @param include_insertions Logical. Include insertions occurring immediately
+#'   before the first interval base or between interval bases. Insertions after
+#'   `y` are excluded.
+#'
+#' @return A list with `reference_aligned` and `read_aligned`. Both are `NA` if
+#'   the alignment does not span the complete requested interval.
+#'
+#' @examples
+#' extract_aligned_region(
+#'   reference = "ACGTACGT",
+#'   read_seq = "ACGTTACGT",
+#'   cigar = "4M1I4M",
+#'   ref_start = 1,
+#'   x = 2,
+#'   y = 7
+#' )
+#'
+#' @export
+extract_aligned_region <- function(reference,
+                                   read_seq,
+                                   cigar,
+                                   ref_start,
+                                   x,
+                                   y,
+                                   include_insertions = TRUE) {
+  check_logical_scalar(include_insertions, "include_insertions")
+  validated <- validate_editing_region(reference, x, y, min_anchor = 0L)
+  parsed <- parse_cigar_operations(cigar)
+  extract_aligned_region_parsed(
+    reference = validated$reference,
+    read_seq = read_seq,
+    parsed_cigar = parsed,
+    ref_start = ref_start,
+    x = validated$region_start,
+    y = validated$region_end,
+    include_insertions = include_insertions
+  )
+}
+
+extract_aligned_region_parsed <- function(reference,
+                                          read_seq,
+                                          parsed_cigar,
+                                          ref_start,
+                                          x,
+                                          y,
+                                          include_insertions) {
   read_seq <- toupper(as.character(read_seq))
-  ref_start <- as.integer(ref_start)
-  x <- as.integer(x)
-  y <- as.integer(y)
-
-  if (x < 1L || y < x || y > nchar(reference)) {
-    stop("x 和 y 必须是参考序列上的有效 1-based 坐标，且 x <= y。")
+  if (length(read_seq) != 1L || is.na(read_seq)) {
+    stop("`read_seq` must contain exactly one sequence.", call. = FALSE)
+  }
+  ref_start <- validate_positive_integer(ref_start, "ref_start")
+  if (nchar(read_seq, type = "bytes") != parsed_cigar$query_length) {
+    stop(
+      "Read length does not equal the query-consuming CIGAR length.",
+      call. = FALSE
+    )
   }
 
-  # 解析 CIGAR，例如 3M2I2M2D3M
-  ops <- regmatches(
-    cigar,
-    gregexpr("[0-9]+[MIDNSHP=X]", cigar)
-  )[[1]]
-
-  if (length(ops) == 0L || identical(ops, character(0))) {
-    stop("无法解析 CIGAR：", cigar)
+  ref_end <- ref_start + parsed_cigar$reference_length - 1L
+  if (ref_end > nchar(reference, type = "bytes")) {
+    stop("The CIGAR alignment extends beyond the reference sequence.",
+         call. = FALSE)
   }
-
-  op_len <- as.integer(sub("[A-Z=]$", "", ops))
-  op_code <- sub("^[0-9]+", "", ops)
-
-  # 计算比对在参考序列上消耗的长度
-  ref_consumed <- sum(op_len[op_code %in% c("M", "D", "N", "=", "X")])
-  ref_end <- ref_start + ref_consumed - 1L
-
-  # 当前 read 未覆盖整个请求区间
   if (x < ref_start || y > ref_end) {
     return(list(
       reference_aligned = NA_character_,
@@ -141,414 +149,377 @@ extract_aligned_region <- function(
     ))
   }
 
-  r <- ref_start  # 当前参考坐标，1-based
-  q <- 1L         # 当前 read 坐标，1-based
+  cigar_table <- parsed_cigar$table
+  reference_chunks <- character()
+  read_chunks <- character()
+  reference_position <- ref_start
+  query_position <- 1L
 
-  ref_out <- character()
-  read_out <- character()
+  for (i in seq_len(nrow(cigar_table))) {
+    n <- cigar_table$length[[i]]
+    operation <- cigar_table$operation[[i]]
 
-  for (i in seq_along(ops)) {
-    n <- op_len[i]
-    code <- op_code[i]
-
-    if (code %in% c("M", "=", "X")) {
-      # 对齐碱基：两边都取序列
-      for (offset in seq_len(n)) {
-        ref_pos <- r + offset - 1L
-        read_pos <- q + offset - 1L
-
-        if (ref_pos >= x && ref_pos <= y) {
-          ref_out <- c(
-            ref_out,
-            substr(reference, ref_pos, ref_pos)
-          )
-          read_out <- c(
-            read_out,
-            substr(read_seq, read_pos, read_pos)
-          )
-        }
+    if (operation %in% c("M", "=", "X")) {
+      overlap_start <- max(reference_position, x)
+      overlap_end <- min(reference_position + n - 1L, y)
+      if (overlap_start <= overlap_end) {
+        query_start <- query_position + overlap_start - reference_position
+        query_end <- query_start + overlap_end - overlap_start
+        reference_chunks <- c(
+          reference_chunks,
+          substr(reference, overlap_start, overlap_end)
+        )
+        read_chunks <- c(
+          read_chunks,
+          substr(read_seq, query_start, query_end)
+        )
       }
-
-      r <- r + n
-      q <- q + n
-
-    } else if (code == "I") {
-      # 插入：reference 补横线，read 保留插入序列。
-      # position_after 表示插入发生在参考序列哪个碱基之后。
-      position_after <- r - 1L
-
-      if (include_insertions &&
-          position_after >= x - 1L &&
+      reference_position <- reference_position + n
+      query_position <- query_position + n
+    } else if (operation == "I") {
+      position_after <- reference_position - 1L
+      if (include_insertions && position_after >= x - 1L &&
           position_after < y) {
-        inserted_seq <- strsplit(
-          substr(read_seq, q, q + n - 1L),
-          "",
-          fixed = TRUE
-        )[[1]]
-
-        ref_out <- c(ref_out, rep("-", n))
-        read_out <- c(read_out, inserted_seq)
+        reference_chunks <- c(reference_chunks, strrep("-", n))
+        read_chunks <- c(
+          read_chunks,
+          substr(read_seq, query_position, query_position + n - 1L)
+        )
       }
-
-      q <- q + n
-
-    } else if (code %in% c("D", "N")) {
-      # 缺失/跳过：reference 保留碱基，read 补横线
-      for (offset in seq_len(n)) {
-        ref_pos <- r + offset - 1L
-
-        if (ref_pos >= x && ref_pos <= y) {
-          ref_out <- c(
-            ref_out,
-            substr(reference, ref_pos, ref_pos)
-          )
-          read_out <- c(read_out, "-")
-        }
+      query_position <- query_position + n
+    } else if (operation %in% c("D", "N")) {
+      overlap_start <- max(reference_position, x)
+      overlap_end <- min(reference_position + n - 1L, y)
+      if (overlap_start <= overlap_end) {
+        reference_chunks <- c(
+          reference_chunks,
+          substr(reference, overlap_start, overlap_end)
+        )
+        read_chunks <- c(
+          read_chunks,
+          strrep("-", overlap_end - overlap_start + 1L)
+        )
       }
-
-      r <- r + n
-
-    } else if (code == "S") {
-      # 软剪切只消耗 read 序列，不对应参考序列
-      q <- q + n
-
-    } else if (code %in% c("H", "P")) {
-      # 硬剪切和 padding 不消耗 read 或参考序列
-      next
+      reference_position <- reference_position + n
+    } else if (operation == "S") {
+      query_position <- query_position + n
     }
   }
 
   list(
-    reference_aligned = paste0(ref_out, collapse = ""),
-    read_aligned = paste0(read_out, collapse = "")
+    reference_aligned = paste0(reference_chunks, collapse = ""),
+    read_aligned = paste0(read_chunks, collapse = "")
   )
 }
 
-process_one_read2 <- function(
-    read_id,
-    read_seq,
-    cigar,
-    ref_start,
+new_edit_event <- function(read_id,
+                           type,
+                           label,
+                           region_start,
+                           region_end,
+                           reference_aligned = NA_character_,
+                           read_aligned = NA_character_,
+                           start = NA_integer_,
+                           end = NA_integer_,
+                           position_after = NA_integer_,
+                           ref = NA_character_,
+                           alt = NA_character_) {
+  data.frame(
+    read_id = read_id,
+    type = type,
+    start = as.integer(start),
+    end = as.integer(end),
+    position_after = as.integer(position_after),
+    ref = ref,
+    alt = alt,
+    label = label,
+    trim_region_start = region_start,
+    trim_region_end = region_end,
+    reference_aligned_trim = reference_aligned,
+    read_aligned_trim = read_aligned,
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Call editing events for one aligned read
+#'
+#' `call_read_edit_events()` interprets a read sequence and CIGAR against one
+#' reference region. It reports wild type, SNP, adjacent multi-nucleotide
+#' substitutions, insertions, deletions, complex indels, or non-callable reads.
+#'
+#' @param read_id Character scalar identifying the read.
+#' @inheritParams extract_aligned_region
+#' @param region_start,region_end Closed 1-based reference interval in which
+#'   events are called.
+#' @param min_anchor Non-negative number of aligned reference bases required on
+#'   both sides of the calling interval.
+#'
+#' @return A list containing `status`, `read_id`, `combination`, and `events`.
+#' `events` has one row per event. A read with no event receives one `WT` row.
+#'
+#' @examples
+#' call <- call_read_edit_events(
+#'   read_id = "read1",
+#'   read_seq = "ACATACGT",
+#'   cigar = "8M",
+#'   ref_start = 1,
+#'   reference = "ACGTACGT",
+#'   region_start = 1,
+#'   region_end = 8
+#' )
+#' call$events
+#'
+#' @export
+call_read_edit_events <- function(read_id,
+                                  read_seq,
+                                  cigar,
+                                  ref_start,
+                                  reference,
+                                  region_start = 1L,
+                                  region_end = nchar(as.character(reference)),
+                                  min_anchor = 0L) {
+  check_scalar_character(read_id, "read_id")
+  validated <- validate_editing_region(
     reference,
-    region_start = 1L,
-    region_end = nchar(as.character(reference)),
-    min_anchor = 0L
-) {
-  # reference 可传普通字符字符串，也可传 DNAString
-  reference <- as.character(reference)
+    region_start,
+    region_end,
+    min_anchor
+  )
+  reference <- validated$reference
+  region_start <- validated$region_start
+  region_end <- validated$region_end
+  min_anchor <- validated$min_anchor
+  read_seq <- toupper(as.character(read_seq))
+  parsed <- parse_cigar_operations(cigar)
+  ref_start <- validate_positive_integer(ref_start, "ref_start")
 
-  ref_start <- as.integer(ref_start)
-  region_start <- as.integer(region_start)
-  region_end <- as.integer(region_end)
-  min_anchor <- as.integer(min_anchor)
-
-  # trim reference and reads
-  # reference_trim = unname(substr(reference, region_start, region_end))
-  # read_trim = extract_read_region(read_seq = read_seq, cigar = cigar, ref_start = ref_start, x = region_start, y = region_end)
-  ref_read = extract_aligned_region(reference = reference, read_seq = read_seq,
-                                    cigar = cigar, ref_start = ref_start,
-                                    x = region_start, y = region_end,
-                                    include_insertions = TRUE)
-
-  # 拆分 CIGAR，例如 10S50M2I40M
-  ops <- regmatches(
-    cigar,
-    gregexpr("[0-9]+[MIDNSHP=X]", cigar)
-  )[[1]]
-
-  if (length(ops) == 0L || identical(ops, character(0))) {
-    stop("无法解析 CIGAR：", cigar)
+  if (length(read_seq) != 1L || is.na(read_seq) ||
+      nchar(read_seq, type = "bytes") != parsed$query_length) {
+    stop("`read_seq` length must equal the query-consuming CIGAR length.",
+         call. = FALSE)
+  }
+  aligned_end <- ref_start + parsed$reference_length - 1L
+  if (aligned_end > nchar(reference, type = "bytes")) {
+    stop("The CIGAR alignment extends beyond the reference sequence.",
+         call. = FALSE)
   }
 
-  op_len <- as.integer(sub("[A-Z=]$", "", ops))
-  op_code <- sub("^[0-9]+", "", ops)
-
-  # M、D、N、=、X 消耗参考序列
-  ref_consumed <- sum(op_len[op_code %in% c("M", "D", "N", "=", "X")])
-
-  # ref_consumed = cigarillo::cigar_extent_along_ref(cigar)
-
-  # read 在参考序列上的覆盖范围，坐标为 1-based
-  aligned_start <- ref_start
-  aligned_end <- ref_start + ref_consumed - 1L
-
-  # 检查是否覆盖目标区间及两侧锚定区
   required_start <- max(1L, region_start - min_anchor)
   required_end <- region_end + min_anchor
-
-  if (aligned_start > required_start || aligned_end < required_end) {
+  if (ref_start > required_start || aligned_end < required_end) {
+    event <- new_edit_event(
+      read_id = read_id,
+      type = "NO_CALL",
+      label = "NO_CALL",
+      region_start = region_start,
+      region_end = region_end
+    )
     return(list(
       status = "NO_CALL",
       read_id = read_id,
       combination = "NO_CALL",
-      events = data.frame(
-        read_id = read_id,
-        type = "NO_CALL",
-        start = NA_integer_,
-        end = NA_integer_,
-        position_after = NA_integer_,
-        ref = NA_character_,
-        alt = NA_character_,
-        label = "NO_CALL",
-
-        trim_region_start = region_start,
-        trim_region_end = region_end,
-        reference_aligned_trim = ref_read$reference_aligned,
-        read_aligned_trim = ref_read$read_aligned,
-
-        stringsAsFactors = FALSE
-      )
+      events = event
     ))
   }
 
-  # 记录替换碱基的位置和等位序列
-  mismatch_pos <- integer()
+  aligned <- extract_aligned_region_parsed(
+    reference = reference,
+    read_seq = read_seq,
+    parsed_cigar = parsed,
+    ref_start = ref_start,
+    x = region_start,
+    y = region_end,
+    include_insertions = TRUE
+  )
+  mismatch_position <- integer()
   mismatch_ref <- character()
   mismatch_alt <- character()
-
-  # 记录插入和缺失事件
   indel_events <- list()
-  n_indel <- 0L
+  reference_position <- ref_start
+  query_position <- 1L
 
-  # 当前参考位置和 read/query 位置均用 1-based
-  r <- ref_start
-  q <- 1L
+  for (i in seq_len(nrow(parsed$table))) {
+    n <- parsed$table$length[[i]]
+    operation <- parsed$table$operation[[i]]
 
-  for (i in seq_along(ops)) {
-    n <- op_len[i]
-    code <- op_code[i]
-
-    if (code %in% c("M", "=", "X")) {
-      # 逐碱基比较 read 与参考序列
-      for (offset in seq_len(n)) {
-        current_ref_pos <- r + offset - 1L
-        current_read_pos <- q + offset - 1L
-
-        if (current_ref_pos >= region_start &&
-            current_ref_pos <= region_end) {
-          rb <- substr(reference, current_ref_pos, current_ref_pos)
-          qb <- substr(read_seq, current_read_pos, current_read_pos)
-
-          if (rb != qb) {
-            # if (!identical(rb, qb)) {
-            mismatch_pos <- c(mismatch_pos, current_ref_pos)
-            mismatch_ref <- c(mismatch_ref, rb)
-            mismatch_alt <- c(mismatch_alt, qb)
-          }
+    if (operation %in% c("M", "=", "X")) {
+      overlap_start <- max(reference_position, region_start)
+      overlap_end <- min(reference_position + n - 1L, region_end)
+      if (overlap_start <= overlap_end) {
+        query_start <- query_position + overlap_start - reference_position
+        query_end <- query_start + overlap_end - overlap_start
+        reference_base <- strsplit(
+          substr(reference, overlap_start, overlap_end),
+          "",
+          fixed = TRUE
+        )[[1L]]
+        query_base <- strsplit(
+          substr(read_seq, query_start, query_end),
+          "",
+          fixed = TRUE
+        )[[1L]]
+        mismatch <- which(reference_base != query_base)
+        if (length(mismatch) > 0L) {
+          mismatch_position <- c(
+            mismatch_position,
+            overlap_start + mismatch - 1L
+          )
+          mismatch_ref <- c(mismatch_ref, reference_base[mismatch])
+          mismatch_alt <- c(mismatch_alt, query_base[mismatch])
         }
       }
-
-      r <- r + n
-      q <- q + n
-
-    } else if (code == "I") {
-      # 插入发生在当前参考位置之前，即插入在 r-1 与 r 之间。
-      # position_after 表示插入发生在参考序列第几个碱基之后。
-      position_after <- r - 1L
-
-      if (position_after >= region_start - 1L &&
-          position_after <= region_end) {
-        inserted_seq <- substr(read_seq, q, q + n - 1L)
-
-        n_indel <- n_indel + 1L
-        indel_events[[n_indel]] <- data.frame(
-          read_id = read_id, ###################################
+      reference_position <- reference_position + n
+      query_position <- query_position + n
+    } else if (operation == "I") {
+      position_after <- reference_position - 1L
+      if (position_after >= region_start - 1L && position_after < region_end) {
+        inserted_sequence <- substr(
+          read_seq,
+          query_position,
+          query_position + n - 1L
+        )
+        indel_events[[length(indel_events) + 1L]] <- new_edit_event(
+          read_id = read_id,
           type = "IN",
-          start = NA_integer_,
-          end = NA_integer_,
           position_after = position_after,
           ref = "-",
-          alt = inserted_seq,
-          label = paste0("IN_after_", position_after, ":", inserted_seq),
-
-          trim_region_start = region_start,
-          trim_region_end = region_end,
-          reference_aligned_trim = ref_read$reference_aligned,
-          read_aligned_trim = ref_read$read_aligned,
-
-          stringsAsFactors = FALSE
+          alt = inserted_sequence,
+          label = paste0("IN_after_", position_after, ":", inserted_sequence),
+          region_start = region_start,
+          region_end = region_end,
+          reference_aligned = aligned$reference_aligned,
+          read_aligned = aligned$read_aligned
         )
       }
-
-      q <- q + n
-
-    } else if (code == "D") {
-      # 删除的参考坐标为 r 到 r+n-1
-      deletion_start <- r
-      deletion_end <- r + n - 1L
-
-      # 只要缺失与分析区间有重叠，就记录整个连续缺失事件
-      if (deletion_end >= region_start &&
-          deletion_start <= region_end) {
-        deleted_seq <- substr(reference, deletion_start, deletion_end)
-
-        n_indel <- n_indel + 1L
-        indel_events[[n_indel]] <- data.frame(
-          read_id = read_id, ###################################
+      query_position <- query_position + n
+    } else if (operation == "D") {
+      deletion_start <- reference_position
+      deletion_end <- reference_position + n - 1L
+      if (deletion_end >= region_start && deletion_start <= region_end) {
+        deleted_sequence <- substr(reference, deletion_start, deletion_end)
+        indel_events[[length(indel_events) + 1L]] <- new_edit_event(
+          read_id = read_id,
           type = "DEL",
           start = deletion_start,
           end = deletion_end,
-          position_after = NA_integer_,
-          ref = deleted_seq,
+          ref = deleted_sequence,
           alt = "-",
           label = paste0(
-            "DEL_", deletion_start, "_", deletion_end,
-            ":", deleted_seq
+            "DEL_", deletion_start, "_", deletion_end, ":", deleted_sequence
           ),
-
-          trim_region_start = region_start,
-          trim_region_end = region_end,
-          reference_aligned_trim = ref_read$reference_aligned,
-          read_aligned_trim = ref_read$read_aligned,
-
-          stringsAsFactors = FALSE
+          region_start = region_start,
+          region_end = region_end,
+          reference_aligned = aligned$reference_aligned,
+          read_aligned = aligned$read_aligned
         )
       }
-
-      r <- r + n
-
-    } else if (code == "N") {
-      # N 表示跳过参考序列；若与目标区间重叠，则无法可靠判读
-      skipped_start <- r
-      skipped_end <- r + n - 1L
-
-      if (skipped_end >= region_start &&
-          skipped_start <= region_end) {
+      reference_position <- reference_position + n
+    } else if (operation == "N") {
+      skipped_start <- reference_position
+      skipped_end <- reference_position + n - 1L
+      if (skipped_end >= region_start && skipped_start <= region_end) {
+        event <- new_edit_event(
+          read_id = read_id,
+          type = "NO_CALL",
+          label = "NO_CALL_N_skip",
+          region_start = region_start,
+          region_end = region_end,
+          reference_aligned = aligned$reference_aligned,
+          read_aligned = aligned$read_aligned
+        )
         return(list(
           status = "NO_CALL",
           read_id = read_id,
           combination = "NO_CALL",
-          events = data.frame(
-            read_id = read_id,
-            type = "NO_CALL",
-            start = NA_integer_,
-            end = NA_integer_,
-            position_after = NA_integer_,
-            ref = NA_character_,
-            alt = NA_character_,
-            label = "NO_CALL_N_skip",
-
-            trim_region_start = region_start,
-            trim_region_end = region_end,
-            reference_aligned_trim = ref_read$reference_aligned,
-            read_aligned_trim = ref_read$read_aligned,
-
-            stringsAsFactors = FALSE
-          )
+          events = event
         ))
       }
-
-      r <- r + n
-
-    } else if (code %in% c("S", "I")) {
-      # S 消耗 read 序列，不消耗参考序列
-      q <- q + n
-
-    } else if (code %in% c("H", "P")) {
-      # H 和 P 不消耗 read 或参考序列
-      next
+      reference_position <- reference_position + n
+    } else if (operation == "S") {
+      query_position <- query_position + n
     }
   }
 
-  # 将相邻的替换碱基合并为 SNP 或 MNP 事件
   substitution_events <- list()
-
-  if (length(mismatch_pos) > 0L) {
-    groups <- cumsum(c(TRUE, diff(mismatch_pos) > 1L))
-    group_ids <- unique(groups)
-
-    for (g in group_ids) {
-      ix <- which(groups == g)
-
-      event_start <- mismatch_pos[ix[1]]
-      event_end <- mismatch_pos[ix[length(ix)]]
-      ref_allele <- paste0(mismatch_ref[ix], collapse = "")
-      alt_allele <- paste0(mismatch_alt[ix], collapse = "")
-
-      event_type <- if (length(ix) == 1L) "SNP" else "MNP"
-
+  if (length(mismatch_position) > 0L) {
+    groups <- cumsum(c(TRUE, diff(mismatch_position) > 1L))
+    for (group in unique(groups)) {
+      index <- which(groups == group)
+      event_start <- mismatch_position[index[[1L]]]
+      event_end <- mismatch_position[index[[length(index)]]]
+      ref_allele <- paste0(mismatch_ref[index], collapse = "")
+      alt_allele <- paste0(mismatch_alt[index], collapse = "")
+      event_type <- if (length(index) == 1L) "SNP" else "MNP"
       substitution_events[[length(substitution_events) + 1L]] <-
-        data.frame(
+        new_edit_event(
           read_id = read_id,
           type = event_type,
           start = event_start,
           end = event_end,
-          position_after = NA_integer_,
           ref = ref_allele,
           alt = alt_allele,
           label = paste0(
             event_type, "_", event_start, "_", event_end,
             ":", ref_allele, ">", alt_allele
           ),
-
-          trim_region_start = region_start,
-          trim_region_end = region_end,
-          reference_aligned_trim = ref_read$reference_aligned,
-          read_aligned_trim = ref_read$read_aligned,
-
-          stringsAsFactors = FALSE
+          region_start = region_start,
+          region_end = region_end,
+          reference_aligned = aligned$reference_aligned,
+          read_aligned = aligned$read_aligned
         )
     }
   }
 
   all_events <- c(substitution_events, indel_events)
-
-  # 没有变异时输出 WT
   if (length(all_events) == 0L) {
-    event_table <- data.frame(
+    event <- new_edit_event(
       read_id = read_id,
       type = "WT",
-      start = NA_integer_,
-      end = NA_integer_,
-      position_after = NA_integer_,
-      ref = NA_character_,
-      alt = NA_character_,
       label = "WT",
-
-      trim_region_start = region_start,
-      trim_region_end = region_end,
-      reference_aligned_trim = ref_read$reference_aligned,
-      read_aligned_trim = ref_read$read_aligned,
-
-      stringsAsFactors = FALSE
+      region_start = region_start,
+      region_end = region_end,
+      reference_aligned = aligned$reference_aligned,
+      read_aligned = aligned$read_aligned
     )
-
     return(list(
       status = "PASS",
       read_id = read_id,
       combination = "WT",
-      events = event_table
+      events = event
     ))
   }
 
   event_table <- do.call(rbind, all_events)
-
-  # 如果同一位置同时出现插入和缺失，标记为 OTHER。
-  # 原始 IN/DEL 记录仍保留在事件表中，便于检查。
-  insertion_positions <- event_table$position_after[event_table$type == "IN"]
-  deletion_starts <- event_table$start[event_table$type == "DEL"]
-
-  if (length(intersect(insertion_positions, deletion_starts)) > 0L) {
-    event_table$type <- "OTHER"
-    event_table$label <- paste0("OTHER{", event_table$label, "}")
+  insertion_index <- which(event_table$type == "IN")
+  deletion_index <- which(event_table$type == "DEL")
+  complex_index <- integer()
+  if (length(insertion_index) > 0L && length(deletion_index) > 0L) {
+    for (insertion in insertion_index) {
+      position <- event_table$position_after[[insertion]]
+      overlaps <- deletion_index[
+        position >= event_table$start[deletion_index] - 1L &
+          position <= event_table$end[deletion_index]
+      ]
+      if (length(overlaps) > 0L) {
+        complex_index <- c(complex_index, insertion, overlaps)
+      }
+    }
+  }
+  complex_index <- sort(unique(complex_index))
+  if (length(complex_index) > 0L) {
+    event_table$type[complex_index] <- "OTHER"
+    event_table$label[complex_index] <- paste0(
+      "OTHER{", event_table$label[complex_index], "}"
+    )
   }
 
-  event_table$read_id <- read_id
-  event_table <- event_table[
-    , c("read_id", "type", "start", "end",
-        "position_after", "ref", "alt", "label",
-        "trim_region_start", "trim_region_end",
-        "reference_aligned_trim", "read_aligned_trim")
-  ]
-
-  # 按参考位置排序；插入事件按其所在边界排序
-  sort_pos <- ifelse(
+  sort_position <- ifelse(
     is.na(event_table$position_after),
     event_table$start,
     event_table$position_after + 0.5
   )
-  event_table <- event_table[order(sort_pos), , drop = FALSE]
-
+  event_table <- event_table[order(sort_position), , drop = FALSE]
+  rownames(event_table) <- NULL
   list(
     status = "PASS",
     read_id = read_id,
@@ -557,112 +528,204 @@ process_one_read2 <- function(
   )
 }
 
-filter_reads_by_region <- function(
-    aln,
-    region_start,
-    region_end,
-    min_anchor = 2
-) {
-  # 解析每条 CIGAR 中消耗 reference 坐标的部分
-  ref_length <- vapply(as.character(aln$cigar), function(cigar) {
-    ops <- regmatches(
-      cigar,
-      gregexpr("[0-9]+[MIDNSHP=X]", cigar)
-    )[[1]]
+#' Keep alignments spanning a reference interval
+#'
+#' @param aln Data frame containing at least `pos` and `cigar` columns.
+#' @param region_start,region_end Closed positive 1-based reference interval.
+#' @param min_anchor Non-negative number of reference bases required on both
+#'   sides of the interval.
+#'
+#' @return `aln` restricted to alignments spanning the requested interval and
+#' anchors.
+#'
+#' @examples
+#' alignments <- data.frame(
+#'   read = c("complete", "partial"),
+#'   pos = c(1L, 4L),
+#'   cigar = c("12M", "8M")
+#' )
+#' filter_reads_by_region(
+#'   alignments,
+#'   region_start = 4,
+#'   region_end = 9,
+#'   min_anchor = 2
+#' )
+#'
+#' @export
+filter_reads_by_region <- function(aln,
+                                   region_start,
+                                   region_end,
+                                   min_anchor = 2L) {
+  if (!is.data.frame(aln) || !all(c("pos", "cigar") %in% names(aln))) {
+    stop("`aln` must be a data frame containing `pos` and `cigar`.",
+         call. = FALSE)
+  }
+  region_start <- validate_positive_integer(region_start, "region_start")
+  region_end <- validate_positive_integer(region_end, "region_end")
+  min_anchor <- validate_nonnegative_integer(min_anchor, "min_anchor")
+  if (region_end < region_start) {
+    stop("`region_end` must be greater than or equal to `region_start`.",
+         call. = FALSE)
+  }
+  if (nrow(aln) == 0L) return(aln)
 
-    lens <- as.integer(sub("[A-Z=]$", "", ops))
-    codes <- sub("^[0-9]+", "", ops)
-
-    sum(lens[codes %in% c("M", "D", "N", "=", "X")])
-  }, integer(1))
-
-  read_start <- as.integer(aln$pos)
-  read_end <- read_start + ref_length - 1L
-
+  reference_length <- vapply(
+    as.character(aln$cigar),
+    function(cigar) parse_cigar_operations(cigar)$reference_length,
+    numeric(1)
+  )
+  read_start <- suppressWarnings(as.integer(aln$pos))
+  if (anyNA(read_start) || any(read_start < 1L)) {
+    stop("`aln$pos` must contain positive integer coordinates.",
+         call. = FALSE)
+  }
+  read_end <- read_start + reference_length - 1L
   required_start <- max(1L, region_start - min_anchor)
   required_end <- region_end + min_anchor
-
-  keep <- read_start <= required_start &
-    read_end >= required_end
-
-  aln[keep,,drop = FALSE]
+  keep <- read_start <= required_start & read_end >= required_end
+  aln[keep, , drop = FALSE]
 }
 
-# 第一步：逐 read 解析一次，生成事件表
-make_variant_events <- function(
-    aln_valid,
-    reference = ref,
-    region_start = 50,
-    region_end = 220,
-    min_anchor = 2,
-    sample_id = "sample",
-    mc.cores = NULL
-) {
-  reference_name <- names(reference)
+empty_variant_events <- function() {
+  data.frame(
+    read_id = character(),
+    type = character(),
+    start = integer(),
+    end = integer(),
+    position_after = integer(),
+    ref = character(),
+    alt = character(),
+    label = character(),
+    trim_region_start = integer(),
+    trim_region_end = integer(),
+    reference_aligned_trim = character(),
+    read_aligned_trim = character(),
+    sample_id = character(),
+    Ref_name = character(),
+    region_start = integer(),
+    region_end = integer(),
+    stringsAsFactors = FALSE
+  )
+}
 
-  if (length(reference_name) != 1L) {
-    stop("reference 必须是一个带名称的序列。")
-  }
-
+normalize_editing_cores <- function(mc.cores) {
   if (is.null(mc.cores)) {
-    ncores <- parallel::detectCores() - 1L
-    if (is.na(ncores) || ncores < 1L) ncores <- 1L
-  } else {
-    ncores <- max(1L, as.integer(mc.cores))
+    detected <- parallel::detectCores(logical = TRUE)
+    if (is.na(detected) || detected < 2L) return(1L)
+    return(as.integer(detected - 1L))
   }
+  cores <- validate_positive_integer(mc.cores, "mc.cores")
+  if (.Platform$OS.type == "windows" && cores > 1L) {
+    warning("`mclapply()` uses one core on Windows; setting `mc.cores = 1`.",
+            call. = FALSE)
+    cores <- 1L
+  }
+  cores
+}
 
+#' Generate per-read gene-editing events
+#'
+#' `make_variant_events()` filters alignments for complete interval coverage and
+#' applies [call_read_edit_events()] to every retained read.
+#'
+#' @param aln_valid Data frame containing `qname`, `seq`, `cigar`, and `pos`, as
+#'   produced from `Rsamtools::scanBam()`.
+#' @param reference One named reference sequence.
+#' @param region_start,region_end Closed positive 1-based calling interval.
+#' @param min_anchor Non-negative number of aligned reference bases required on
+#'   both sides of the interval.
+#' @param sample_id Character scalar identifying the sample.
+#' @param mc.cores Optional positive integer worker count. Defaults to one fewer
+#'   than the detected cores. Windows automatically uses one core.
+#'
+#' @return A data frame with one row per called event, including sample,
+#' reference, interval, and aligned-sequence columns. A typed zero-row data
+#' frame is returned when no alignment spans the interval.
+#'
+#' @examples
+#' aln <- data.frame(
+#'   qname = c("wt", "snp"),
+#'   seq = c("ACGTACGT", "ACATACGT"),
+#'   cigar = c("8M", "8M"),
+#'   pos = c(1L, 1L),
+#'   stringsAsFactors = FALSE
+#' )
+#' events <- make_variant_events(
+#'   aln,
+#'   reference = c(amplicon = "ACGTACGT"),
+#'   region_start = 1,
+#'   region_end = 8,
+#'   min_anchor = 0,
+#'   mc.cores = 1
+#' )
+#' events[, c("read_id", "type", "label")]
+#'
+#' @export
+make_variant_events <- function(aln_valid,
+                                reference,
+                                region_start,
+                                region_end,
+                                min_anchor = 2L,
+                                sample_id = "sample",
+                                mc.cores = NULL) {
+  required_columns <- c("qname", "seq", "cigar", "pos")
+  if (!is.data.frame(aln_valid) ||
+      !all(required_columns %in% names(aln_valid))) {
+    stop(
+      "`aln_valid` must contain columns: ",
+      paste(required_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  check_scalar_character(sample_id, "sample_id")
+  reference_name <- names(reference)
+  if (length(reference) != 1L || length(reference_name) != 1L ||
+      is.na(reference_name) || !nzchar(reference_name)) {
+    stop("`reference` must be exactly one named sequence.", call. = FALSE)
+  }
+  validated <- validate_editing_region(
+    reference,
+    region_start,
+    region_end,
+    min_anchor
+  )
+  cores <- normalize_editing_cores(mc.cores)
   aln_valid <- filter_reads_by_region(
     aln = aln_valid,
-    region_start = region_start,
-    region_end = region_end,
-    min_anchor = min_anchor
+    region_start = validated$region_start,
+    region_end = validated$region_end,
+    min_anchor = validated$min_anchor
   )
+  if (nrow(aln_valid) == 0L) return(empty_variant_events())
 
-  events <- parallel::mclapply(
-    seq_along(aln_valid$qname),
-    function(i) {
-      one_read <- process_one_read2(
-        read_id = aln_valid$qname[i],
-        read_seq = as.character(aln_valid$seq[i]),
-        cigar = as.character(aln_valid$cigar[i]),
-        ref_start = as.integer(aln_valid$pos[i]),
-        reference = reference,
-        region_start = region_start,
-        region_end = region_end,
-        min_anchor = min_anchor
-      )
-
-      one_read$events
-    },
-    mc.cores = ncores
-  )
-
-  events <- Filter(Negate(is.null), events)
-
-  if (length(events) == 0L) {
-    return(data.frame())
+  worker <- function(i) {
+    call_read_edit_events(
+      read_id = as.character(aln_valid$qname[[i]]),
+      read_seq = as.character(aln_valid$seq[[i]]),
+      cigar = as.character(aln_valid$cigar[[i]]),
+      ref_start = as.integer(aln_valid$pos[[i]]),
+      reference = validated$reference,
+      region_start = validated$region_start,
+      region_end = validated$region_end,
+      min_anchor = validated$min_anchor
+    )$events
   }
-
+  events <- if (.Platform$OS.type == "windows" || cores == 1L) {
+    lapply(seq_len(nrow(aln_valid)), worker)
+  } else {
+    parallel::mclapply(seq_len(nrow(aln_valid)), worker, mc.cores = cores)
+  }
   events_all <- do.call(rbind, events)
-
-  # 给结果附上样本和分析区域信息，方便合并不同 BAM
   events_all$sample_id <- sample_id
   events_all$Ref_name <- reference_name
-  events_all$region_start <- region_start
-  events_all$region_end <- region_end
-
+  events_all$region_start <- validated$region_start
+  events_all$region_end <- validated$region_end
   rownames(events_all) <- NULL
   events_all
 }
 
-
-# 第二步：对已生成的事件表汇总，并按 min_ratio 过滤
-summarise_variant_events <- function(events_all, min_ratio = 1) {
-  if (min_ratio > 20) {
-    warning("min_ratio = ", min_ratio, "%，请确认这个阈值是否符合预期。")
-  }
-
-  empty_summary <- data.frame(
+empty_variant_summary <- function() {
+  data.frame(
     sample_id = character(),
     Ref_name = character(),
     Index = integer(),
@@ -676,42 +739,128 @@ summarise_variant_events <- function(events_all, min_ratio = 1) {
     read_aligned_trim = character(),
     stringsAsFactors = FALSE
   )
+}
 
+empty_event_frequency <- function() {
+  data.frame(
+    sample_id = character(),
+    Ref_name = character(),
+    label = character(),
+    Supporting_reads = integer(),
+    Callable_reads = integer(),
+    Ratio = numeric(),
+    stringsAsFactors = FALSE
+  )
+}
+
+validate_min_ratio <- function(min_ratio) {
+  if (!is.numeric(min_ratio) || length(min_ratio) != 1L || is.na(min_ratio) ||
+      !is.finite(min_ratio) || min_ratio < 0 || min_ratio > 100) {
+    stop("`min_ratio` must be one finite number between 0 and 100.",
+         call. = FALSE)
+  }
+  if (min_ratio > 20) {
+    warning("`min_ratio` is ", min_ratio,
+            "%; confirm that this high threshold is intended.",
+            call. = FALSE)
+  }
+  as.numeric(min_ratio)
+}
+
+#' Summarize per-read gene-editing events
+#'
+#' `summarise_variant_events()` first calculates read support for each event
+#' label. Labels below `min_ratio` are removed from read-level combinations;
+#' reads with no retained non-WT label are classified as WT. It then counts each
+#' retained event combination per sample and reference.
+#'
+#' @param events_all Event data frame returned by [make_variant_events()].
+#' @param min_ratio Number between 0 and 100. An individual event label must
+#'   reach this percentage of callable reads to be retained, and the final
+#'   combination table is filtered at the same percentage.
+#'
+#' @return A list containing the original `events_all`, per-label
+#' `event_frequency`, the complete combination table `var_info`, and its
+#' thresholded form `var_info_filtered`. Reads with `type = "NO_CALL"` are
+#' excluded from all denominators.
+#'
+#' @examples
+#' aln <- data.frame(
+#'   qname = c("wt", "snp"),
+#'   seq = c("ACGTACGT", "ACATACGT"),
+#'   cigar = c("8M", "8M"),
+#'   pos = c(1L, 1L),
+#'   stringsAsFactors = FALSE
+#' )
+#' events <- make_variant_events(
+#'   aln,
+#'   reference = c(amplicon = "ACGTACGT"),
+#'   region_start = 1,
+#'   region_end = 8,
+#'   min_anchor = 0,
+#'   mc.cores = 1
+#' )
+#' summarise_variant_events(events, min_ratio = 1)$var_info
+#'
+#' @export
+summarise_variant_events <- function(events_all, min_ratio = 1) {
+  min_ratio <- validate_min_ratio(min_ratio)
+  if (!is.data.frame(events_all)) {
+    stop("`events_all` must be a data frame.", call. = FALSE)
+  }
+  empty_summary <- empty_variant_summary()
+  empty_frequency <- empty_event_frequency()
   if (nrow(events_all) == 0L) {
     return(list(
       events_all = events_all,
-      event_frequency = data.frame(),
+      event_frequency = empty_frequency,
       var_info = empty_summary,
       var_info_filtered = empty_summary
     ))
   }
 
-  # 兼容旧事件表：没有 sample_id 时，全部视为一个样本
+  required <- c("read_id", "type", "label", "Ref_name")
+  missing_columns <- setdiff(required, names(events_all))
+  if (length(missing_columns) > 0L) {
+    stop(
+      "`events_all` is missing columns: ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
   if (!"sample_id" %in% names(events_all)) {
     events_all$sample_id <- "sample"
   }
+  if (!"region_start" %in% names(events_all) &&
+      "trim_region_start" %in% names(events_all)) {
+    events_all$region_start <- events_all$trim_region_start
+  }
+  if (!"region_end" %in% names(events_all) &&
+      "trim_region_end" %in% names(events_all)) {
+    events_all$region_end <- events_all$trim_region_end
+  }
+  if (!all(c("region_start", "region_end") %in% names(events_all))) {
+    stop("`events_all` must contain calling-region columns.", call. = FALSE)
+  }
 
-  events_exclude_no_call <- events_all[
-    events_all$label != "NO_CALL",
+  callable_events <- events_all[
+    !is.na(events_all$type) & events_all$type != "NO_CALL",
     ,
     drop = FALSE
   ]
-
-  if (nrow(events_exclude_no_call) == 0L) {
+  if (nrow(callable_events) == 0L) {
     return(list(
       events_all = events_all,
-      event_frequency = data.frame(),
+      event_frequency = empty_frequency,
       var_info = empty_summary,
       var_info_filtered = empty_summary
     ))
   }
 
-  # 每个 label 在每个样本、参考序列中支持的 read 数
-  support_data <- unique(events_exclude_no_call[
+  support_data <- unique(callable_events[
     , c("sample_id", "Ref_name", "read_id", "label"),
     drop = FALSE
   ])
-
   event_frequency <- stats::aggregate(
     read_id ~ sample_id + Ref_name + label,
     data = support_data,
@@ -719,168 +868,135 @@ summarise_variant_events <- function(events_all, min_ratio = 1) {
   )
   names(event_frequency)[names(event_frequency) == "read_id"] <-
     "Supporting_reads"
-
-  callable_reads <- unique(events_exclude_no_call[
+  callable_reads <- unique(callable_events[
     , c("sample_id", "Ref_name", "read_id"),
     drop = FALSE
   ])
-
   denominators <- stats::aggregate(
     read_id ~ sample_id + Ref_name,
     data = callable_reads,
     FUN = length
   )
-  names(denominators)[names(denominators) == "read_id"] <-
-    "Callable_reads"
-
+  names(denominators)[names(denominators) == "read_id"] <- "Callable_reads"
   event_frequency <- merge(
     event_frequency,
     denominators,
     by = c("sample_id", "Ref_name"),
-    all.x = TRUE
+    all.x = TRUE,
+    sort = FALSE
   )
-  event_frequency$Ratio <- 100 *
-    event_frequency$Supporting_reads / event_frequency$Callable_reads
+  event_frequency$Ratio <- 100 * event_frequency$Supporting_reads /
+    event_frequency$Callable_reads
 
-  # 低频 label 不纳入组合
   frequent_labels <- event_frequency[
     event_frequency$Ratio >= min_ratio,
     c("sample_id", "Ref_name", "label"),
     drop = FALSE
   ]
-
   frequent_key <- paste(
     frequent_labels$sample_id,
     frequent_labels$Ref_name,
     frequent_labels$label,
     sep = "\034"
   )
-
   event_key <- paste(
-    events_exclude_no_call$sample_id,
-    events_exclude_no_call$Ref_name,
-    events_exclude_no_call$label,
+    callable_events$sample_id,
+    callable_events$Ref_name,
+    callable_events$label,
     sep = "\034"
   )
-
   keep_event <- event_key %in% frequent_key
-
-  # 按样本、参考序列和 read 汇总事件组合
   read_key <- paste(
-    events_exclude_no_call$sample_id,
-    events_exclude_no_call$Ref_name,
-    events_exclude_no_call$read_id,
+    callable_events$sample_id,
+    callable_events$Ref_name,
+    callable_events$read_id,
     sep = "\034"
   )
+  read_groups <- split(seq_len(nrow(callable_events)), read_key)
 
-  read_groups <- split(seq_len(nrow(events_exclude_no_call)), read_key)
-
-  get_first_column <- function(x, column) {
-    if (column %in% names(x)) as.character(x[[column]][1]) else NA_character_
+  first_column <- function(data, column) {
+    if (column %in% names(data)) as.character(data[[column]][[1L]]) else
+      NA_character_
   }
-
-  comb <- lapply(read_groups, function(idx) {
-    ev <- events_exclude_no_call[idx, , drop = FALSE]
-    retained_labels <- unique(ev$label[keep_event[idx]])
-
-    if (length(retained_labels) == 0L) {
-      retained_labels <- "WT"
-    }
-
-    # 按事件在表中的顺序保留组合标签
-    combination <- paste(retained_labels, collapse = ";")
-    variation_count <- sum(retained_labels != "WT")
-
+  combinations <- lapply(read_groups, function(index) {
+    events <- callable_events[index, , drop = FALSE]
+    retained <- unique(events$label[keep_event[index]])
+    retained <- retained[retained != "WT"]
+    if (length(retained) == 0L) retained <- "WT"
     data.frame(
-      sample_id = as.character(ev$sample_id[1]),
-      Ref_name = as.character(ev$Ref_name[1]),
-      read_id = as.character(ev$read_id[1]),
-      Variation_combination = combination,
-      Variation_count = variation_count,
-      region_start = as.integer(ev$region_start[1]),
-      region_end = as.integer(ev$region_end[1]),
-      reference_aligned_trim =
-        get_first_column(ev, "reference_aligned_trim"),
-      read_aligned_trim =
-        get_first_column(ev, "read_aligned_trim"),
+      sample_id = as.character(events$sample_id[[1L]]),
+      Ref_name = as.character(events$Ref_name[[1L]]),
+      read_id = as.character(events$read_id[[1L]]),
+      Variation_combination = paste(retained, collapse = ";"),
+      Variation_count = sum(retained != "WT"),
+      region_start = as.integer(events$region_start[[1L]]),
+      region_end = as.integer(events$region_end[[1L]]),
+      reference_aligned_trim = first_column(
+        events,
+        "reference_aligned_trim"
+      ),
+      read_aligned_trim = first_column(events, "read_aligned_trim"),
       stringsAsFactors = FALSE
     )
   })
+  combinations <- do.call(rbind, combinations)
+  rownames(combinations) <- NULL
 
-  comb <- do.call(rbind, comb)
-  rownames(comb) <- NULL
-
-  # 汇总每种 read 组合的数量和比例
-  combo_key <- paste(
-    comb$sample_id,
-    comb$Ref_name,
-    comb$Variation_combination,
+  combination_key <- paste(
+    combinations$sample_id,
+    combinations$Ref_name,
+    combinations$Variation_combination,
     sep = "\034"
   )
-  combo_groups <- split(seq_len(nrow(comb)), combo_key)
-
+  combination_groups <- split(seq_len(nrow(combinations)), combination_key)
   mode_or_na <- function(x) {
     x <- x[!is.na(x) & nzchar(x)]
     if (length(x) == 0L) return(NA_character_)
     names(which.max(table(x)))
   }
-
-  var_info <- lapply(combo_groups, function(idx) {
-    z <- comb[idx, , drop = FALSE]
-
+  var_info <- lapply(combination_groups, function(index) {
+    data <- combinations[index, , drop = FALSE]
     denominator <- denominators$Callable_reads[
-      denominators$sample_id == z$sample_id[1] &
-        denominators$Ref_name == z$Ref_name[1]
-    ][1]
-
+      denominators$sample_id == data$sample_id[[1L]] &
+        denominators$Ref_name == data$Ref_name[[1L]]
+    ][[1L]]
     data.frame(
-      sample_id = z$sample_id[1],
-      Ref_name = z$Ref_name[1],
-      Read_count = nrow(z),
-      Ratio = round(100 * nrow(z) / denominator, 2),
-      Variation_count = z$Variation_count[1],
-      Variation_combination = z$Variation_combination[1],
-      region_start = z$region_start[1],
-      region_end = z$region_end[1],
-      reference_aligned_trim = mode_or_na(z$reference_aligned_trim),
-      read_aligned_trim = mode_or_na(z$read_aligned_trim),
+      sample_id = data$sample_id[[1L]],
+      Ref_name = data$Ref_name[[1L]],
+      Read_count = nrow(data),
+      Ratio = round(100 * nrow(data) / denominator, 2),
+      Variation_count = data$Variation_count[[1L]],
+      Variation_combination = data$Variation_combination[[1L]],
+      region_start = data$region_start[[1L]],
+      region_end = data$region_end[[1L]],
+      reference_aligned_trim = mode_or_na(data$reference_aligned_trim),
+      read_aligned_trim = mode_or_na(data$read_aligned_trim),
       stringsAsFactors = FALSE
     )
   })
-
   var_info <- do.call(rbind, var_info)
   rownames(var_info) <- NULL
-
-  order_idx <- order(
+  var_info <- var_info[order(
     var_info$sample_id,
     var_info$Ref_name,
-    -var_info$Read_count
-  )
-  var_info <- var_info[order_idx, , drop = FALSE]
-
+    -var_info$Read_count,
+    var_info$Variation_combination
+  ), , drop = FALSE]
   group_key <- paste(var_info$sample_id, var_info$Ref_name, sep = "\034")
-  var_info$Index <- ave(
+  var_info$Index <- stats::ave(
     seq_len(nrow(var_info)),
     group_key,
     FUN = seq_along
   )
-
   var_info <- var_info[
     , c(
       "sample_id", "Ref_name", "Index", "Read_count", "Ratio",
-      "Variation_count", "Variation_combination",
-      "region_start", "region_end",
-      "reference_aligned_trim", "read_aligned_trim"
+      "Variation_count", "Variation_combination", "region_start",
+      "region_end", "reference_aligned_trim", "read_aligned_trim"
     ),
     drop = FALSE
   ]
-
-  var_info_filtered <- var_info[
-    var_info$Ratio >= min_ratio,
-    ,
-    drop = FALSE
-  ]
-
+  var_info_filtered <- var_info[var_info$Ratio >= min_ratio, , drop = FALSE]
   list(
     events_all = events_all,
     event_frequency = event_frequency,
@@ -889,197 +1005,318 @@ summarise_variant_events <- function(events_all, min_ratio = 1) {
   )
 }
 
-variant_table = function(aln_valid, reference = ref, region_start = 50,
-                         region_end = 220,
-                         min_anchor = 2,
-                         min_ratio = 1){   # This parameter should put in a separate function to
-  reference_name = names(reference)
-  if(length(reference_name) != 1){
-    stop("Number of reference must be 1, and it must have a name.")
-  }
-
-  if(min_ratio>20){
-    warning("min_ratio is greater than ", min_ratio, ", which is very high.")
-  }
-  library(parallel)
-  events = mclapply(seq_along(aln_valid$qname), function(mi){
-    one_read <- process_one_read2(
-      read_id = aln_valid$qname[mi],
-      read_seq = as.character(aln_valid$seq[mi]),
-      cigar = as.character(aln_valid$cigar[mi]),
-      ref_start = as.integer(aln_valid$pos[mi]),
-      reference = reference,
-      region_start = region_start,
-      region_end = region_end,
-      min_anchor = min_anchor
-    )
-    one_read$events
-  }, mc.cores = detectCores() - 1)
-
-  events_all = do.call("rbind", events)
-
-  events_exclude_no_call = subset(events_all, label != "NO_CALL")
-  if(nrow(events_exclude_no_call) == 0){
-    # tbl = data.frame(Var1 = character(), Freq = integer(), Ratio = double())
-    return(list(events_all = events_all,
-                tbl_comb = data.frame(Ref_name = reference_name,
-                                      events_combination = "NO_CALL", Freq = nrow(events_all), Ratio = 100)
-    ))
-  }
-  tbl = as.data.frame(table(events_exclude_no_call$label))
-  tbl$Ratio = tbl$Freq/nrow(events_exclude_no_call) * 100
-  tbl = subset(tbl, Ratio >= min_ratio)
-
-  events_valid = events_exclude_no_call[events_exclude_no_call$label %in% tbl$Var1,,drop = FALSE]
-
-  Variation_combination = tapply(events_valid$label, events_valid$read_id, function(x){paste(x, collapse = ";")})
-  Variation_combination_n = tapply(events_valid$label, events_valid$read_id, length)
-  comb = do.call("rbind", tapply(1:nrow(events_valid), events_valid$read_id,
-                                 function(x){
-                                   ev = events_valid[x, , drop = FALSE]
-                                   data.frame(
-                                     read_id = unique(ev$read_id),
-                                     Variation_combination = paste(ev$label, collapse = ";"),
-                                     Variation_count = length(x),
-                                     reference_aligned_trim = unique(ev$reference_aligned_trim),
-                                     read_aligned_trim = unique(ev$read_aligned_trim)
-                                   )
-                                 }))
-  var_info = do.call("rbind", tapply(1:nrow(comb), comb$Variation_combination, function(x){
-    comb_x = comb[x, , drop = FALSE]
-    data.frame(Ref_name = reference_name,
-               Variation_combination = unique(comb_x$Variation_combination),
-               Variation_count = unique(comb_x$Variation_count),
-               Read_count = length(comb_x$Variation_combination),
-               region_start = region_start,
-               region_end = region_end,
-               reference_aligned_trim = names(tail(sort(table(comb_x$reference_aligned_trim)), 1)),
-               read_aligned_trim = names(tail(sort(table(comb_x$read_aligned_trim)), 1)))
-  }))
-  var_info$Ratio = round(var_info$Read_count/sum(var_info$Read_count) * 100, digits = 2)
-  var_info = var_info[order(var_info$Read_count, decreasing = TRUE),, drop = FALSE]
-  var_info$Index = 1:nrow(var_info)
-  var_info = var_info[, c("Ref_name", "Index", "Read_count", "Ratio",
-                          "Variation_count", "Variation_combination",
-                          "region_start", "region_end",
-                          "reference_aligned_trim", "read_aligned_trim"), drop = FALSE]
-  rownames(var_info) = 1:nrow(var_info)
-  var_info_filtered = subset(var_info, Read_count/sum(Read_count)*100 >= min_ratio)
-  var_info_filtered$Ratio = round(var_info_filtered$Read_count/sum(var_info_filtered$Read_count) * 100, digits = 2)
-
-  return(list(events_all = events_all, var_info = var_info, var_info_filtered = var_info_filtered))
-}
-
-
+#' Write a color-grouped gene-editing Excel workbook
+#'
+#' Rows are colored first by barcode and then by lightness for each reference
+#' within a barcode. The data are otherwise written unchanged.
+#'
+#' @param data A data frame containing barcode and reference columns.
+#' @param file Output `.xlsx` path. Parent directories are created.
+#' @param barcode_col,ref_col Column names identifying barcode and reference.
+#' @param sheet Worksheet name.
+#' @param main_colors Non-empty character vector of valid R colors, recycled
+#'   across barcodes.
+#'
+#' @return Invisibly returns the normalized output path.
+#'
+#' @examples
+#' if (requireNamespace("openxlsx", quietly = TRUE)) {
+#'   output <- tempfile(fileext = ".xlsx")
+#'   color_excel_by_barcode_ref(
+#'     data.frame(
+#'       barcode = c("barcode01", "barcode01", "barcode02"),
+#'       Ref_name = c("amp1", "amp2", "amp1"),
+#'       Ratio = c(70, 20, 90)
+#'     ),
+#'     output
+#'   )
+#' }
+#'
+#' @export
 color_excel_by_barcode_ref <- function(
     data,
     file,
     barcode_col = "barcode",
     ref_col = "Ref_name",
     sheet = "Results",
-    main_colors = c("#4E79A7", "#59A14F", "#E15759")
-) {
+    main_colors = c("#4E79A7", "#59A14F", "#E15759")) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
-    stop("请先安装 openxlsx：install.packages('openxlsx')")
+    stop("Package `openxlsx` is required to write the colored workbook.",
+         call. = FALSE)
   }
-  if (length(main_colors) != 3L) {
-    stop("main_colors 必须提供 3 个颜色。")
+  if (!is.data.frame(data)) stop("`data` must be a data frame.", call. = FALSE)
+  check_scalar_character(file, "file")
+  check_scalar_character(barcode_col, "barcode_col")
+  check_scalar_character(ref_col, "ref_col")
+  check_scalar_character(sheet, "sheet")
+  missing_columns <- setdiff(c(barcode_col, ref_col), names(data))
+  if (length(missing_columns) > 0L) {
+    stop("Missing coloring columns: ", paste(missing_columns, collapse = ", "),
+         call. = FALSE)
   }
+  if (!is.character(main_colors) || length(main_colors) == 0L ||
+      anyNA(main_colors) || any(!nzchar(main_colors))) {
+    stop("`main_colors` must be a non-empty character vector of colors.",
+         call. = FALSE)
+  }
+  tryCatch(
+    grDevices::col2rgb(main_colors),
+    error = function(e) stop("`main_colors` contains an invalid color.",
+                             call. = FALSE)
+  )
 
   barcode <- as.character(data[[barcode_col]])
-  ref_name <- as.character(data[[ref_col]])
-
-  # 按首次出现顺序给 barcode 循环分配三个主色
+  reference_name <- as.character(data[[ref_col]])
+  barcode[is.na(barcode) | !nzchar(barcode)] <- "unclassified"
+  reference_name[is.na(reference_name) | !nzchar(reference_name)] <-
+    "unclassified"
   barcodes <- unique(barcode)
-  barcode_colors <- setNames(
+  barcode_colors <- stats::setNames(
     rep(main_colors, length.out = length(barcodes)),
     barcodes
   )
+  workbook <- openxlsx::createWorkbook()
+  openxlsx::addWorksheet(workbook, sheet)
+  openxlsx::writeData(workbook, sheet, data)
 
-  wb <- openxlsx::createWorkbook()
-  openxlsx::addWorksheet(wb, sheet)
-  openxlsx::writeData(wb, sheet, data)
-
-  for (bc in barcodes) {
-    bc_rows <- which(barcode == bc)
-    refs <- unique(ref_name[bc_rows])
-
-    # 每种 Ref_name 使用同一主色系的不同明暗度
-    white_mix <- if (length(refs) == 1L) {
-      0.45
-    } else {
-      seq(0.78, 0.25, length.out = length(refs))
-    }
-
-    base_rgb <- grDevices::col2rgb(barcode_colors[[bc]])[, 1] / 255
-
-    for (i in seq_along(refs)) {
-      rows <- which(barcode == bc & ref_name == refs[i])
-
-      # white_mix 越大，填充色越浅
-      fill_rgb <- base_rgb * (1 - white_mix[i]) + white_mix[i]
+  for (current_barcode in barcodes) {
+    barcode_rows <- which(barcode == current_barcode)
+    references <- unique(reference_name[barcode_rows])
+    white_mix <- if (length(references) == 1L) 0.45 else
+      seq(0.78, 0.25, length.out = length(references))
+    base_rgb <- grDevices::col2rgb(
+      barcode_colors[[current_barcode]]
+    )[, 1L] / 255
+    for (i in seq_along(references)) {
+      rows <- which(
+        barcode == current_barcode & reference_name == references[[i]]
+      )
+      fill_rgb <- base_rgb * (1 - white_mix[[i]]) + white_mix[[i]]
       fill_color <- grDevices::rgb(
-        fill_rgb[1], fill_rgb[2], fill_rgb[3],
+        fill_rgb[[1L]], fill_rgb[[2L]], fill_rgb[[3L]],
         maxColorValue = 1
       )
-
       openxlsx::addStyle(
-        wb,
+        workbook,
         sheet = sheet,
         style = openxlsx::createStyle(fgFill = fill_color),
-        rows = rows + 1L,  # Excel 第 1 行是表头
+        rows = rows + 1L,
         cols = seq_len(ncol(data)),
         gridExpand = TRUE,
         stack = TRUE
       )
     }
   }
-
-  openxlsx::freezePane(wb, sheet, firstRow = TRUE)
-  openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
-
+  openxlsx::freezePane(workbook, sheet, firstRow = TRUE)
+  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+  file <- normalizePath(file, mustWork = FALSE)
+  openxlsx::saveWorkbook(workbook, file, overwrite = TRUE)
   invisible(file)
 }
 
-run_editing_batch <- function(
-    sample_info,
-    ref_all,
-    re_names,
-    bam_root = "/data/project_delivery/20260904PCR/PM202609003NS_100bp_bkup_original/variant_results",
-    cache_dir = "event_cache",
-    min_anchor = 0,
-    min_ratio = 1,
-    mc.cores = NULL,
-    force_rebuild = FALSE,
-    colored_xlsx = NULL
-) {
-  # sample_info 可以是 Excel 路径，也可以是 data.frame
-  if (is.character(sample_info) && length(sample_info) == 1L) {
-    sample_info_0 <- as.data.frame(
-      readxl::read_excel(sample_info)
-    )
+editing_cache_signature <- function(bam_file,
+                                    reference,
+                                    reference_name,
+                                    region_start,
+                                    region_end,
+                                    min_anchor,
+                                    min_mapq,
+                                    reference_name_map) {
+  bam_info <- file.info(bam_file)
+  list(
+    schema_version = 2L,
+    bam_path = normalizePath(bam_file, mustWork = TRUE),
+    bam_size = as.numeric(bam_info$size[[1L]]),
+    bam_mtime = as.numeric(bam_info$mtime[[1L]]),
+    reference_name = reference_name,
+    reference_sequence = toupper(as.character(reference)),
+    region_start = as.integer(region_start),
+    region_end = as.integer(region_end),
+    min_anchor = as.integer(min_anchor),
+    min_mapq = as.integer(min_mapq),
+    reference_name_map = reference_name_map
+  )
+}
+
+read_editing_cache <- function(path, signature) {
+  if (!file.exists(path)) return(NULL)
+  cached <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (!is.list(cached) || !identical(cached$schema_version, 2L) ||
+      !identical(cached$signature, signature) ||
+      !is.data.frame(cached$events)) {
+    return(NULL)
+  }
+  cached$events
+}
+
+write_editing_cache <- function(events, path, signature) {
+  saveRDS(
+    list(schema_version = 2L, signature = signature, events = events),
+    path
+  )
+  invisible(path)
+}
+
+normalize_editing_sample_info <- function(sample_info) {
+  if (is.character(sample_info) && length(sample_info) == 1L &&
+      !is.na(sample_info)) {
+    check_file_arg(sample_info, "sample_info")
+    sample_info <- as.data.frame(readxl::read_excel(sample_info))
+  } else if (is.data.frame(sample_info)) {
+    sample_info <- as.data.frame(sample_info)
   } else {
-    sample_info_0 <- as.data.frame(sample_info)
+    stop("`sample_info` must be a data frame or one Excel file path.",
+         call. = FALSE)
   }
+  aliases <- list(
+    ref_name = "Reference_name",
+    region_start = "Reference_Region_Start",
+    region_end = "Reference_Region_End"
+  )
+  for (standard in names(aliases)) {
+    if (!standard %in% names(sample_info)) {
+      legacy <- aliases[[standard]]
+      if (!legacy %in% names(sample_info)) {
+        stop("`sample_info` is missing column `", standard,
+             "` (or `", legacy, "`).", call. = FALSE)
+      }
+      sample_info[[standard]] <- sample_info[[legacy]]
+    }
+  }
+  if (!"barcode" %in% names(sample_info)) {
+    stop("`sample_info` is missing column `barcode`.", call. = FALSE)
+  }
+  if (nrow(sample_info) == 0L) {
+    stop("`sample_info` must contain at least one row.", call. = FALSE)
+  }
+  barcode <- as.character(sample_info$barcode)
+  ref_name <- as.character(sample_info$ref_name)
+  if (anyNA(barcode) || any(!nzchar(trimws(barcode)))) {
+    stop("`sample_info$barcode` contains missing or empty values.",
+         call. = FALSE)
+  }
+  if (anyNA(ref_name) || any(!nzchar(trimws(ref_name)))) {
+    stop("`sample_info$ref_name` contains missing or empty values.",
+         call. = FALSE)
+  }
+  region_start <- suppressWarnings(as.integer(sample_info$region_start))
+  region_end <- suppressWarnings(as.integer(sample_info$region_end))
+  if (anyNA(region_start) || anyNA(region_end) || any(region_start < 1L) ||
+      any(region_end < region_start)) {
+    stop("Sample editing regions must contain positive integers with start <= end.",
+         call. = FALSE)
+  }
+  sample_info$barcode <- barcode
+  sample_info$ref_name <- ref_name
+  sample_info$region_start <- region_start
+  sample_info$region_end <- region_end
+  sample_info
+}
 
-  if (!"barcode" %in% names(sample_info_0)) {
-    stop("sample_info 中缺少 barcode 列。")
+#' Run batch gene-editing event analysis from aligned BAM files
+#'
+#' `run_editing_batch()` reads primary alignments for each barcode, calls editing
+#' events inside one or more configured reference intervals, caches per-read
+#' events, summarizes edit combinations, and optionally writes a colored Excel
+#' workbook.
+#'
+#' @param sample_info A data frame or Excel path. Required columns are
+#'   `barcode`, `ref_name`, `region_start`, and `region_end`. Legacy names
+#'   `Reference_name`, `Reference_Region_Start`, and `Reference_Region_End` are
+#'   accepted. Multiple references in `ref_name` are separated with `|`.
+#' @param ref_all Named reference sequences. Every configured reference must be
+#'   present.
+#' @param re_names Optional named character vector mapping BAM reference names
+#'   to names in `ref_all`. Unmapped names are retained unchanged.
+#' @param bam_root Directory containing
+#'   `<barcode>/alignments/<barcode>.aligned.sorted.bam`.
+#' @param cache_dir Directory for versioned event caches. Cache validity includes
+#'   BAM path, size and modification time, complete reference sequence, region,
+#'   anchor, MAPQ threshold, and reference-name mapping.
+#' @param min_anchor Non-negative reference bases required on both sides of the
+#'   calling interval.
+#' @param min_ratio Percentage threshold passed to
+#'   [summarise_variant_events()].
+#' @param min_mapq Integer between 0 and 255. Alignments below this mapping
+#'   quality are excluded.
+#' @param mc.cores Optional worker count passed to [make_variant_events()].
+#' @param force_rebuild Logical. Ignore valid caches and rebuild all events.
+#' @param colored_xlsx Optional `.xlsx` output path passed to
+#'   [color_excel_by_barcode_ref()].
+#'
+#' @return A list with `table`, the combined filtered summary, and `per_sample`,
+#' a nested list of summaries by input row and reference.
+#'
+#' @details
+#' Only mapped primary, non-supplementary, non-duplicate, QC-passing alignments
+#' are loaded. Reads must span the complete calling interval plus anchors. Cache
+#' files from older implementations are automatically considered stale.
+#'
+#' @examples
+#' \dontrun{
+#' sample_sheet <- data.frame(
+#'   barcode = c("barcode01", "barcode02"),
+#'   ref_name = c("amplicon_A", "amplicon_B"),
+#'   region_start = c(120L, 85L),
+#'   region_end = c(150L, 115L)
+#' )
+#' references <- c(
+#'   amplicon_A = "ACGT...",
+#'   amplicon_B = "TGCA..."
+#' )
+#'
+#' result <- run_editing_batch(
+#'   sample_info = sample_sheet,
+#'   ref_all = references,
+#'   bam_root = "/path/to/barcode-directories",
+#'   min_anchor = 10,
+#'   min_ratio = 1,
+#'   min_mapq = 20,
+#'   colored_xlsx = "editing-summary.xlsx"
+#' )
+#' result$table
+#' }
+#'
+#' @seealso [make_variant_events()], [summarise_variant_events()]
+#' @export
+run_editing_batch <- function(sample_info,
+                              ref_all,
+                              re_names = NULL,
+                              bam_root,
+                              cache_dir = file.path(bam_root, "event_cache"),
+                              min_anchor = 0L,
+                              min_ratio = 1,
+                              min_mapq = 20L,
+                              mc.cores = NULL,
+                              force_rebuild = FALSE,
+                              colored_xlsx = NULL) {
+  sample_info <- normalize_editing_sample_info(sample_info)
+  if (length(ref_all) == 0L || is.null(names(ref_all)) ||
+      anyNA(names(ref_all)) || any(!nzchar(names(ref_all))) ||
+      anyDuplicated(names(ref_all))) {
+    stop("`ref_all` must contain uniquely named reference sequences.",
+         call. = FALSE)
   }
-
-  # 兼容 Excel 原始列名和已经整理过的列名
-  if (!"ref_name" %in% names(sample_info_0)) {
-    sample_info_0$ref_name <- sample_info_0$Reference_name
+  if (!is.null(re_names)) {
+    if (!is.character(re_names) || is.null(names(re_names)) ||
+        anyNA(re_names) || anyNA(names(re_names)) ||
+        any(!nzchar(names(re_names)))) {
+      stop("`re_names` must be `NULL` or a named character vector.",
+           call. = FALSE)
+    }
   }
-  if (!"region_start" %in% names(sample_info_0)) {
-    sample_info_0$region_start <-
-      sample_info_0$Reference_Region_Start
-  }
-  if (!"region_end" %in% names(sample_info_0)) {
-    sample_info_0$region_end <-
-      sample_info_0$Reference_Region_End
-  }
-
+  check_dir_arg(bam_root, "bam_root")
+  check_scalar_character(cache_dir, "cache_dir")
+  min_anchor <- validate_nonnegative_integer(min_anchor, "min_anchor")
+  min_ratio <- validate_min_ratio(min_ratio)
+  min_mapq <- validate_nonnegative_integer(min_mapq, "min_mapq")
+  if (min_mapq > 255L) stop("`min_mapq` cannot exceed 255.", call. = FALSE)
+  cores <- normalize_editing_cores(mc.cores)
+  check_logical_scalar(force_rebuild, "force_rebuild")
+  if (!is.null(colored_xlsx)) check_scalar_character(colored_xlsx, "colored_xlsx")
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  cache_dir <- normalizePath(cache_dir, mustWork = TRUE)
+  bam_root <- normalizePath(bam_root, mustWork = TRUE)
 
   bam_param <- Rsamtools::ScanBamParam(
     flag = Rsamtools::scanBamFlag(
@@ -1091,187 +1328,166 @@ run_editing_batch <- function(
     ),
     what = c("qname", "rname", "pos", "cigar", "mapq", "seq", "flag")
   )
-
   output_rows <- list()
   per_sample_results <- list()
-  out_i <- 1L
+  output_index <- 1L
+  safe_name <- function(x) gsub("[^A-Za-z0-9_.-]", "_", x)
 
-  safe_name <- function(x) {
-    gsub("[^A-Za-z0-9_.-]", "_", x)
-  }
-
-  for (i in seq_len(nrow(sample_info_0))) {
-    barcode <- as.character(sample_info_0$barcode[i])
-
-    ref_names <- strsplit(
-      as.character(sample_info_0$ref_name[i]),
+  for (i in seq_len(nrow(sample_info))) {
+    barcode <- sample_info$barcode[[i]]
+    reference_names <- trimws(strsplit(
+      sample_info$ref_name[[i]],
       split = "\\|"
-    )[[1]]
-    ref_names <- trimws(ref_names)
-    ref_names <- ref_names[nzchar(ref_names)]
+    )[[1L]])
+    reference_names <- unique(reference_names[nzchar(reference_names)])
+    region_start <- sample_info$region_start[[i]]
+    region_end <- sample_info$region_end[[i]]
+    message("Processing ", barcode, ": ", paste(reference_names, collapse = ", "))
 
-    region_start <- as.integer(sample_info_0$region_start[i])
-    region_end <- as.integer(sample_info_0$region_end[i])
+    missing_references <- setdiff(reference_names, names(ref_all))
+    if (length(missing_references) > 0L) {
+      warning(
+        "References not found in `ref_all` for ", barcode, ": ",
+        paste(missing_references, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    reference_names <- intersect(reference_names, names(ref_all))
+    if (length(reference_names) == 0L) {
+      per_sample_results[[paste0(barcode, "_", i)]] <- list()
+      next
+    }
 
-    message("Processing ", barcode, ": ", paste(ref_names, collapse = ", "))
-
-    cache_files <- setNames(
+    bam_file <- file.path(
+      bam_root,
+      barcode,
+      "alignments",
+      paste0(barcode, ".aligned.sorted.bam")
+    )
+    if (!file.exists(bam_file)) {
+      warning("BAM file not found; skipping: ", bam_file, call. = FALSE)
+      per_sample_results[[paste0(barcode, "_", i)]] <- list()
+      next
+    }
+    cache_files <- stats::setNames(
       file.path(
         cache_dir,
         paste0(
-          safe_name(barcode), "__",
-          safe_name(ref_names), "__",
-          region_start, "_", region_end, "__anchor",
-          min_anchor, ".events.rds"
+          safe_name(barcode), "__", safe_name(reference_names), "__",
+          region_start, "_", region_end, "__anchor", min_anchor,
+          "__mapq", min_mapq, ".events.rds"
         )
       ),
-      ref_names
+      reference_names
     )
-
-    # 缓存有缺失时才读取该 barcode 的 BAM
-    need_bam <- force_rebuild || any(!file.exists(cache_files))
-
-    if (need_bam) {
-      bam_file <- file.path(
-        bam_root,
-        barcode,
-        "alignments",
-        paste0(barcode, ".aligned.sorted.bam")
+    signatures <- lapply(reference_names, function(reference_name) {
+      editing_cache_signature(
+        bam_file = bam_file,
+        reference = ref_all[[reference_name]],
+        reference_name = reference_name,
+        region_start = region_start,
+        region_end = region_end,
+        min_anchor = min_anchor,
+        min_mapq = min_mapq,
+        reference_name_map = re_names
       )
-
-      if (!file.exists(bam_file)) {
-        warning("找不到 BAM，跳过：", bam_file)
-        next
-      }
-
-      aln <- as.data.frame(
-        Rsamtools::scanBam(bam_file, param = bam_param)[[1]]
+    })
+    names(signatures) <- reference_names
+    cached_events <- lapply(reference_names, function(reference_name) {
+      if (force_rebuild) return(NULL)
+      read_editing_cache(
+        cache_files[[reference_name]],
+        signatures[[reference_name]]
       )
+    })
+    names(cached_events) <- reference_names
+    needs_rebuild <- vapply(cached_events, is.null, logical(1))
 
-      original_rname <- as.character(aln$rname)
-      mapped_rname <- unname(re_names[original_rname])
-      mapped_rname[is.na(mapped_rname)] <-
-        original_rname[is.na(mapped_rname)]
-      aln$rname <- mapped_rname
-
-      for (ref_name in ref_names) {
-        cache_file <- cache_files[[ref_name]]
-
-        if (!force_rebuild && file.exists(cache_file)) {
-          next
-        }
-
-        if (!ref_name %in% names(ref_all)) {
-          warning("ref_all 中找不到参考序列：", ref_name)
-          next
-        }
-
-        aln_ref <- aln[
-          !is.na(aln$rname) & aln$rname == ref_name,
+    if (any(needs_rebuild)) {
+      alignment <- as.data.frame(
+        Rsamtools::scanBam(bam_file, param = bam_param)[[1L]]
+      )
+      if (nrow(alignment) > 0L) {
+        alignment <- alignment[
+          !is.na(alignment$mapq) & alignment$mapq >= min_mapq,
           ,
           drop = FALSE
         ]
+      }
+      original_name <- as.character(alignment$rname)
+      mapped_name <- original_name
+      if (!is.null(re_names) && length(original_name) > 0L) {
+        candidate <- unname(re_names[original_name])
+        mapped_name[!is.na(candidate)] <- candidate[!is.na(candidate)]
+      }
+      alignment$rname <- mapped_name
 
-        if (nrow(aln_ref) > 0L) {
-          aln_ref <- filter_reads_by_region(
-            aln = aln_ref,
-            region_start = region_start,
-            region_end = region_end,
-            min_anchor = min_anchor
-          )
-        }
-
-        if (nrow(aln_ref) == 0L) {
-          events_all <- data.frame()
-        } else {
-          events_all <- make_variant_events(
-            aln_valid = aln_ref,
-            reference = ref_all[ref_name],
-            region_start = region_start,
-            region_end = region_end,
-            min_anchor = min_anchor,
-            sample_id = barcode,
-            mc.cores = mc.cores
-          )
-        }
-
-        saveRDS(events_all, cache_file)
+      for (reference_name in reference_names[needs_rebuild]) {
+        alignment_reference <- alignment[
+          !is.na(alignment$rname) & alignment$rname == reference_name,
+          ,
+          drop = FALSE
+        ]
+        events <- make_variant_events(
+          aln_valid = alignment_reference,
+          reference = stats::setNames(
+            as.character(ref_all[[reference_name]]),
+            reference_name
+          ),
+          region_start = region_start,
+          region_end = region_end,
+          min_anchor = min_anchor,
+          sample_id = barcode,
+          mc.cores = cores
+        )
+        write_editing_cache(
+          events,
+          cache_files[[reference_name]],
+          signatures[[reference_name]]
+        )
+        cached_events[[reference_name]] <- events
       }
     }
 
     barcode_result <- list()
-
-    for (ref_name in ref_names) {
-      cache_file <- cache_files[[ref_name]]
-
-      if (!file.exists(cache_file)) {
-        next
+    for (reference_name in reference_names) {
+      events <- cached_events[[reference_name]]
+      if (is.null(events) || nrow(events) == 0L) next
+      summary_result <- summarise_variant_events(events, min_ratio = min_ratio)
+      table <- summary_result$var_info_filtered
+      if (nrow(table) == 0L) next
+      table$barcode <- barcode
+      if ("Sample_HiTOM" %in% names(sample_info)) {
+        table$Sample_HiTOM <- as.character(sample_info$Sample_HiTOM[[i]])
       }
-
-      events_all <- readRDS(cache_file)
-
-      if (nrow(events_all) == 0L) {
-        next
-      }
-
-      summary_result <- summarise_variant_events(
-        events_all = events_all,
-        min_ratio = min_ratio
-      )
-
-      tab <- summary_result$var_info_filtered
-
-      if (nrow(tab) == 0L) {
-        next
-      }
-
-      tab$barcode <- barcode
-
-      if ("Sample_HiTOM" %in% names(sample_info_0)) {
-        tab$Sample_HiTOM <- as.character(sample_info_0$Sample_HiTOM[i])
-      }
-
-      barcode_result[[ref_name]] <- tab
-      output_rows[[out_i]] <- tab
-      out_i <- out_i + 1L
+      barcode_result[[reference_name]] <- table
+      output_rows[[output_index]] <- table
+      output_index <- output_index + 1L
     }
-
     per_sample_results[[paste0(barcode, "_", i)]] <- barcode_result
   }
 
-  if (length(output_rows) == 0L) {
-    result_table <- data.frame()
+  result_table <- if (length(output_rows) == 0L) {
+    data.frame()
   } else {
-    result_table <- do.call(rbind, output_rows)
-    rownames(result_table) <- NULL
-
-    front_cols <- intersect(
-      c("Sample_HiTOM", "barcode"),
-      names(result_table)
-    )
-
-    result_table <- result_table[
-      , c(front_cols, setdiff(names(result_table), front_cols)),
-      drop = FALSE
-    ]
+    output <- do.call(rbind, output_rows)
+    rownames(output) <- NULL
+    front_columns <- intersect(c("Sample_HiTOM", "barcode"), names(output))
+    output[, c(front_columns, setdiff(names(output), front_columns)), drop = FALSE]
   }
-
   if (!is.null(colored_xlsx)) {
-    if (!exists("color_excel_by_barcode_ref", mode = "function")) {
-      stop("请先定义 color_excel_by_barcode_ref()。")
+    if (nrow(result_table) == 0L) {
+      warning("No summarized events were available; Excel output was skipped.",
+              call. = FALSE)
+    } else {
+      color_excel_by_barcode_ref(
+        data = result_table,
+        file = colored_xlsx,
+        barcode_col = "barcode",
+        ref_col = "Ref_name",
+        sheet = "Results"
+      )
     }
-
-    color_excel_by_barcode_ref(
-      data = result_table,
-      file = colored_xlsx,
-      barcode_col = "barcode",
-      ref_col = "Ref_name",
-      sheet = "Results"
-    )
   }
-
-  list(
-    table = result_table,
-    per_sample = per_sample_results
-  )
+  list(table = result_table, per_sample = per_sample_results)
 }
