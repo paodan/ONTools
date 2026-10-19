@@ -691,7 +691,7 @@ empty_variant_events <- function() {
     reference_aligned_trim = character(),
     read_aligned_trim = character(),
     sample_id = character(),
-    Ref_name = character(),
+    ref_name = character(),
     region_start = integer(),
     region_end = integer(),
     stringsAsFactors = FALSE
@@ -817,7 +817,7 @@ make_variant_events <- function(aln_valid,
   }
   events_all <- do.call(rbind, events)
   events_all$sample_id <- sample_id
-  events_all$Ref_name <- reference_name
+  events_all$ref_name <- reference_name
   events_all$region_start <- validated$region_start
   events_all$region_end <- validated$region_end
   rownames(events_all) <- NULL
@@ -827,12 +827,12 @@ make_variant_events <- function(aln_valid,
 empty_variant_summary <- function() {
   data.frame(
     sample_id = character(),
-    Ref_name = character(),
-    Index = integer(),
-    Read_count = integer(),
-    Ratio = numeric(),
-    Variation_count = integer(),
-    Variation_combination = character(),
+    ref_name = character(),
+    index = integer(),
+    read_count = integer(),
+    ratio = numeric(),
+    variation_count = integer(),
+    variation_combination = character(),
     region_start = integer(),
     region_end = integer(),
     reference_aligned_trim = character(),
@@ -841,15 +841,52 @@ empty_variant_summary <- function() {
   )
 }
 
+recalculate_filtered_ratios <- function(data,
+                                        mode = c("replace", "add")) {
+  mode <- match.arg(mode)
+  if (nrow(data) == 0L) {
+    if (mode == "add") {
+      data$filtered_ratio <- numeric()
+      columns <- names(data)
+      columns <- append(
+        setdiff(columns, "filtered_ratio"),
+        "filtered_ratio",
+        after = match("ratio", setdiff(columns, "filtered_ratio"))
+      )
+      data <- data[, columns, drop = FALSE]
+    }
+    return(data)
+  }
+  ratio_group <- paste(data$sample_id, data$ref_name, sep = "\034")
+  retained_reads <- stats::ave(
+    data$read_count,
+    ratio_group,
+    FUN = sum
+  )
+  filtered_ratio <- round(100 * data$read_count / retained_reads, 2)
+  if (mode == "replace") {
+    data$ratio <- filtered_ratio
+    return(data)
+  }
+  data$filtered_ratio <- filtered_ratio
+  columns <- names(data)
+  columns <- append(
+    setdiff(columns, "filtered_ratio"),
+    "filtered_ratio",
+    after = match("ratio", setdiff(columns, "filtered_ratio"))
+  )
+  data[, columns, drop = FALSE]
+}
+
 empty_event_frequency <- function() {
   data.frame(
     sample_id = character(),
-    Ref_name = character(),
+    ref_name = character(),
     label = character(),
-    Supporting_reads = integer(),
-    Callable_reads = integer(),
-    Ratio = numeric(),
-    Pass_filter = logical(),
+    supporting_reads = integer(),
+    callable_reads = integer(),
+    ratio = numeric(),
+    pass_filter = logical(),
     stringsAsFactors = FALSE
   )
 }
@@ -885,19 +922,28 @@ validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
 #' @param min_event_ratio Number between 0 and 100. Minimum percentage of
 #'   callable reads that must support a non-WT event label.
 #' @param min_comb_reads Positive integer. Minimum number of reads that must
-#'   support a final `Variation_combination`, including WT.
+#'   support a final `variation_combination`, including WT.
 #' @param min_comb_ratio Number between 0 and 100. Minimum percentage of
-#'   callable reads that must support a final `Variation_combination`.
+#'   callable reads that must support a final `variation_combination`.
 #' @param min_callable_reads Positive integer. Minimum number of callable reads
 #'   required for a sample/reference group to produce `var_info`. Groups below
-#'   this depth remain visible in `event_frequency` with `Pass_filter = FALSE`.
+#'   this depth remain visible in `event_frequency` with `pass_filter = FALSE`.
+#' @param filtered_ratio_mode How ratios are reported in `var_info_filtered`.
+#'   `"replace"` (the default) replaces `ratio` with the percentage
+#'   recalculated among retained combinations and does not add a new column.
+#'   `"add"` retains the original callable-read `ratio` and adds
+#'   `filtered_ratio`. Recalculation is performed separately for every
+#'   sample/reference group.
 #'
 #' @return A list containing the original `events_all`, per-label
 #' `event_frequency`, the complete combination table `var_info`, and its
-#' thresholded form `var_info_filtered`. `event_frequency$Pass_filter` indicates
+#' thresholded form `var_info_filtered`. `event_frequency$pass_filter` indicates
 #' whether each label passed the callable-depth, support-count, and percentage
 #' requirements. Reads with `type = "NO_CALL"` are excluded from all
-#' denominators.
+#' denominators. `var_info$ratio` always uses all callable reads; only
+#' `var_info_filtered` is affected by `filtered_ratio_mode`. All returned table
+#' columns use lower `snake_case`. Legacy input containing `Ref_name` is
+#' accepted and normalized to `ref_name`.
 #'
 #' @examples
 #' aln <- data.frame(
@@ -930,7 +976,9 @@ summarise_variant_events <- function(events_all,
                                      min_event_ratio = 1,
                                      min_comb_reads = 3L,
                                      min_comb_ratio = 1,
-                                     min_callable_reads = 10L) {
+                                     min_callable_reads = 10L,
+                                     filtered_ratio_mode = c("replace", "add")) {
+  filtered_ratio_mode <- match.arg(filtered_ratio_mode)
   min_event_reads <- validate_positive_integer(
     min_event_reads,
     "min_event_reads"
@@ -955,18 +1003,28 @@ summarise_variant_events <- function(events_all,
   if (!is.data.frame(events_all)) {
     stop("`events_all` must be a data frame.", call. = FALSE)
   }
+  if ("Ref_name" %in% names(events_all)) {
+    if (!"ref_name" %in% names(events_all)) {
+      events_all$ref_name <- events_all[["Ref_name"]]
+    }
+    events_all[["Ref_name"]] <- NULL
+  }
   empty_summary <- empty_variant_summary()
+  empty_filtered_summary <- recalculate_filtered_ratios(
+    empty_summary,
+    mode = filtered_ratio_mode
+  )
   empty_frequency <- empty_event_frequency()
   if (nrow(events_all) == 0L) {
     return(list(
       events_all = events_all,
       event_frequency = empty_frequency,
       var_info = empty_summary,
-      var_info_filtered = empty_summary
+      var_info_filtered = empty_filtered_summary
     ))
   }
 
-  required <- c("read_id", "type", "label", "Ref_name")
+  required <- c("read_id", "type", "label", "ref_name")
   missing_columns <- setdiff(required, names(events_all))
   if (length(missing_columns) > 0L) {
     stop(
@@ -1000,64 +1058,64 @@ summarise_variant_events <- function(events_all,
       events_all = events_all,
       event_frequency = empty_frequency,
       var_info = empty_summary,
-      var_info_filtered = empty_summary
+      var_info_filtered = empty_filtered_summary
     ))
   }
 
   support_data <- unique(callable_events[
-    , c("sample_id", "Ref_name", "read_id", "label"),
+    , c("sample_id", "ref_name", "read_id", "label"),
     drop = FALSE
   ])
   event_frequency <- stats::aggregate(
-    read_id ~ sample_id + Ref_name + label,
+    read_id ~ sample_id + ref_name + label,
     data = support_data,
     FUN = length
   )
   names(event_frequency)[names(event_frequency) == "read_id"] <-
-    "Supporting_reads"
+    "supporting_reads"
   callable_reads <- unique(callable_events[
-    , c("sample_id", "Ref_name", "read_id"),
+    , c("sample_id", "ref_name", "read_id"),
     drop = FALSE
   ])
   denominators <- stats::aggregate(
-    read_id ~ sample_id + Ref_name,
+    read_id ~ sample_id + ref_name,
     data = callable_reads,
     FUN = length
   )
-  names(denominators)[names(denominators) == "read_id"] <- "Callable_reads"
+  names(denominators)[names(denominators) == "read_id"] <- "callable_reads"
   event_frequency <- merge(
     event_frequency,
     denominators,
-    by = c("sample_id", "Ref_name"),
+    by = c("sample_id", "ref_name"),
     all.x = TRUE,
     sort = FALSE
   )
-  event_frequency$Ratio <- 100 * event_frequency$Supporting_reads /
-    event_frequency$Callable_reads
+  event_frequency$ratio <- 100 * event_frequency$supporting_reads /
+    event_frequency$callable_reads
 
   group_key <- function(sample_id, reference_name) {
     paste(sample_id, reference_name, sep = "\034")
   }
   eligible_groups <- denominators[
-    denominators$Callable_reads >= min_callable_reads,
+    denominators$callable_reads >= min_callable_reads,
     ,
     drop = FALSE
   ]
   eligible_group_key <- group_key(
     eligible_groups$sample_id,
-    eligible_groups$Ref_name
+    eligible_groups$ref_name
   )
   frequency_group_key <- group_key(
     event_frequency$sample_id,
-    event_frequency$Ref_name
+    event_frequency$ref_name
   )
-  event_frequency$Pass_filter <-
+  event_frequency$pass_filter <-
     frequency_group_key %in% eligible_group_key &
     (
       event_frequency$label == "WT" |
         (
-          event_frequency$Supporting_reads >= min_event_reads &
-            event_frequency$Ratio >= min_event_ratio
+          event_frequency$supporting_reads >= min_event_reads &
+            event_frequency$ratio >= min_event_ratio
         )
     )
 
@@ -1066,24 +1124,24 @@ summarise_variant_events <- function(events_all,
       events_all = events_all,
       event_frequency = event_frequency,
       var_info = empty_summary,
-      var_info_filtered = empty_summary
+      var_info_filtered = empty_filtered_summary
     ))
   }
 
   frequent_labels <- event_frequency[
-    event_frequency$Pass_filter,
-    c("sample_id", "Ref_name", "label"),
+    event_frequency$pass_filter,
+    c("sample_id", "ref_name", "label"),
     drop = FALSE
   ]
   frequent_key <- paste(
     frequent_labels$sample_id,
-    frequent_labels$Ref_name,
+    frequent_labels$ref_name,
     frequent_labels$label,
     sep = "\034"
   )
   callable_group_key <- group_key(
     callable_events$sample_id,
-    callable_events$Ref_name
+    callable_events$ref_name
   )
   analysis_events <- callable_events[
     callable_group_key %in% eligible_group_key,
@@ -1092,14 +1150,14 @@ summarise_variant_events <- function(events_all,
   ]
   event_key <- paste(
     analysis_events$sample_id,
-    analysis_events$Ref_name,
+    analysis_events$ref_name,
     analysis_events$label,
     sep = "\034"
   )
   keep_event <- event_key %in% frequent_key
   read_key <- paste(
     analysis_events$sample_id,
-    analysis_events$Ref_name,
+    analysis_events$ref_name,
     analysis_events$read_id,
     sep = "\034"
   )
@@ -1142,10 +1200,10 @@ summarise_variant_events <- function(events_all,
   }
   combinations <- data.frame(
     sample_id = as.character(analysis_events$sample_id[first_read_row]),
-    Ref_name = as.character(analysis_events$Ref_name[first_read_row]),
+    ref_name = as.character(analysis_events$ref_name[first_read_row]),
     read_id = as.character(analysis_events$read_id[first_read_row]),
-    Variation_combination = variation_combination,
-    Variation_count = as.integer(variation_count),
+    variation_combination = variation_combination,
+    variation_count = as.integer(variation_count),
     region_start = as.integer(analysis_events$region_start[first_read_row]),
     region_end = as.integer(analysis_events$region_end[first_read_row]),
     reference_aligned_trim = aligned_reference,
@@ -1155,8 +1213,8 @@ summarise_variant_events <- function(events_all,
 
   combination_key <- paste(
     combinations$sample_id,
-    combinations$Ref_name,
-    combinations$Variation_combination,
+    combinations$ref_name,
+    combinations$variation_combination,
     sep = "\034"
   )
   unique_combination_key <- unique(combination_key)
@@ -1175,22 +1233,22 @@ summarise_variant_events <- function(events_all,
     combination_group_id,
     nbins = length(unique_combination_key)
   )
-  denominator_key <- group_key(denominators$sample_id, denominators$Ref_name)
+  denominator_key <- group_key(denominators$sample_id, denominators$ref_name)
   denominator_lookup <- stats::setNames(
-    denominators$Callable_reads,
+    denominators$callable_reads,
     denominator_key
   )
   combination_denominator <- unname(denominator_lookup[group_key(
     combinations$sample_id[first_combination_row],
-    combinations$Ref_name[first_combination_row]
+    combinations$ref_name[first_combination_row]
   )])
   var_info <- data.frame(
     sample_id = combinations$sample_id[first_combination_row],
-    Ref_name = combinations$Ref_name[first_combination_row],
-    Read_count = as.integer(combination_counts),
-    Ratio = round(100 * combination_counts / combination_denominator, 2),
-    Variation_count = combinations$Variation_count[first_combination_row],
-    Variation_combination = combinations$Variation_combination[
+    ref_name = combinations$ref_name[first_combination_row],
+    read_count = as.integer(combination_counts),
+    ratio = round(100 * combination_counts / combination_denominator, 2),
+    variation_count = combinations$variation_count[first_combination_row],
+    variation_combination = combinations$variation_combination[
       first_combination_row
     ],
     region_start = combinations$region_start[first_combination_row],
@@ -1209,30 +1267,34 @@ summarise_variant_events <- function(events_all,
   )
   var_info <- var_info[order(
     var_info$sample_id,
-    var_info$Ref_name,
-    -var_info$Read_count,
-    var_info$Variation_combination
+    var_info$ref_name,
+    -var_info$read_count,
+    var_info$variation_combination
   ), , drop = FALSE]
-  group_key <- paste(var_info$sample_id, var_info$Ref_name, sep = "\034")
-  var_info$Index <- stats::ave(
+  group_key <- paste(var_info$sample_id, var_info$ref_name, sep = "\034")
+  var_info$index <- stats::ave(
     seq_len(nrow(var_info)),
     group_key,
     FUN = seq_along
   )
   var_info <- var_info[
     , c(
-      "sample_id", "Ref_name", "Index", "Read_count", "Ratio",
-      "Variation_count", "Variation_combination", "region_start",
+      "sample_id", "ref_name", "index", "read_count", "ratio",
+      "variation_count", "variation_combination", "region_start",
       "region_end", "reference_aligned_trim", "read_aligned_trim"
     ),
     drop = FALSE
   ]
   var_info_filtered <- var_info[
-    var_info$Read_count >= min_comb_reads &
-      var_info$Ratio >= min_comb_ratio,
+    var_info$read_count >= min_comb_reads &
+      var_info$ratio >= min_comb_ratio,
     ,
     drop = FALSE
   ]
+  var_info_filtered <- recalculate_filtered_ratios(
+    var_info_filtered,
+    mode = filtered_ratio_mode
+  )
   list(
     events_all = events_all,
     event_frequency = event_frequency,
@@ -1261,8 +1323,8 @@ summarise_variant_events <- function(events_all,
 #'   color_excel_by_barcode_ref(
 #'     data.frame(
 #'       barcode = c("barcode01", "barcode01", "barcode02"),
-#'       Ref_name = c("amp1", "amp2", "amp1"),
-#'       Ratio = c(70, 20, 90)
+#'       ref_name = c("amp1", "amp2", "amp1"),
+#'       ratio = c(70, 20, 90)
 #'     ),
 #'     output
 #'   )
@@ -1273,7 +1335,7 @@ color_excel_by_barcode_ref <- function(
     data,
     file,
     barcode_col = "barcode",
-    ref_col = "Ref_name",
+    ref_col = "ref_name",
     sheet = "Results",
     main_colors = c("#4E79A7", "#59A14F", "#E15759")) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
@@ -1419,6 +1481,13 @@ normalize_editing_sample_info <- function(sample_info) {
       sample_info[[standard]] <- sample_info[[legacy]]
     }
   }
+  if (!"sample_hitom" %in% names(sample_info) &&
+      "Sample_HiTOM" %in% names(sample_info)) {
+    sample_info$sample_hitom <- sample_info[["Sample_HiTOM"]]
+  }
+  if ("Sample_HiTOM" %in% names(sample_info)) {
+    sample_info[["Sample_HiTOM"]] <- NULL
+  }
   if (!"barcode" %in% names(sample_info)) {
     stop("`sample_info` is missing column `barcode`.", call. = FALSE)
   }
@@ -1476,11 +1545,15 @@ normalize_editing_sample_info <- function(sample_info) {
 #' @param min_event_ratio Minimum percentage of callable reads supporting a
 #'   non-WT event label.
 #' @param min_comb_reads Minimum number of reads supporting a final
-#'   `Variation_combination`, including WT.
+#'   `variation_combination`, including WT.
 #' @param min_comb_ratio Minimum percentage of callable reads supporting a final
-#'   `Variation_combination`.
+#'   `variation_combination`.
 #' @param min_callable_reads Minimum callable read depth required to summarize a
 #'   sample/reference group. Passed to [summarise_variant_events()].
+#' @param filtered_ratio_mode Passed to [summarise_variant_events()].
+#'   `"replace"` (the default) replaces `ratio` with the percentage
+#'   recalculated after combination filtering; `"add"` preserves the original
+#'   `ratio` and adds `filtered_ratio`.
 #' @param min_mapq Integer between 0 and 255. Alignments below this mapping
 #'   quality are excluded.
 #' @param mc.cores Optional worker count passed to [make_variant_events()].
@@ -1497,7 +1570,9 @@ normalize_editing_sample_info <- function(sample_info) {
 #' and the loaded alignments are reused for every input row belonging to the
 #' same barcode. The alignments are released when processing moves to the next
 #' barcode. Reads must span the complete calling interval plus anchors. Cache
-#' files from older implementations are automatically considered stale.
+#' files from older implementations are automatically considered stale. All
+#' output table columns use lower `snake_case`; legacy `Sample_HiTOM` input is
+#' normalized to `sample_hitom`.
 #'
 #' @examples
 #' \dontrun{
@@ -1522,6 +1597,7 @@ normalize_editing_sample_info <- function(sample_info) {
 #'   min_comb_reads = 3,
 #'   min_comb_ratio = 1,
 #'   min_callable_reads = 10,
+#'   filtered_ratio_mode = "replace",
 #'   min_mapq = 20,
 #'   colored_xlsx = "editing-summary.xlsx"
 #' )
@@ -1541,6 +1617,7 @@ run_editing_batch <- function(sample_info,
                               min_comb_reads = 3L,
                               min_comb_ratio = 1,
                               min_callable_reads = 10L,
+                              filtered_ratio_mode = c("replace", "add"),
                               min_mapq = 20L,
                               mc.cores = NULL,
                               force_rebuild = FALSE,
@@ -1584,6 +1661,7 @@ run_editing_batch <- function(sample_info,
     min_callable_reads,
     "min_callable_reads"
   )
+  filtered_ratio_mode <- match.arg(filtered_ratio_mode)
   min_mapq <- validate_nonnegative_integer(min_mapq, "min_mapq")
   if (min_mapq > 255L) stop("`min_mapq` cannot exceed 255.", call. = FALSE)
   cores <- normalize_editing_cores(mc.cores)
@@ -1756,13 +1834,14 @@ run_editing_batch <- function(sample_info,
         min_event_ratio = min_event_ratio,
         min_comb_reads = min_comb_reads,
         min_comb_ratio = min_comb_ratio,
-        min_callable_reads = min_callable_reads
+        min_callable_reads = min_callable_reads,
+        filtered_ratio_mode = filtered_ratio_mode
       )
       table <- summary_result$var_info_filtered
       if (nrow(table) == 0L) next
       table$barcode <- barcode
-      if ("Sample_HiTOM" %in% names(sample_info)) {
-        table$Sample_HiTOM <- as.character(sample_info$Sample_HiTOM[[i]])
+      if ("sample_hitom" %in% names(sample_info)) {
+        table$sample_hitom <- as.character(sample_info$sample_hitom[[i]])
       }
       barcode_result[[reference_name]] <- table
       output_rows[[output_index]] <- table
@@ -1778,7 +1857,7 @@ run_editing_batch <- function(sample_info,
     output_rows <- output_rows[order(output_source_rows)]
     output <- do.call(rbind, output_rows)
     rownames(output) <- NULL
-    front_columns <- intersect(c("Sample_HiTOM", "barcode"), names(output))
+    front_columns <- intersect(c("sample_hitom", "barcode"), names(output))
     output[, c(front_columns, setdiff(names(output), front_columns)), drop = FALSE]
   }
   if (!is.null(colored_xlsx)) {
@@ -1790,7 +1869,7 @@ run_editing_batch <- function(sample_info,
         data = result_table,
         file = colored_xlsx,
         barcode_col = "barcode",
-        ref_col = "Ref_name",
+        ref_col = "ref_name",
         sheet = "Results"
       )
     }

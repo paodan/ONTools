@@ -130,10 +130,11 @@ test_that("make_variant_events returns typed events and typed empty output", {
   )
 
   expect_equal(events$type, c("WT", "SNP"))
-  expect_equal(unique(events$Ref_name), "amplicon")
+  expect_equal(unique(events$ref_name), "amplicon")
+  expect_identical(names(events), tolower(names(events)))
   expect_s3_class(empty, "data.frame")
   expect_equal(nrow(empty), 0L)
-  expect_true(all(c("read_id", "sample_id", "Ref_name") %in% names(empty)))
+  expect_true(all(c("read_id", "sample_id", "ref_name") %in% names(empty)))
 })
 
 test_that("summarise_variant_events excludes every NO_CALL subtype", {
@@ -166,9 +167,9 @@ test_that("summarise_variant_events excludes every NO_CALL subtype", {
     min_callable_reads = 1
   )
 
-  expect_equal(unique(summary$event_frequency$Callable_reads), 2L)
+  expect_equal(unique(summary$event_frequency$callable_reads), 2L)
   expect_false("NO_CALL_N_skip" %in% summary$event_frequency$label)
-  expect_equal(sum(summary$var_info$Read_count), 2L)
+  expect_equal(sum(summary$var_info$read_count), 2L)
   expect_error(summarise_variant_events(events, min_event_ratio = 101),
                "between 0 and 100")
   expect_error(summarise_variant_events(events, min_comb_ratio = 101),
@@ -184,7 +185,7 @@ test_that("event filtering combines absolute support and relative frequency", {
     type = "SNP",
     label = c(singleton_labels, rep("SNP_20_20:G>T", 3)),
     sample_id = "sample",
-    Ref_name = "amplicon",
+    ref_name = "amplicon",
     region_start = 1L,
     region_end = 30L,
     stringsAsFactors = FALSE
@@ -201,17 +202,17 @@ test_that("event filtering combines absolute support and relative frequency", {
 
   common <- summary$event_frequency$label == "SNP_20_20:G>T"
   singletons <- summary$event_frequency$label %in% singleton_labels
-  expect_true(summary$event_frequency$Pass_filter[common])
-  expect_true(all(!summary$event_frequency$Pass_filter[singletons]))
+  expect_true(summary$event_frequency$pass_filter[common])
+  expect_true(all(!summary$event_frequency$pass_filter[singletons]))
   expect_equal(
-    summary$var_info$Read_count[
-      summary$var_info$Variation_combination == "WT"
+    summary$var_info$read_count[
+      summary$var_info$variation_combination == "WT"
     ],
     10L
   )
   expect_equal(
-    summary$var_info$Read_count[
-      summary$var_info$Variation_combination == "SNP_20_20:G>T"
+    summary$var_info$read_count[
+      summary$var_info$variation_combination == "SNP_20_20:G>T"
     ],
     3L
   )
@@ -223,7 +224,7 @@ test_that("groups below callable-read threshold are not summarized", {
     type = "SNP",
     label = rep("SNP_3_3:G>A", 5),
     sample_id = "sample",
-    Ref_name = "amplicon",
+    ref_name = "amplicon",
     region_start = 1L,
     region_end = 8L,
     stringsAsFactors = FALSE
@@ -238,8 +239,8 @@ test_that("groups below callable-read threshold are not summarized", {
     min_callable_reads = 10
   )
 
-  expect_equal(summary$event_frequency$Callable_reads, 5L)
-  expect_false(summary$event_frequency$Pass_filter)
+  expect_equal(summary$event_frequency$callable_reads, 5L)
+  expect_false(summary$event_frequency$pass_filter)
   expect_equal(nrow(summary$var_info), 0L)
   expect_error(
     summarise_variant_events(events, min_event_reads = 0),
@@ -261,7 +262,7 @@ test_that("non-WT combinations also require absolute read support", {
     type = rep("SNP", 6),
     label = c("A", "A", "A", "B", "B", "B"),
     sample_id = "sample",
-    Ref_name = "amplicon",
+    ref_name = "amplicon",
     region_start = 1L,
     region_end = 10L,
     stringsAsFactors = FALSE
@@ -276,8 +277,8 @@ test_that("non-WT combinations also require absolute read support", {
     min_callable_reads = 1
   )
 
-  expect_true(all(summary$event_frequency$Pass_filter))
-  expect_equal(summary$var_info$Read_count, c(2L, 2L, 1L))
+  expect_true(all(summary$event_frequency$pass_filter))
+  expect_equal(summary$var_info$read_count, c(2L, 2L, 1L))
   expect_equal(nrow(summary$var_info_filtered), 0L)
 })
 
@@ -287,7 +288,7 @@ test_that("combination read and ratio thresholds are independent", {
     type = "SNP",
     label = c(rep("A", 3), rep("B", 2)),
     sample_id = "sample",
-    Ref_name = "amplicon",
+    ref_name = "amplicon",
     region_start = 1L,
     region_end = 10L,
     stringsAsFactors = FALSE
@@ -302,8 +303,120 @@ test_that("combination read and ratio thresholds are independent", {
     min_callable_reads = 1
   )
 
-  expect_equal(summary$var_info$Variation_combination, c("A", "B"))
-  expect_equal(summary$var_info_filtered$Variation_combination, "A")
+  expect_equal(summary$var_info$variation_combination, c("A", "B"))
+  expect_equal(summary$var_info_filtered$variation_combination, "A")
+})
+
+test_that("filtered combination ratios can be added or replace ratio", {
+  events <- data.frame(
+    read_id = paste0("r", seq_len(5)),
+    type = "SNP",
+    label = c(rep("A", 3), rep("B", 2)),
+    sample_id = "sample",
+    ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 10L,
+    stringsAsFactors = FALSE
+  )
+  arguments <- list(
+    events_all = events,
+    min_event_reads = 1,
+    min_event_ratio = 0,
+    min_comb_reads = 3,
+    min_comb_ratio = 0,
+    min_callable_reads = 1
+  )
+
+  added <- do.call(
+    summarise_variant_events,
+    c(arguments, list(filtered_ratio_mode = "add"))
+  )
+  replaced <- do.call(
+    summarise_variant_events,
+    c(arguments, list(filtered_ratio_mode = "replace"))
+  )
+  default_mode <- do.call(summarise_variant_events, arguments)
+
+  expect_equal(added$var_info$ratio, c(60, 40))
+  expect_equal(added$var_info_filtered$ratio, 60)
+  expect_equal(added$var_info_filtered$filtered_ratio, 100)
+  expect_false("filtered_ratio" %in% names(replaced$var_info_filtered))
+  expect_equal(replaced$var_info_filtered$ratio, 100)
+  expect_identical(default_mode$var_info_filtered, replaced$var_info_filtered)
+  expect_error(
+    summarise_variant_events(events, filtered_ratio_mode = "invalid"),
+    "arg"
+  )
+})
+
+test_that("empty filtered summaries retain the selected ratio schema", {
+  events <- empty_variant_events()
+
+  added <- summarise_variant_events(
+    events,
+    filtered_ratio_mode = "add"
+  )
+  replaced <- summarise_variant_events(
+    events,
+    filtered_ratio_mode = "replace"
+  )
+
+  expect_true("filtered_ratio" %in% names(added$var_info_filtered))
+  expect_false("filtered_ratio" %in% names(replaced$var_info_filtered))
+})
+
+test_that("gene-editing summary tables use lower snake_case columns", {
+  events <- data.frame(
+    read_id = c("r1", "r2"),
+    type = c("WT", "SNP"),
+    label = c("WT", "SNP_2_2:C>T"),
+    sample_id = "sample",
+    ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 4L,
+    stringsAsFactors = FALSE
+  )
+  result <- summarise_variant_events(
+    events,
+    min_event_reads = 1,
+    min_event_ratio = 0,
+    min_comb_reads = 1,
+    min_comb_ratio = 0,
+    min_callable_reads = 1
+  )
+
+  tables <- result[c("events_all", "event_frequency", "var_info",
+                     "var_info_filtered")]
+  expect_true(all(vapply(
+    tables,
+    function(x) identical(names(x), tolower(names(x))),
+    logical(1)
+  )))
+})
+
+test_that("legacy mixed-case event columns remain accepted", {
+  events <- data.frame(
+    read_id = "r1",
+    type = "WT",
+    label = "WT",
+    sample_id = "sample",
+    Ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 4L,
+    stringsAsFactors = FALSE
+  )
+
+  result <- summarise_variant_events(
+    events,
+    min_event_reads = 1,
+    min_event_ratio = 0,
+    min_comb_reads = 1,
+    min_comb_ratio = 0,
+    min_callable_reads = 1
+  )
+
+  expect_true("ref_name" %in% names(result$events_all))
+  expect_false("Ref_name" %in% names(result$events_all))
 })
 
 test_that("editing caches are invalidated by signature changes", {
@@ -337,11 +450,14 @@ test_that("sample sheet normalization accepts legacy names", {
     barcode = "barcode01",
     Reference_name = "amplicon",
     Reference_Region_Start = 2,
-    Reference_Region_End = 7
+    Reference_Region_End = 7,
+    Sample_HiTOM = "sample-A"
   )
 
   out <- normalize_editing_sample_info(legacy)
   expect_equal(out$ref_name, "amplicon")
   expect_equal(out$region_start, 2L)
   expect_equal(out$region_end, 7L)
+  expect_equal(out$sample_hitom, "sample-A")
+  expect_false("Sample_HiTOM" %in% names(out))
 })

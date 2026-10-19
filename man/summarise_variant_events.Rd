@@ -10,7 +10,8 @@ summarise_variant_events(
   min_event_ratio = 1,
   min_comb_reads = 3L,
   min_comb_ratio = 1,
-  min_callable_reads = 10L
+  min_callable_reads = 10L,
+  filtered_ratio_mode = c("replace", "add")
 )
 }
 \arguments{
@@ -23,22 +24,32 @@ reads that must support a non-WT event label.}
 callable reads that must support a non-WT event label.}
 
 \item{min_comb_reads}{Positive integer. Minimum number of reads that must
-support a final \code{Variation_combination}, including WT.}
+support a final \code{variation_combination}, including WT.}
 
 \item{min_comb_ratio}{Number between 0 and 100. Minimum percentage of
-callable reads that must support a final \code{Variation_combination}.}
+callable reads that must support a final \code{variation_combination}.}
 
 \item{min_callable_reads}{Positive integer. Minimum number of callable reads
 required for a sample/reference group to produce \code{var_info}. Groups below
-this depth remain visible in \code{event_frequency} with \code{Pass_filter = FALSE}.}
+this depth remain visible in \code{event_frequency} with \code{pass_filter = FALSE}.}
+
+\item{filtered_ratio_mode}{How ratios are reported in \code{var_info_filtered}.
+\code{"replace"} (the default) replaces \code{ratio} with the percentage
+recalculated among retained combinations and does not add a new column.
+\code{"add"} retains the original callable-read \code{ratio} and adds
+\code{filtered_ratio}. Recalculation is performed separately for every
+sample/reference group.}
 }
 \value{
 A list containing the original \code{events_all}, per-label
 \code{event_frequency}, the complete combination table \code{var_info}, and its
-thresholded form \code{var_info_filtered}. \code{event_frequency$Pass_filter} indicates
+thresholded form \code{var_info_filtered}. \code{event_frequency$pass_filter} indicates
 whether each label passed the callable-depth, support-count, and percentage
 requirements. Reads with \code{type = "NO_CALL"} are excluded from all
-denominators.
+denominators. \code{var_info$ratio} always uses all callable reads; only
+\code{var_info_filtered} is affected by \code{filtered_ratio_mode}. All returned table
+columns use lower \code{snake_case}. Legacy input containing \code{Ref_name} is
+accepted and normalized to \code{ref_name}.
 }
 \description{
 \code{summarise_variant_events()} first calculates read support for each event

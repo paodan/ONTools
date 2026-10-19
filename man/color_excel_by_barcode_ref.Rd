@@ -8,7 +8,7 @@ color_excel_by_barcode_ref(
   data,
   file,
   barcode_col = "barcode",
-  ref_col = "Ref_name",
+  ref_col = "ref_name",
   sheet = "Results",
   main_colors = c("#4E79A7", "#59A14F", "#E15759")
 )
@@ -38,8 +38,8 @@ if (requireNamespace("openxlsx", quietly = TRUE)) {
   color_excel_by_barcode_ref(
     data.frame(
       barcode = c("barcode01", "barcode01", "barcode02"),
-      Ref_name = c("amp1", "amp2", "amp1"),
-      Ratio = c(70, 20, 90)
+      ref_name = c("amp1", "amp2", "amp1"),
+      ratio = c(70, 20, 90)
     ),
     output
   )

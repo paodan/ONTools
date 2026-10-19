@@ -16,6 +16,7 @@ run_editing_batch(
   min_comb_reads = 3L,
   min_comb_ratio = 1,
   min_callable_reads = 10L,
+  filtered_ratio_mode = c("replace", "add"),
   min_mapq = 20L,
   mc.cores = NULL,
   force_rebuild = FALSE,
@@ -51,13 +52,18 @@ event label.}
 non-WT event label.}
 
 \item{min_comb_reads}{Minimum number of reads supporting a final
-\code{Variation_combination}, including WT.}
+\code{variation_combination}, including WT.}
 
 \item{min_comb_ratio}{Minimum percentage of callable reads supporting a final
-\code{Variation_combination}.}
+\code{variation_combination}.}
 
 \item{min_callable_reads}{Minimum callable read depth required to summarize a
 sample/reference group. Passed to \code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
+
+\item{filtered_ratio_mode}{Passed to \code{\link[=summarise_variant_events]{summarise_variant_events()}}.
+\code{"replace"} (the default) replaces \code{ratio} with the percentage
+recalculated after combination filtering; \code{"add"} preserves the original
+\code{ratio} and adds \code{filtered_ratio}.}
 
 \item{min_mapq}{Integer between 0 and 255. Alignments below this mapping
 quality are excluded.}
@@ -85,7 +91,9 @@ are loaded. A BAM index is not required: BAM files are read sequentially,
 and the loaded alignments are reused for every input row belonging to the
 same barcode. The alignments are released when processing moves to the next
 barcode. Reads must span the complete calling interval plus anchors. Cache
-files from older implementations are automatically considered stale.
+files from older implementations are automatically considered stale. All
+output table columns use lower \code{snake_case}; legacy \code{Sample_HiTOM} input is
+normalized to \code{sample_hitom}.
 }
 \examples{
 \dontrun{
@@ -110,6 +118,7 @@ result <- run_editing_batch(
   min_comb_reads = 3,
   min_comb_ratio = 1,
   min_callable_reads = 10,
+  filtered_ratio_mode = "replace",
   min_mapq = 20,
   colored_xlsx = "editing-summary.xlsx"
 )
