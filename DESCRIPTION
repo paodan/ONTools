@@ -23,6 +23,7 @@ Imports:
     rlang,
     Rsamtools,
     scales,
+    S4Vectors,
     stringr,
     R.utils
 Suggests:
