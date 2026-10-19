@@ -29,6 +29,16 @@ test_that("call_read_edit_events calls substitutions and normalizes case", {
   expect_equal(snp$events$label, "SNP_3_3:G>A")
 })
 
+test_that("simple matching CIGAR uses the same trimmed alignment semantics", {
+  wt <- call_read_edit_events(
+    "wt-offset", "GTACGT", "6M", 3, "ACGTACGTAC", 4, 7
+  )
+
+  expect_equal(wt$events$type, "WT")
+  expect_equal(wt$events$reference_aligned_trim, "TACG")
+  expect_equal(wt$events$read_aligned_trim, "TACG")
+})
+
 test_that("call_read_edit_events handles insertion and deletion boundaries", {
   insertion <- call_read_edit_events(
     "ins", "ACGTTACGT", "4M1I4M", 1, "ACGTACGT", 1, 8
@@ -81,6 +91,17 @@ test_that("filter_reads_by_region respects anchors", {
 
   out <- filter_reads_by_region(alignments, 4, 9, min_anchor = 2)
   expect_equal(out$id, "full")
+})
+
+test_that("repeated CIGAR strings retain input order and filtering results", {
+  alignments <- data.frame(
+    id = paste0("read", 1:4),
+    pos = c(1L, 2L, 1L, 5L),
+    cigar = c("10M", "10M", "5M1D5M", "10M")
+  )
+
+  out <- filter_reads_by_region(alignments, 4, 8, min_anchor = 1)
+  expect_equal(out$id, c("read1", "read2", "read3"))
 })
 
 test_that("make_variant_events returns typed events and typed empty output", {

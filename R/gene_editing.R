@@ -38,6 +38,25 @@ parse_cigar_operations <- function(cigar) {
   )
 }
 
+parse_unique_cigars <- function(cigar) {
+  cigar <- as.character(cigar)
+  unique_cigar <- unique(cigar)
+  parsed <- lapply(unique_cigar, parse_cigar_operations)
+  names(parsed) <- unique_cigar
+  parsed
+}
+
+cigar_reference_lengths <- function(cigar, parsed_cigars = NULL) {
+  cigar <- as.character(cigar)
+  if (is.null(parsed_cigars)) parsed_cigars <- parse_unique_cigars(cigar)
+  lengths <- vapply(
+    parsed_cigars,
+    function(parsed) parsed$reference_length,
+    numeric(1)
+  )
+  unname(lengths[cigar])
+}
+
 validate_editing_region <- function(reference, region_start, region_end,
                                     min_anchor = 0L) {
   reference <- toupper(as.character(reference))
@@ -224,7 +243,7 @@ new_edit_event <- function(read_id,
                            position_after = NA_integer_,
                            ref = NA_character_,
                            alt = NA_character_) {
-  data.frame(
+  list(
     read_id = read_id,
     type = type,
     start = as.integer(start),
@@ -236,7 +255,33 @@ new_edit_event <- function(read_id,
     trim_region_start = region_start,
     trim_region_end = region_end,
     reference_aligned_trim = reference_aligned,
-    read_aligned_trim = read_aligned,
+    read_aligned_trim = read_aligned
+  )
+}
+
+edit_events_to_data_frame <- function(events) {
+  if (!is.list(events) || length(events) == 0L) {
+    stop("`events` must contain at least one editing event.", call. = FALSE)
+  }
+  data.frame(
+    read_id = vapply(events, `[[`, character(1), "read_id"),
+    type = vapply(events, `[[`, character(1), "type"),
+    start = vapply(events, `[[`, integer(1), "start"),
+    end = vapply(events, `[[`, integer(1), "end"),
+    position_after = vapply(events, `[[`, integer(1), "position_after"),
+    ref = vapply(events, `[[`, character(1), "ref"),
+    alt = vapply(events, `[[`, character(1), "alt"),
+    label = vapply(events, `[[`, character(1), "label"),
+    trim_region_start = vapply(
+      events, `[[`, integer(1), "trim_region_start"
+    ),
+    trim_region_end = vapply(events, `[[`, integer(1), "trim_region_end"),
+    reference_aligned_trim = vapply(
+      events, `[[`, character(1), "reference_aligned_trim"
+    ),
+    read_aligned_trim = vapply(
+      events, `[[`, character(1), "read_aligned_trim"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -278,6 +323,27 @@ call_read_edit_events <- function(read_id,
                                   region_start = 1L,
                                   region_end = nchar(as.character(reference)),
                                   min_anchor = 0L) {
+  parsed_cigar <- parse_cigar_operations(cigar)
+  call_read_edit_events_parsed(
+    read_id = read_id,
+    read_seq = read_seq,
+    parsed_cigar = parsed_cigar,
+    ref_start = ref_start,
+    reference = reference,
+    region_start = region_start,
+    region_end = region_end,
+    min_anchor = min_anchor
+  )
+}
+
+call_read_edit_events_parsed <- function(read_id,
+                                         read_seq,
+                                         parsed_cigar,
+                                         ref_start,
+                                         reference,
+                                         region_start,
+                                         region_end,
+                                         min_anchor) {
   check_scalar_character(read_id, "read_id")
   validated <- validate_editing_region(
     reference,
@@ -290,7 +356,7 @@ call_read_edit_events <- function(read_id,
   region_end <- validated$region_end
   min_anchor <- validated$min_anchor
   read_seq <- toupper(as.character(read_seq))
-  parsed <- parse_cigar_operations(cigar)
+  parsed <- parsed_cigar
   ref_start <- validate_positive_integer(ref_start, "ref_start")
 
   if (length(read_seq) != 1L || is.na(read_seq) ||
@@ -318,8 +384,36 @@ call_read_edit_events <- function(read_id,
       status = "NO_CALL",
       read_id = read_id,
       combination = "NO_CALL",
-      events = event
+      events = edit_events_to_data_frame(list(event))
     ))
+  }
+
+  if (nrow(parsed$table) == 1L &&
+      parsed$table$operation[[1L]] %in% c("M", "=")) {
+    query_start <- region_start - ref_start + 1L
+    reference_region <- substr(reference, region_start, region_end)
+    read_region <- substr(
+      read_seq,
+      query_start,
+      query_start + region_end - region_start
+    )
+    if (identical(reference_region, read_region)) {
+      event <- new_edit_event(
+        read_id = read_id,
+        type = "WT",
+        label = "WT",
+        region_start = region_start,
+        region_end = region_end,
+        reference_aligned = reference_region,
+        read_aligned = read_region
+      )
+      return(list(
+        status = "PASS",
+        read_id = read_id,
+        combination = "WT",
+        events = edit_events_to_data_frame(list(event))
+      ))
+    }
   }
 
   aligned <- extract_aligned_region_parsed(
@@ -431,7 +525,7 @@ call_read_edit_events <- function(read_id,
           status = "NO_CALL",
           read_id = read_id,
           combination = "NO_CALL",
-          events = event
+          events = edit_events_to_data_frame(list(event))
         ))
       }
       reference_position <- reference_position + n
@@ -485,11 +579,11 @@ call_read_edit_events <- function(read_id,
       status = "PASS",
       read_id = read_id,
       combination = "WT",
-      events = event
+      events = edit_events_to_data_frame(list(event))
     ))
   }
 
-  event_table <- do.call(rbind, all_events)
+  event_table <- edit_events_to_data_frame(all_events)
   insertion_index <- which(event_table$type == "IN")
   deletion_index <- which(event_table$type == "DEL")
   complex_index <- integer()
@@ -569,11 +663,7 @@ filter_reads_by_region <- function(aln,
   }
   if (nrow(aln) == 0L) return(aln)
 
-  reference_length <- vapply(
-    as.character(aln$cigar),
-    function(cigar) parse_cigar_operations(cigar)$reference_length,
-    numeric(1)
-  )
+  reference_length <- cigar_reference_lengths(aln$cigar)
   read_start <- suppressWarnings(as.integer(aln$pos))
   if (anyNA(read_start) || any(read_start < 1L)) {
     stop("`aln$pos` must contain positive integer coordinates.",
@@ -690,19 +780,29 @@ make_variant_events <- function(aln_valid,
     min_anchor
   )
   cores <- normalize_editing_cores(mc.cores)
-  aln_valid <- filter_reads_by_region(
-    aln = aln_valid,
-    region_start = validated$region_start,
-    region_end = validated$region_end,
-    min_anchor = validated$min_anchor
+  parsed_cigars <- parse_unique_cigars(aln_valid$cigar)
+  reference_length <- cigar_reference_lengths(
+    aln_valid$cigar,
+    parsed_cigars = parsed_cigars
   )
+  read_start <- suppressWarnings(as.integer(aln_valid$pos))
+  if (anyNA(read_start) || any(read_start < 1L)) {
+    stop("`aln_valid$pos` must contain positive integer coordinates.",
+         call. = FALSE)
+  }
+  read_end <- read_start + reference_length - 1L
+  required_start <- max(1L, validated$region_start - validated$min_anchor)
+  required_end <- validated$region_end + validated$min_anchor
+  keep <- read_start <= required_start & read_end >= required_end
+  aln_valid <- aln_valid[keep, , drop = FALSE]
   if (nrow(aln_valid) == 0L) return(empty_variant_events())
 
   worker <- function(i) {
-    call_read_edit_events(
+    cigar <- as.character(aln_valid$cigar[[i]])
+    call_read_edit_events_parsed(
       read_id = as.character(aln_valid$qname[[i]]),
       read_seq = as.character(aln_valid$seq[[i]]),
-      cigar = as.character(aln_valid$cigar[[i]]),
+      parsed_cigar = parsed_cigars[[cigar]],
       ref_start = as.integer(aln_valid$pos[[i]]),
       reference = validated$reference,
       region_start = validated$region_start,
@@ -1003,35 +1103,55 @@ summarise_variant_events <- function(events_all,
     analysis_events$read_id,
     sep = "\034"
   )
-  read_groups <- split(seq_len(nrow(analysis_events)), read_key)
-
-  first_column <- function(data, column) {
-    if (column %in% names(data)) as.character(data[[column]][[1L]]) else
-      NA_character_
-  }
-  combinations <- lapply(read_groups, function(index) {
-    events <- analysis_events[index, , drop = FALSE]
-    retained <- unique(events$label[keep_event[index]])
-    retained <- retained[retained != "WT"]
-    if (length(retained) == 0L) retained <- "WT"
-    data.frame(
-      sample_id = as.character(events$sample_id[[1L]]),
-      Ref_name = as.character(events$Ref_name[[1L]]),
-      read_id = as.character(events$read_id[[1L]]),
-      Variation_combination = paste(retained, collapse = ";"),
-      Variation_count = sum(retained != "WT"),
-      region_start = as.integer(events$region_start[[1L]]),
-      region_end = as.integer(events$region_end[[1L]]),
-      reference_aligned_trim = first_column(
-        events,
-        "reference_aligned_trim"
-      ),
-      read_aligned_trim = first_column(events, "read_aligned_trim"),
-      stringsAsFactors = FALSE
+  first_read_row <- !duplicated(read_key)
+  read_keys <- read_key[first_read_row]
+  retained_index <- keep_event & analysis_events$label != "WT"
+  retained_read_key <- read_key[retained_index]
+  retained_label <- as.character(analysis_events$label[retained_index])
+  if (length(retained_label) > 0L) {
+    retained_pair <- paste(retained_read_key, retained_label, sep = "\035")
+    unique_pair <- !duplicated(retained_pair)
+    retained_read_key <- retained_read_key[unique_pair]
+    retained_label <- retained_label[unique_pair]
+    retained_groups <- split(retained_label, retained_read_key)
+    combination_by_read <- vapply(
+      retained_groups,
+      paste,
+      collapse = ";",
+      FUN.VALUE = character(1)
     )
-  })
-  combinations <- do.call(rbind, combinations)
-  rownames(combinations) <- NULL
+    count_by_read <- lengths(retained_groups)
+  } else {
+    combination_by_read <- stats::setNames(character(), character())
+    count_by_read <- stats::setNames(integer(), character())
+  }
+  combination_index <- match(read_keys, names(combination_by_read))
+  variation_combination <- unname(combination_by_read[combination_index])
+  variation_count <- unname(count_by_read[combination_index])
+  variation_combination[is.na(variation_combination)] <- "WT"
+  variation_count[is.na(variation_count)] <- 0L
+  aligned_reference <- if ("reference_aligned_trim" %in% names(analysis_events)) {
+    as.character(analysis_events$reference_aligned_trim[first_read_row])
+  } else {
+    rep(NA_character_, length(read_keys))
+  }
+  aligned_read <- if ("read_aligned_trim" %in% names(analysis_events)) {
+    as.character(analysis_events$read_aligned_trim[first_read_row])
+  } else {
+    rep(NA_character_, length(read_keys))
+  }
+  combinations <- data.frame(
+    sample_id = as.character(analysis_events$sample_id[first_read_row]),
+    Ref_name = as.character(analysis_events$Ref_name[first_read_row]),
+    read_id = as.character(analysis_events$read_id[first_read_row]),
+    Variation_combination = variation_combination,
+    Variation_count = as.integer(variation_count),
+    region_start = as.integer(analysis_events$region_start[first_read_row]),
+    region_end = as.integer(analysis_events$region_end[first_read_row]),
+    reference_aligned_trim = aligned_reference,
+    read_aligned_trim = aligned_read,
+    stringsAsFactors = FALSE
+  )
 
   combination_key <- paste(
     combinations$sample_id,
@@ -1039,34 +1159,54 @@ summarise_variant_events <- function(events_all,
     combinations$Variation_combination,
     sep = "\034"
   )
-  combination_groups <- split(seq_len(nrow(combinations)), combination_key)
+  unique_combination_key <- unique(combination_key)
+  combination_group_id <- match(combination_key, unique_combination_key)
+  combination_groups <- split(
+    seq_len(nrow(combinations)),
+    factor(combination_group_id, levels = seq_along(unique_combination_key))
+  )
   mode_or_na <- function(x) {
     x <- x[!is.na(x) & nzchar(x)]
     if (length(x) == 0L) return(NA_character_)
     names(which.max(table(x)))
   }
-  var_info <- lapply(combination_groups, function(index) {
-    data <- combinations[index, , drop = FALSE]
-    denominator <- denominators$Callable_reads[
-      denominators$sample_id == data$sample_id[[1L]] &
-        denominators$Ref_name == data$Ref_name[[1L]]
-    ][[1L]]
-    data.frame(
-      sample_id = data$sample_id[[1L]],
-      Ref_name = data$Ref_name[[1L]],
-      Read_count = nrow(data),
-      Ratio = round(100 * nrow(data) / denominator, 2),
-      Variation_count = data$Variation_count[[1L]],
-      Variation_combination = data$Variation_combination[[1L]],
-      region_start = data$region_start[[1L]],
-      region_end = data$region_end[[1L]],
-      reference_aligned_trim = mode_or_na(data$reference_aligned_trim),
-      read_aligned_trim = mode_or_na(data$read_aligned_trim),
-      stringsAsFactors = FALSE
-    )
-  })
-  var_info <- do.call(rbind, var_info)
-  rownames(var_info) <- NULL
+  first_combination_row <- !duplicated(combination_key)
+  combination_counts <- tabulate(
+    combination_group_id,
+    nbins = length(unique_combination_key)
+  )
+  denominator_key <- group_key(denominators$sample_id, denominators$Ref_name)
+  denominator_lookup <- stats::setNames(
+    denominators$Callable_reads,
+    denominator_key
+  )
+  combination_denominator <- unname(denominator_lookup[group_key(
+    combinations$sample_id[first_combination_row],
+    combinations$Ref_name[first_combination_row]
+  )])
+  var_info <- data.frame(
+    sample_id = combinations$sample_id[first_combination_row],
+    Ref_name = combinations$Ref_name[first_combination_row],
+    Read_count = as.integer(combination_counts),
+    Ratio = round(100 * combination_counts / combination_denominator, 2),
+    Variation_count = combinations$Variation_count[first_combination_row],
+    Variation_combination = combinations$Variation_combination[
+      first_combination_row
+    ],
+    region_start = combinations$region_start[first_combination_row],
+    region_end = combinations$region_end[first_combination_row],
+    reference_aligned_trim = vapply(
+      combination_groups,
+      function(index) mode_or_na(combinations$reference_aligned_trim[index]),
+      character(1)
+    ),
+    read_aligned_trim = vapply(
+      combination_groups,
+      function(index) mode_or_na(combinations$read_aligned_trim[index]),
+      character(1)
+    ),
+    stringsAsFactors = FALSE
+  )
   var_info <- var_info[order(
     var_info$sample_id,
     var_info$Ref_name,
@@ -1353,7 +1493,10 @@ normalize_editing_sample_info <- function(sample_info) {
 #'
 #' @details
 #' Only mapped primary, non-supplementary, non-duplicate, QC-passing alignments
-#' are loaded. Reads must span the complete calling interval plus anchors. Cache
+#' are loaded. A BAM index is not required: BAM files are read sequentially,
+#' and the loaded alignments are reused for every input row belonging to the
+#' same barcode. The alignments are released when processing moves to the next
+#' barcode. Reads must span the complete calling interval plus anchors. Cache
 #' files from older implementations are automatically considered stale.
 #'
 #' @examples
@@ -1458,15 +1601,32 @@ run_editing_batch <- function(sample_info,
       isDuplicate = FALSE,
       isNotPassingQualityControls = FALSE
     ),
+    mapqFilter = min_mapq,
     what = c("qname", "rname", "pos", "cigar", "mapq", "seq", "flag")
   )
   output_rows <- list()
-  per_sample_results <- list()
+  output_source_rows <- integer()
+  result_names <- paste0(sample_info$barcode, "_", seq_len(nrow(sample_info)))
+  per_sample_results <- stats::setNames(
+    vector("list", nrow(sample_info)),
+    result_names
+  )
   output_index <- 1L
   safe_name <- function(x) gsub("[^A-Za-z0-9_.-]", "_", x)
+  barcode_order <- match(sample_info$barcode, unique(sample_info$barcode))
+  processing_order <- order(barcode_order, seq_len(nrow(sample_info)))
+  alignment_cache <- new.env(hash = TRUE, parent = emptyenv())
 
-  for (i in seq_len(nrow(sample_info))) {
+  for (processing_index in seq_along(processing_order)) {
+    i <- processing_order[[processing_index]]
     barcode <- sample_info$barcode[[i]]
+    if (processing_index > 1L &&
+        barcode != sample_info$barcode[[processing_order[[
+          processing_index - 1L
+        ]]]]) {
+      rm(list = ls(alignment_cache, all.names = TRUE),
+         envir = alignment_cache)
+    }
     reference_names <- trimws(strsplit(
       sample_info$ref_name[[i]],
       split = "\\|"
@@ -1536,23 +1696,28 @@ run_editing_batch <- function(sample_info,
     needs_rebuild <- vapply(cached_events, is.null, logical(1))
 
     if (any(needs_rebuild)) {
-      alignment <- as.data.frame(
-        Rsamtools::scanBam(bam_file, param = bam_param)[[1L]]
-      )
-      if (nrow(alignment) > 0L) {
-        alignment <- alignment[
-          !is.na(alignment$mapq) & alignment$mapq >= min_mapq,
-          ,
-          drop = FALSE
-        ]
+      if (exists(bam_file, envir = alignment_cache, inherits = FALSE)) {
+        alignment <- get(bam_file, envir = alignment_cache, inherits = FALSE)
+      } else {
+        alignment <- as.data.frame(
+          Rsamtools::scanBam(bam_file, param = bam_param)[[1L]]
+        )
+        if (nrow(alignment) > 0L) {
+          alignment <- alignment[
+            !is.na(alignment$mapq) & alignment$mapq >= min_mapq,
+            ,
+            drop = FALSE
+          ]
+        }
+        original_name <- as.character(alignment$rname)
+        mapped_name <- original_name
+        if (!is.null(re_names) && length(original_name) > 0L) {
+          candidate <- unname(re_names[original_name])
+          mapped_name[!is.na(candidate)] <- candidate[!is.na(candidate)]
+        }
+        alignment$rname <- mapped_name
+        assign(bam_file, alignment, envir = alignment_cache)
       }
-      original_name <- as.character(alignment$rname)
-      mapped_name <- original_name
-      if (!is.null(re_names) && length(original_name) > 0L) {
-        candidate <- unname(re_names[original_name])
-        mapped_name[!is.na(candidate)] <- candidate[!is.na(candidate)]
-      }
-      alignment$rname <- mapped_name
 
       for (reference_name in reference_names[needs_rebuild]) {
         alignment_reference <- alignment[
@@ -1601,6 +1766,7 @@ run_editing_batch <- function(sample_info,
       }
       barcode_result[[reference_name]] <- table
       output_rows[[output_index]] <- table
+      output_source_rows[[output_index]] <- i
       output_index <- output_index + 1L
     }
     per_sample_results[[paste0(barcode, "_", i)]] <- barcode_result
@@ -1609,6 +1775,7 @@ run_editing_batch <- function(sample_info,
   result_table <- if (length(output_rows) == 0L) {
     data.frame()
   } else {
+    output_rows <- output_rows[order(output_source_rows)]
     output <- do.call(rbind, output_rows)
     rownames(output) <- NULL
     front_columns <- intersect(c("Sample_HiTOM", "barcode"), names(output))

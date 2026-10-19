@@ -81,7 +81,10 @@ workbook.
 }
 \details{
 Only mapped primary, non-supplementary, non-duplicate, QC-passing alignments
-are loaded. Reads must span the complete calling interval plus anchors. Cache
+are loaded. A BAM index is not required: BAM files are read sequentially,
+and the loaded alignments are reused for every input row belonging to the
+same barcode. The alignments are released when processing moves to the next
+barcode. Reads must span the complete calling interval plus anchors. Cache
 files from older implementations are automatically considered stale.
 }
 \examples{
