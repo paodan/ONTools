@@ -65,7 +65,8 @@ Default \code{0} keeps all bases reported by mpileup.}
 values make peaks wider and more overlapped.}
 
 \item{peak_height}{Main peak height before scaling by base-support fraction.
-Default is \code{900}.}
+At covered positions the most-supported pileup base receives this height;
+other bases are scaled relative to its read count. Default is \code{900}.}
 
 \item{baseline}{Baseline signal added to every A/C/G/T channel. Default is
 \code{15}.}
@@ -85,7 +86,7 @@ console.}
 }
 \value{
 Invisibly returns a list with \code{status}, \code{paths}, \code{reference_name},
-\code{sequence_length}, \code{trace_length}, and \code{command}.
+\code{called_sequence}, \code{sequence_length}, \code{trace_length}, and \code{command}.
 }
 \description{
 \code{synthetic_ab1_from_bam()} writes a minimal ABIF/AB1 file with simulated
@@ -100,15 +101,18 @@ tools that require an AB1-like chromatogram, not as raw Sanger evidence.
 
 The function runs \verb{samtools mpileup} with \code{-aa}, so positions with zero read
 coverage are still represented. For each consensus position, pileup symbols
-are reduced to A/C/G/T counts. The called consensus base is forced to have a
-visible major peak even when pileup support is absent, while other channels
-receive at least \code{noise_fraction} of the scaled signal.
+are reduced to A/C/G/T counts. At covered positions, the most-supported
+pileup base determines the \code{PBAS} call and major peak; other channel heights
+are proportional to their counts relative to that base. At tied positions,
+the FASTA base is preferred when it is among the tied bases. The FASTA base
+is used as a fallback only when no A/C/G/T pileup observation is available.
+Other channels receive at least \code{noise_fraction} of the major signal.
 
 The AB1 file contains common ABIF tags used by many viewers, including
 sequence calls (\code{PBAS}), peak locations (\code{PLOC}), base qualities (\code{PCON}),
 sample name (\code{SMPL}), and four trace channels (\code{DATA9}-\code{DATA12}). The quality
 values are synthetic and are estimated from the pileup support for the
-consensus base; they are not original sequencer quality values.
+final \code{PBAS} call; they are not original sequencer quality values.
 
 Typical use in ONTools delivery workflows is to create a Sanger-style visual
 companion for \verb{barcode*/alignments/*.bam} plus the matching consensus or

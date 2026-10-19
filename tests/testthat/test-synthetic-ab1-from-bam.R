@@ -62,7 +62,7 @@ test_that("synthetic ABIF writer creates expected core tags", {
                                peak_height = 900, baseline = 15,
                                noise_fraction = 0.03)
 
-  write_abif_file(ab1, sequence, trace$channels, trace$peak_locations,
+  write_abif_file(ab1, trace$sequence, trace$channels, trace$peak_locations,
                   trace$qualities, "sample1")
 
   tags <- read_abif_test_tags(ab1)
@@ -71,6 +71,45 @@ test_that("synthetic ABIF writer creates expected core tags", {
       "DATA:12", "FWO_:1") %in% tags
   ))
   expect_gt(file.info(ab1)$size, 500)
+})
+
+test_that("pileup support controls peak ratios and base calls", {
+  counts <- list(
+    `1` = stats::setNames(c(80L, 0L, 20L, 0L), c("A", "C", "G", "T")),
+    `2` = stats::setNames(c(5L, 0L, 5L, 0L), c("A", "C", "G", "T"))
+  )
+  fractions <- ab1_base_fractions(counts[["1"]], "G", 0.03)
+  trace <- synthetic_ab1_trace(
+    sequence = "GGN",
+    pileup_counts = counts,
+    spacing = 12,
+    sigma = 2,
+    peak_height = 900,
+    baseline = 15,
+    noise_fraction = 0.03
+  )
+
+  expect_equal(unname(fractions), c(1, 0.03, 0.25, 0.03))
+  expect_equal(trace$sequence, "AGN")
+  expect_equal(trace$qualities, c(7L, 3L, 20L))
+  expect_gt(
+    trace$channels$A[trace$peak_locations[[1L]] + 1L],
+    trace$channels$G[trace$peak_locations[[1L]] + 1L]
+  )
+})
+
+test_that("FASTA bases are used only when pileup coverage is absent", {
+  fractions <- ab1_base_fractions(NULL, "C", 0.03)
+  called <- pileup_called_bases(
+    c("C", "T"),
+    list(`1` = NULL, `2` = stats::setNames(
+      c(4L, 0L, 0L, 6L),
+      c("A", "C", "G", "T")
+    ))
+  )
+
+  expect_equal(unname(fractions), c(0.03, 1, 0.03, 0.03))
+  expect_equal(called, c("C", "T"))
 })
 
 test_that("synthetic_ab1_from_bam runs on a tiny BAM", {
@@ -101,6 +140,7 @@ test_that("synthetic_ab1_from_bam runs on a tiny BAM", {
 
   expect_equal(res$status, 0L)
   expect_equal(res$reference_name, "contig1")
+  expect_equal(res$called_sequence, sequence)
   expect_equal(res$sequence_length, nchar(sequence))
   expect_true(file.exists(ab1))
   expect_false(file.exists(paste0(consensus, ".fai")))

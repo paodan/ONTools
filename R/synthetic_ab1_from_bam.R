@@ -38,7 +38,8 @@
 #' @param sigma Gaussian peak width in trace points. Default is `2`; larger
 #'   values make peaks wider and more overlapped.
 #' @param peak_height Main peak height before scaling by base-support fraction.
-#'   Default is `900`.
+#'   At covered positions the most-supported pileup base receives this height;
+#'   other bases are scaled relative to its read count. Default is `900`.
 #' @param baseline Baseline signal added to every A/C/G/T channel. Default is
 #'   `15`.
 #' @param noise_fraction Minimum off-channel peak fraction. Default `0.03`
@@ -52,20 +53,23 @@
 #'   console.
 #'
 #' @return Invisibly returns a list with `status`, `paths`, `reference_name`,
-#'   `sequence_length`, `trace_length`, and `command`.
+#'   `called_sequence`, `sequence_length`, `trace_length`, and `command`.
 #'
 #' @details
 #' The function runs `samtools mpileup` with `-aa`, so positions with zero read
 #' coverage are still represented. For each consensus position, pileup symbols
-#' are reduced to A/C/G/T counts. The called consensus base is forced to have a
-#' visible major peak even when pileup support is absent, while other channels
-#' receive at least `noise_fraction` of the scaled signal.
+#' are reduced to A/C/G/T counts. At covered positions, the most-supported
+#' pileup base determines the `PBAS` call and major peak; other channel heights
+#' are proportional to their counts relative to that base. At tied positions,
+#' the FASTA base is preferred when it is among the tied bases. The FASTA base
+#' is used as a fallback only when no A/C/G/T pileup observation is available.
+#' Other channels receive at least `noise_fraction` of the major signal.
 #'
 #' The AB1 file contains common ABIF tags used by many viewers, including
 #' sequence calls (`PBAS`), peak locations (`PLOC`), base qualities (`PCON`),
 #' sample name (`SMPL`), and four trace channels (`DATA9`-`DATA12`). The quality
 #' values are synthetic and are estimated from the pileup support for the
-#' consensus base; they are not original sequencer quality values.
+#' final `PBAS` call; they are not original sequencer quality values.
 #'
 #' Typical use in ONTools delivery workflows is to create a Sanger-style visual
 #' companion for `barcode*/alignments/*.bam` plus the matching consensus or
@@ -197,7 +201,7 @@ synthetic_ab1_from_bam <- function(consensus,
   }
   write_abif_file(
     output_ab1,
-    sequence = sequence,
+    sequence = trace$sequence,
     channels = trace$channels,
     peak_locations = trace$peak_locations,
     qualities = trace$qualities,
@@ -208,6 +212,7 @@ synthetic_ab1_from_bam <- function(consensus,
     status = 0L,
     paths = list(consensus = consensus, bam = bam, ab1 = output_ab1),
     reference_name = reference_name,
+    called_sequence = trace$sequence,
     sequence_length = nchar(sequence),
     trace_length = length(trace$channels$A),
     command = command
@@ -334,6 +339,7 @@ synthetic_ab1_trace <- function(sequence,
   bases <- c("A", "C", "G", "T")
   n_bases <- nchar(sequence)
   seq_chars <- strsplit(sequence, "", fixed = TRUE)[[1]]
+  called_chars <- pileup_called_bases(seq_chars, pileup_counts)
   left_pad <- spacing * 2L
   right_pad <- spacing * 2L
   peak_locations <- left_pad + ((seq_len(n_bases) - 1L) * spacing)
@@ -362,9 +368,10 @@ synthetic_ab1_trace <- function(sequence,
 
   channels <- lapply(channels, function(x) pmin(32767L, pmax(0L, as.integer(x))))
   list(
+    sequence = paste0(called_chars, collapse = ""),
     channels = channels,
     peak_locations = as.integer(peak_locations),
-    qualities = consensus_ab1_qualities(seq_chars, pileup_counts)
+    qualities = pileup_ab1_qualities(called_chars, pileup_counts)
   )
 }
 
@@ -375,18 +382,36 @@ ab1_base_fractions <- function(counts, consensus_base, noise_fraction) {
     values[names(counts)] <- as.numeric(counts)
   }
   total <- sum(values)
-  if (total > 0) values <- values / total
+  if (total > 0) {
+    values <- values / max(values)
+    values <- pmax(values, noise_fraction)
+    return(values / max(values))
+  }
   consensus_base <- toupper(consensus_base)
   if (consensus_base %in% bases) {
-    values[[consensus_base]] <- max(values[[consensus_base]], 1)
+    values[[consensus_base]] <- 1
   } else {
-    values[] <- 0.25
+    values[] <- noise_fraction
   }
-  values <- pmax(values, noise_fraction)
-  values / max(values)
+  pmax(values, noise_fraction)
 }
 
-consensus_ab1_qualities <- function(seq_chars, pileup_counts) {
+pileup_called_bases <- function(fallback_bases, pileup_counts) {
+  bases <- c("A", "C", "G", "T")
+  vapply(seq_along(fallback_bases), function(idx) {
+    fallback <- toupper(fallback_bases[[idx]])
+    counts <- pileup_counts[[as.character(idx)]]
+    if (is.null(counts)) return(fallback)
+    values <- stats::setNames(rep(0, length(bases)), bases)
+    values[names(counts)] <- as.numeric(counts)
+    if (sum(values) <= 0) return(fallback)
+    candidates <- names(values)[values == max(values)]
+    if (fallback %in% candidates) return(fallback)
+    candidates[[1L]]
+  }, character(1))
+}
+
+pileup_ab1_qualities <- function(seq_chars, pileup_counts) {
   qualities <- integer(length(seq_chars))
   bases <- c("A", "C", "G", "T")
   for (idx in seq_along(seq_chars)) {
