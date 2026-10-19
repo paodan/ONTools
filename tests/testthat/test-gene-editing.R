@@ -138,15 +138,19 @@ test_that("summarise_variant_events excludes every NO_CALL subtype", {
 
   summary <- summarise_variant_events(
     rbind(events, no_call),
-    min_ratio = 1,
     min_event_reads = 1,
+    min_event_ratio = 1,
+    min_comb_reads = 1,
+    min_comb_ratio = 1,
     min_callable_reads = 1
   )
 
   expect_equal(unique(summary$event_frequency$Callable_reads), 2L)
   expect_false("NO_CALL_N_skip" %in% summary$event_frequency$label)
   expect_equal(sum(summary$var_info$Read_count), 2L)
-  expect_error(summarise_variant_events(events, min_ratio = 101),
+  expect_error(summarise_variant_events(events, min_event_ratio = 101),
+               "between 0 and 100")
+  expect_error(summarise_variant_events(events, min_comb_ratio = 101),
                "between 0 and 100")
 })
 
@@ -167,8 +171,10 @@ test_that("event filtering combines absolute support and relative frequency", {
 
   summary <- summarise_variant_events(
     events,
-    min_ratio = 1,
     min_event_reads = 3,
+    min_event_ratio = 1,
+    min_comb_reads = 1,
+    min_comb_ratio = 0,
     min_callable_reads = 10
   )
 
@@ -204,8 +210,10 @@ test_that("groups below callable-read threshold are not summarized", {
 
   summary <- summarise_variant_events(
     events,
-    min_ratio = 1,
     min_event_reads = 3,
+    min_event_ratio = 1,
+    min_comb_reads = 1,
+    min_comb_ratio = 0,
     min_callable_reads = 10
   )
 
@@ -217,9 +225,64 @@ test_that("groups below callable-read threshold are not summarized", {
     "positive integer"
   )
   expect_error(
+    summarise_variant_events(events, min_comb_reads = 0),
+    "positive integer"
+  )
+  expect_error(
     summarise_variant_events(events, min_callable_reads = 0),
     "positive integer"
   )
+})
+
+test_that("non-WT combinations also require absolute read support", {
+  events <- data.frame(
+    read_id = c("r1", "r2", "r3", "r3", "r4", "r5"),
+    type = rep("SNP", 6),
+    label = c("A", "A", "A", "B", "B", "B"),
+    sample_id = "sample",
+    Ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 10L,
+    stringsAsFactors = FALSE
+  )
+
+  summary <- summarise_variant_events(
+    events,
+    min_event_reads = 3,
+    min_event_ratio = 0,
+    min_comb_reads = 3,
+    min_comb_ratio = 0,
+    min_callable_reads = 1
+  )
+
+  expect_true(all(summary$event_frequency$Pass_filter))
+  expect_equal(summary$var_info$Read_count, c(2L, 2L, 1L))
+  expect_equal(nrow(summary$var_info_filtered), 0L)
+})
+
+test_that("combination read and ratio thresholds are independent", {
+  events <- data.frame(
+    read_id = paste0("r", seq_len(5)),
+    type = "SNP",
+    label = c(rep("A", 3), rep("B", 2)),
+    sample_id = "sample",
+    Ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 10L,
+    stringsAsFactors = FALSE
+  )
+
+  summary <- summarise_variant_events(
+    events,
+    min_event_reads = 1,
+    min_event_ratio = 0,
+    min_comb_reads = 2,
+    min_comb_ratio = 50,
+    min_callable_reads = 1
+  )
+
+  expect_equal(summary$var_info$Variation_combination, c("A", "B"))
+  expect_equal(summary$var_info_filtered$Variation_combination, "A")
 })
 
 test_that("editing caches are invalidated by signature changes", {

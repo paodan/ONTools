@@ -754,37 +754,40 @@ empty_event_frequency <- function() {
   )
 }
 
-validate_min_ratio <- function(min_ratio) {
-  if (!is.numeric(min_ratio) || length(min_ratio) != 1L || is.na(min_ratio) ||
-      !is.finite(min_ratio) || min_ratio < 0 || min_ratio > 100) {
-    stop("`min_ratio` must be one finite number between 0 and 100.",
+validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
+      !is.finite(x) || x < 0 || x > 100) {
+    stop("`", name, "` must be one finite number between 0 and 100.",
          call. = FALSE)
   }
-  if (min_ratio > 20) {
-    warning("`min_ratio` is ", min_ratio,
+  if (warn_high && x > 20) {
+    warning("`", name, "` is ", x,
             "%; confirm that this high threshold is intended.",
             call. = FALSE)
   }
-  as.numeric(min_ratio)
+  as.numeric(x)
 }
 
 #' Summarize per-read gene-editing events
 #'
 #' `summarise_variant_events()` first calculates read support for each event
 #' label. A non-WT label is retained only when it reaches both the absolute
-#' support threshold `min_event_reads` and the relative threshold `min_ratio`.
+#' support threshold `min_event_reads` and the relative threshold
+#' `min_event_ratio`. Final variation combinations are filtered independently
+#' with `min_comb_reads` and `min_comb_ratio`.
 #' Reads with no retained non-WT label are classified as WT. Sample/reference
 #' groups with fewer than `min_callable_reads` callable reads are retained in
 #' `event_frequency` for inspection but omitted from the combination tables.
 #'
 #' @param events_all Event data frame returned by [make_variant_events()].
-#' @param min_ratio Number between 0 and 100. An individual event label must
-#'   reach this percentage of callable reads to be retained, and the final
-#'   combination table is filtered at the same percentage.
 #' @param min_event_reads Positive integer. Minimum number of distinct callable
-#'   reads that must support a non-WT event label. This absolute threshold
-#'   prevents singleton sequencing errors from passing when total read depth is
-#'   low.
+#'   reads that must support a non-WT event label.
+#' @param min_event_ratio Number between 0 and 100. Minimum percentage of
+#'   callable reads that must support a non-WT event label.
+#' @param min_comb_reads Positive integer. Minimum number of reads that must
+#'   support a final `Variation_combination`, including WT.
+#' @param min_comb_ratio Number between 0 and 100. Minimum percentage of
+#'   callable reads that must support a final `Variation_combination`.
 #' @param min_callable_reads Positive integer. Minimum number of callable reads
 #'   required for a sample/reference group to produce `var_info`. Groups below
 #'   this depth remain visible in `event_frequency` with `Pass_filter = FALSE`.
@@ -814,20 +817,36 @@ validate_min_ratio <- function(min_ratio) {
 #' )
 #' summarise_variant_events(
 #'   events,
-#'   min_ratio = 1,
 #'   min_event_reads = 1,
+#'   min_event_ratio = 1,
+#'   min_comb_reads = 1,
+#'   min_comb_ratio = 1,
 #'   min_callable_reads = 1
 #' )$var_info
 #'
 #' @export
 summarise_variant_events <- function(events_all,
-                                     min_ratio = 1,
                                      min_event_reads = 3L,
+                                     min_event_ratio = 1,
+                                     min_comb_reads = 3L,
+                                     min_comb_ratio = 1,
                                      min_callable_reads = 10L) {
-  min_ratio <- validate_min_ratio(min_ratio)
   min_event_reads <- validate_positive_integer(
     min_event_reads,
     "min_event_reads"
+  )
+  min_event_ratio <- validate_percentage_threshold(
+    min_event_ratio,
+    "min_event_ratio",
+    warn_high = TRUE
+  )
+  min_comb_reads <- validate_positive_integer(
+    min_comb_reads,
+    "min_comb_reads"
+  )
+  min_comb_ratio <- validate_percentage_threshold(
+    min_comb_ratio,
+    "min_comb_ratio"
   )
   min_callable_reads <- validate_positive_integer(
     min_callable_reads,
@@ -938,7 +957,7 @@ summarise_variant_events <- function(events_all,
       event_frequency$label == "WT" |
         (
           event_frequency$Supporting_reads >= min_event_reads &
-            event_frequency$Ratio >= min_ratio
+            event_frequency$Ratio >= min_event_ratio
         )
     )
 
@@ -1068,7 +1087,12 @@ summarise_variant_events <- function(events_all,
     ),
     drop = FALSE
   ]
-  var_info_filtered <- var_info[var_info$Ratio >= min_ratio, , drop = FALSE]
+  var_info_filtered <- var_info[
+    var_info$Read_count >= min_comb_reads &
+      var_info$Ratio >= min_comb_ratio,
+    ,
+    drop = FALSE
+  ]
   list(
     events_all = events_all,
     event_frequency = event_frequency,
@@ -1307,10 +1331,14 @@ normalize_editing_sample_info <- function(sample_info) {
 #'   anchor, MAPQ threshold, and reference-name mapping.
 #' @param min_anchor Non-negative reference bases required on both sides of the
 #'   calling interval.
-#' @param min_ratio Percentage threshold passed to
-#'   [summarise_variant_events()].
 #' @param min_event_reads Minimum number of distinct reads supporting a non-WT
-#'   event label. Passed to [summarise_variant_events()].
+#'   event label.
+#' @param min_event_ratio Minimum percentage of callable reads supporting a
+#'   non-WT event label.
+#' @param min_comb_reads Minimum number of reads supporting a final
+#'   `Variation_combination`, including WT.
+#' @param min_comb_ratio Minimum percentage of callable reads supporting a final
+#'   `Variation_combination`.
 #' @param min_callable_reads Minimum callable read depth required to summarize a
 #'   sample/reference group. Passed to [summarise_variant_events()].
 #' @param min_mapq Integer between 0 and 255. Alignments below this mapping
@@ -1346,8 +1374,10 @@ normalize_editing_sample_info <- function(sample_info) {
 #'   ref_all = references,
 #'   bam_root = "/path/to/barcode-directories",
 #'   min_anchor = 10,
-#'   min_ratio = 1,
 #'   min_event_reads = 3,
+#'   min_event_ratio = 1,
+#'   min_comb_reads = 3,
+#'   min_comb_ratio = 1,
 #'   min_callable_reads = 10,
 #'   min_mapq = 20,
 #'   colored_xlsx = "editing-summary.xlsx"
@@ -1363,8 +1393,10 @@ run_editing_batch <- function(sample_info,
                               bam_root,
                               cache_dir = file.path(bam_root, "event_cache"),
                               min_anchor = 0L,
-                              min_ratio = 1,
                               min_event_reads = 3L,
+                              min_event_ratio = 1,
+                              min_comb_reads = 3L,
+                              min_comb_ratio = 1,
                               min_callable_reads = 10L,
                               min_mapq = 20L,
                               mc.cores = NULL,
@@ -1388,10 +1420,22 @@ run_editing_batch <- function(sample_info,
   check_dir_arg(bam_root, "bam_root")
   check_scalar_character(cache_dir, "cache_dir")
   min_anchor <- validate_nonnegative_integer(min_anchor, "min_anchor")
-  min_ratio <- validate_min_ratio(min_ratio)
   min_event_reads <- validate_positive_integer(
     min_event_reads,
     "min_event_reads"
+  )
+  min_event_ratio <- validate_percentage_threshold(
+    min_event_ratio,
+    "min_event_ratio",
+    warn_high = TRUE
+  )
+  min_comb_reads <- validate_positive_integer(
+    min_comb_reads,
+    "min_comb_reads"
+  )
+  min_comb_ratio <- validate_percentage_threshold(
+    min_comb_ratio,
+    "min_comb_ratio"
   )
   min_callable_reads <- validate_positive_integer(
     min_callable_reads,
@@ -1543,8 +1587,10 @@ run_editing_batch <- function(sample_info,
       if (is.null(events) || nrow(events) == 0L) next
       summary_result <- summarise_variant_events(
         events,
-        min_ratio = min_ratio,
         min_event_reads = min_event_reads,
+        min_event_ratio = min_event_ratio,
+        min_comb_reads = min_comb_reads,
+        min_comb_ratio = min_comb_ratio,
         min_callable_reads = min_callable_reads
       )
       table <- summary_result$var_info_filtered

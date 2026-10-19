@@ -6,22 +6,27 @@
 \usage{
 summarise_variant_events(
   events_all,
-  min_ratio = 1,
   min_event_reads = 3L,
+  min_event_ratio = 1,
+  min_comb_reads = 3L,
+  min_comb_ratio = 1,
   min_callable_reads = 10L
 )
 }
 \arguments{
 \item{events_all}{Event data frame returned by \code{\link[=make_variant_events]{make_variant_events()}}.}
 
-\item{min_ratio}{Number between 0 and 100. An individual event label must
-reach this percentage of callable reads to be retained, and the final
-combination table is filtered at the same percentage.}
-
 \item{min_event_reads}{Positive integer. Minimum number of distinct callable
-reads that must support a non-WT event label. This absolute threshold
-prevents singleton sequencing errors from passing when total read depth is
-low.}
+reads that must support a non-WT event label.}
+
+\item{min_event_ratio}{Number between 0 and 100. Minimum percentage of
+callable reads that must support a non-WT event label.}
+
+\item{min_comb_reads}{Positive integer. Minimum number of reads that must
+support a final \code{Variation_combination}, including WT.}
+
+\item{min_comb_ratio}{Number between 0 and 100. Minimum percentage of
+callable reads that must support a final \code{Variation_combination}.}
 
 \item{min_callable_reads}{Positive integer. Minimum number of callable reads
 required for a sample/reference group to produce \code{var_info}. Groups below
@@ -38,7 +43,9 @@ denominators.
 \description{
 \code{summarise_variant_events()} first calculates read support for each event
 label. A non-WT label is retained only when it reaches both the absolute
-support threshold \code{min_event_reads} and the relative threshold \code{min_ratio}.
+support threshold \code{min_event_reads} and the relative threshold
+\code{min_event_ratio}. Final variation combinations are filtered independently
+with \code{min_comb_reads} and \code{min_comb_ratio}.
 Reads with no retained non-WT label are classified as WT. Sample/reference
 groups with fewer than \code{min_callable_reads} callable reads are retained in
 \code{event_frequency} for inspection but omitted from the combination tables.
@@ -61,8 +68,10 @@ events <- make_variant_events(
 )
 summarise_variant_events(
   events,
-  min_ratio = 1,
   min_event_reads = 1,
+  min_event_ratio = 1,
+  min_comb_reads = 1,
+  min_comb_ratio = 1,
   min_callable_reads = 1
 )$var_info
 

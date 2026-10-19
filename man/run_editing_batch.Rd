@@ -11,8 +11,10 @@ run_editing_batch(
   bam_root,
   cache_dir = file.path(bam_root, "event_cache"),
   min_anchor = 0L,
-  min_ratio = 1,
   min_event_reads = 3L,
+  min_event_ratio = 1,
+  min_comb_reads = 3L,
+  min_comb_ratio = 1,
   min_callable_reads = 10L,
   min_mapq = 20L,
   mc.cores = NULL,
@@ -42,11 +44,17 @@ anchor, MAPQ threshold, and reference-name mapping.}
 \item{min_anchor}{Non-negative reference bases required on both sides of the
 calling interval.}
 
-\item{min_ratio}{Percentage threshold passed to
-\code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
-
 \item{min_event_reads}{Minimum number of distinct reads supporting a non-WT
-event label. Passed to \code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
+event label.}
+
+\item{min_event_ratio}{Minimum percentage of callable reads supporting a
+non-WT event label.}
+
+\item{min_comb_reads}{Minimum number of reads supporting a final
+\code{Variation_combination}, including WT.}
+
+\item{min_comb_ratio}{Minimum percentage of callable reads supporting a final
+\code{Variation_combination}.}
 
 \item{min_callable_reads}{Minimum callable read depth required to summarize a
 sample/reference group. Passed to \code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
@@ -94,8 +102,10 @@ result <- run_editing_batch(
   ref_all = references,
   bam_root = "/path/to/barcode-directories",
   min_anchor = 10,
-  min_ratio = 1,
   min_event_reads = 3,
+  min_event_ratio = 1,
+  min_comb_reads = 3,
+  min_comb_ratio = 1,
   min_callable_reads = 10,
   min_mapq = 20,
   colored_xlsx = "editing-summary.xlsx"
