@@ -48,8 +48,11 @@ whether each label passed the callable-depth, support-count, and percentage
 requirements. Reads with \code{type = "NO_CALL"} are excluded from all
 denominators. \code{var_info$ratio} always uses all callable reads; only
 \code{var_info_filtered} is affected by \code{filtered_ratio_mode}. All returned table
-columns use lower \code{snake_case}. Legacy input containing \code{Ref_name} is
-accepted and normalized to \code{ref_name}.
+columns use lower \code{snake_case}. \code{reference_aligned_trim} and
+\code{read_aligned_trim} form one deterministic aligned pair representing the
+retained variation combination; they are not selected independently from
+raw read strings. Legacy input containing \code{Ref_name} is accepted and
+normalized to \code{ref_name}.
 }
 \description{
 \code{summarise_variant_events()} first calculates read support for each event
@@ -57,7 +60,10 @@ label. A non-WT label is retained only when it reaches both the absolute
 support threshold \code{min_event_reads} and the relative threshold
 \code{min_event_ratio}. Final variation combinations are filtered independently
 with \code{min_comb_reads} and \code{min_comb_ratio}.
-Reads with no retained non-WT label are classified as WT. Sample/reference
+Reads with no retained non-WT label are classified as WT. The aligned
+sequence columns are reconstructed from the retained events, so events that
+fail the event-level filters do not remain in a WT or edited combination's
+representative sequence. Sample/reference
 groups with fewer than \code{min_callable_reads} callable reads are retained in
 \code{event_frequency} for inspection but omitted from the combination tables.
 }

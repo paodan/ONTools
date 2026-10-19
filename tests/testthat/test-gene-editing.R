@@ -218,6 +218,75 @@ test_that("event filtering combines absolute support and relative frequency", {
   )
 })
 
+test_that("aligned summaries are rebuilt from retained events", {
+  alignments <- data.frame(
+    qname = c("error", "wt1", "wt2"),
+    seq = c("ACAT", "ACGT", "ACGT"),
+    cigar = rep("4M", 3),
+    pos = rep(1L, 3),
+    stringsAsFactors = FALSE
+  )
+  events <- make_variant_events(
+    alignments,
+    reference = c(amplicon = "ACGT"),
+    region_start = 1,
+    region_end = 4,
+    min_anchor = 0,
+    mc.cores = 1
+  )
+
+  summary <- summarise_variant_events(
+    events,
+    min_event_reads = 2,
+    min_event_ratio = 0,
+    min_comb_reads = 1,
+    min_comb_ratio = 0,
+    min_callable_reads = 1
+  )
+
+  expect_equal(summary$var_info$variation_combination, "WT")
+  expect_equal(summary$var_info$reference_aligned_trim, "ACGT")
+  expect_equal(summary$var_info$read_aligned_trim, "ACGT")
+})
+
+test_that("aligned summaries reconstruct retained insertions and deletions", {
+  alignments <- data.frame(
+    qname = c("insertion", "deletion"),
+    seq = c("ACGTTAC", "ACGAC"),
+    cigar = c("4M1I2M", "3M1D2M"),
+    pos = c(1L, 1L),
+    stringsAsFactors = FALSE
+  )
+  events <- make_variant_events(
+    alignments,
+    reference = c(amplicon = "ACGTAC"),
+    region_start = 1,
+    region_end = 6,
+    min_anchor = 0,
+    mc.cores = 1
+  )
+
+  summary <- summarise_variant_events(
+    events,
+    min_event_reads = 1,
+    min_event_ratio = 0,
+    min_comb_reads = 1,
+    min_comb_ratio = 0,
+    min_callable_reads = 1
+  )$var_info
+
+  insertion <- grepl("IN_after_4:T", summary$variation_combination, fixed = TRUE)
+  deletion <- grepl("DEL_4_4:T", summary$variation_combination, fixed = TRUE)
+  expect_equal(summary$reference_aligned_trim[insertion], "ACGT-AC")
+  expect_equal(summary$read_aligned_trim[insertion], "ACGTTAC")
+  expect_equal(summary$reference_aligned_trim[deletion], "ACGTAC")
+  expect_equal(summary$read_aligned_trim[deletion], "ACG-AC")
+  expect_equal(
+    nchar(summary$reference_aligned_trim),
+    nchar(summary$read_aligned_trim)
+  )
+})
+
 test_that("groups below callable-read threshold are not summarized", {
   events <- data.frame(
     read_id = paste0("read", seq_len(5)),

@@ -891,6 +891,85 @@ empty_event_frequency <- function() {
   )
 }
 
+reconstruct_combination_alignment <- function(reference_aligned,
+                                              region_start,
+                                              region_end,
+                                              events) {
+  if (length(reference_aligned) != 1L || is.na(reference_aligned) ||
+      !nzchar(reference_aligned)) {
+    return(list(reference_aligned = NA_character_, read_aligned = NA_character_))
+  }
+
+  reference_region <- gsub("-", "", toupper(reference_aligned), fixed = TRUE)
+  expected_length <- region_end - region_start + 1L
+  if (nchar(reference_region, type = "bytes") != expected_length) {
+    return(list(reference_aligned = NA_character_, read_aligned = NA_character_))
+  }
+
+  reference_bases <- strsplit(reference_region, "", fixed = TRUE)[[1L]]
+  read_bases <- reference_bases
+  deleted <- rep(FALSE, expected_length)
+  insertions <- list()
+
+  if (!is.null(events) && nrow(events) > 0L) {
+    for (i in seq_len(nrow(events))) {
+      event_ref <- toupper(as.character(events$ref[[i]]))
+      event_alt <- toupper(as.character(events$alt[[i]]))
+      event_start <- suppressWarnings(as.integer(events$start[[i]]))
+      event_end <- suppressWarnings(as.integer(events$end[[i]]))
+      position_after <- suppressWarnings(
+        as.integer(events$position_after[[i]])
+      )
+
+      if (!is.na(position_after) && identical(event_ref, "-") &&
+          !is.na(event_alt) && nzchar(event_alt)) {
+        key <- as.character(position_after)
+        insertions[[key]] <- paste0(insertions[[key]], event_alt)
+        next
+      }
+
+      if (is.na(event_start) || is.na(event_end)) next
+      overlap_start <- max(event_start, region_start)
+      overlap_end <- min(event_end, region_end)
+      if (overlap_start > overlap_end) next
+      index <- seq.int(overlap_start, overlap_end) - region_start + 1L
+
+      if (identical(event_alt, "-")) {
+        deleted[index] <- TRUE
+        next
+      }
+
+      if (!is.na(event_alt) && nzchar(event_alt) &&
+          nchar(event_alt, type = "bytes") == event_end - event_start + 1L) {
+        alt_bases <- strsplit(event_alt, "", fixed = TRUE)[[1L]]
+        alt_index <- seq.int(overlap_start, overlap_end) - event_start + 1L
+        read_bases[index] <- alt_bases[alt_index]
+      }
+    }
+  }
+
+  reference_chunks <- character()
+  read_chunks <- character()
+  for (position in seq.int(region_start, region_end)) {
+    insertion <- insertions[[as.character(position - 1L)]]
+    if (!is.null(insertion) && nzchar(insertion)) {
+      reference_chunks <- c(reference_chunks, strrep("-", nchar(insertion)))
+      read_chunks <- c(read_chunks, insertion)
+    }
+    index <- position - region_start + 1L
+    reference_chunks <- c(reference_chunks, reference_bases[[index]])
+    read_chunks <- c(
+      read_chunks,
+      if (deleted[[index]]) "-" else read_bases[[index]]
+    )
+  }
+
+  list(
+    reference_aligned = paste0(reference_chunks, collapse = ""),
+    read_aligned = paste0(read_chunks, collapse = "")
+  )
+}
+
 validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
   if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
       !is.finite(x) || x < 0 || x > 100) {
@@ -912,7 +991,10 @@ validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
 #' support threshold `min_event_reads` and the relative threshold
 #' `min_event_ratio`. Final variation combinations are filtered independently
 #' with `min_comb_reads` and `min_comb_ratio`.
-#' Reads with no retained non-WT label are classified as WT. Sample/reference
+#' Reads with no retained non-WT label are classified as WT. The aligned
+#' sequence columns are reconstructed from the retained events, so events that
+#' fail the event-level filters do not remain in a WT or edited combination's
+#' representative sequence. Sample/reference
 #' groups with fewer than `min_callable_reads` callable reads are retained in
 #' `event_frequency` for inspection but omitted from the combination tables.
 #'
@@ -942,8 +1024,11 @@ validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
 #' requirements. Reads with `type = "NO_CALL"` are excluded from all
 #' denominators. `var_info$ratio` always uses all callable reads; only
 #' `var_info_filtered` is affected by `filtered_ratio_mode`. All returned table
-#' columns use lower `snake_case`. Legacy input containing `Ref_name` is
-#' accepted and normalized to `ref_name`.
+#' columns use lower `snake_case`. `reference_aligned_trim` and
+#' `read_aligned_trim` form one deterministic aligned pair representing the
+#' retained variation combination; they are not selected independently from
+#' raw read strings. Legacy input containing `Ref_name` is accepted and
+#' normalized to `ref_name`.
 #'
 #' @examples
 #' aln <- data.frame(
@@ -1188,15 +1273,42 @@ summarise_variant_events <- function(events_all,
   variation_count <- unname(count_by_read[combination_index])
   variation_combination[is.na(variation_combination)] <- "WT"
   variation_count[is.na(variation_count)] <- 0L
-  aligned_reference <- if ("reference_aligned_trim" %in% names(analysis_events)) {
-    as.character(analysis_events$reference_aligned_trim[first_read_row])
+  has_alignment_columns <- all(c(
+    "reference_aligned_trim", "read_aligned_trim", "start", "end",
+    "position_after", "ref", "alt"
+  ) %in% names(analysis_events))
+  if (has_alignment_columns) {
+    read_group_id <- match(read_key, read_keys)
+    read_event_groups <- split(
+      seq_len(nrow(analysis_events)),
+      factor(read_group_id, levels = seq_along(read_keys))
+    )
+    reconstructed <- lapply(read_event_groups, function(index) {
+      source_row <- index[[1L]]
+      retained <- index[
+        keep_event[index] & analysis_events$label[index] != "WT"
+      ]
+      if (length(retained) > 0L) {
+        retained <- retained[
+          !duplicated(as.character(analysis_events$label[retained]))
+        ]
+      }
+      reconstruct_combination_alignment(
+        reference_aligned = analysis_events$reference_aligned_trim[[source_row]],
+        region_start = as.integer(analysis_events$region_start[[source_row]]),
+        region_end = as.integer(analysis_events$region_end[[source_row]]),
+        events = analysis_events[retained, , drop = FALSE]
+      )
+    })
+    aligned_reference <- vapply(
+      reconstructed, `[[`, character(1), "reference_aligned"
+    )
+    aligned_read <- vapply(
+      reconstructed, `[[`, character(1), "read_aligned"
+    )
   } else {
-    rep(NA_character_, length(read_keys))
-  }
-  aligned_read <- if ("read_aligned_trim" %in% names(analysis_events)) {
-    as.character(analysis_events$read_aligned_trim[first_read_row])
-  } else {
-    rep(NA_character_, length(read_keys))
+    aligned_reference <- rep(NA_character_, length(read_keys))
+    aligned_read <- rep(NA_character_, length(read_keys))
   }
   combinations <- data.frame(
     sample_id = as.character(analysis_events$sample_id[first_read_row]),
@@ -1219,15 +1331,6 @@ summarise_variant_events <- function(events_all,
   )
   unique_combination_key <- unique(combination_key)
   combination_group_id <- match(combination_key, unique_combination_key)
-  combination_groups <- split(
-    seq_len(nrow(combinations)),
-    factor(combination_group_id, levels = seq_along(unique_combination_key))
-  )
-  mode_or_na <- function(x) {
-    x <- x[!is.na(x) & nzchar(x)]
-    if (length(x) == 0L) return(NA_character_)
-    names(which.max(table(x)))
-  }
   first_combination_row <- !duplicated(combination_key)
   combination_counts <- tabulate(
     combination_group_id,
@@ -1253,16 +1356,10 @@ summarise_variant_events <- function(events_all,
     ],
     region_start = combinations$region_start[first_combination_row],
     region_end = combinations$region_end[first_combination_row],
-    reference_aligned_trim = vapply(
-      combination_groups,
-      function(index) mode_or_na(combinations$reference_aligned_trim[index]),
-      character(1)
-    ),
-    read_aligned_trim = vapply(
-      combination_groups,
-      function(index) mode_or_na(combinations$read_aligned_trim[index]),
-      character(1)
-    ),
+    reference_aligned_trim = combinations$reference_aligned_trim[
+      first_combination_row
+    ],
+    read_aligned_trim = combinations$read_aligned_trim[first_combination_row],
     stringsAsFactors = FALSE
   )
   var_info <- var_info[order(
