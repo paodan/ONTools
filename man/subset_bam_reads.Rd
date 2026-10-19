@@ -7,7 +7,7 @@
 subset_bam_reads(
   bam,
   output_bam,
-  reference_name,
+  reference_name = NULL,
   region_start,
   region_end,
   min_mapq = 20L,
@@ -25,8 +25,10 @@ subset_bam_reads(
 
 \item{output_bam}{Output BAM file. It must differ from \code{bam}.}
 
-\item{reference_name}{Non-empty character vector naming one or more BAM
-reference sequences. Duplicate names are removed while preserving order.}
+\item{reference_name}{\code{NULL} or a non-empty character vector naming one or
+more BAM reference sequences. \code{NULL} applies the filters to alignments on
+every reference sequence. Duplicate names are removed while preserving
+order.}
 
 \item{region_start, region_end}{Positive 1-based coordinates defining a
 closed reference interval.}
@@ -116,6 +118,15 @@ per_reference <- subset_bam_reads(
   seed = 2026
 )
 per_reference$per_reference
+
+# Omit reference_name to filter and sample across every reference.
+all_references <- subset_bam_reads(
+  bam = "barcode01.aligned.sorted.bam",
+  output_bam = "barcode01.all-references.bam",
+  region_start = 1000,
+  region_end = 1500,
+  max_reads = 2000
+)
 }
 
 }

@@ -168,3 +168,49 @@ test_that("multiple references can be sampled independently", {
   expect_true(result$max_reads_per_reference)
   expect_equal(Rsamtools::countBam(output)$records, 3L)
 })
+
+test_that("NULL reference_name samples across every reference", {
+  directory <- tempfile("subset-bam-")
+  dir.create(directory)
+  bam <- make_subset_test_bam(directory)
+  output <- file.path(directory, "all-references.bam")
+
+  result <- subset_bam_reads(
+    bam = bam,
+    output_bam = output,
+    region_start = 10,
+    region_end = 15,
+    min_mapq = 20,
+    max_reads = 3,
+    seed = 2026
+  )
+
+  expect_null(result$reference_name)
+  expect_equal(result$eligible_reads, 4L)
+  expect_equal(result$selected_reads, 3L)
+  expect_equal(result$per_reference$reference_name, c("refA", "refB"))
+  expect_equal(result$per_reference$eligible_reads, c(3L, 1L))
+  expect_equal(Rsamtools::countBam(output)$records, 3L)
+})
+
+test_that("NULL reference_name supports per-reference limits", {
+  directory <- tempfile("subset-bam-")
+  dir.create(directory)
+  bam <- make_subset_test_bam(directory)
+  output <- file.path(directory, "all-references-separated.bam")
+
+  result <- subset_bam_reads(
+    bam = bam,
+    output_bam = output,
+    region_start = 10,
+    region_end = 15,
+    min_mapq = 20,
+    max_reads = 2,
+    max_reads_per_reference = TRUE,
+    seed = 2026
+  )
+
+  expect_equal(result$selected_reads, 3L)
+  expect_equal(result$per_reference$selected_reads, c(2L, 1L))
+  expect_equal(Rsamtools::countBam(output)$records, 3L)
+})

@@ -7,8 +7,10 @@
 #'
 #' @param bam Input BAM file.
 #' @param output_bam Output BAM file. It must differ from `bam`.
-#' @param reference_name Non-empty character vector naming one or more BAM
-#'   reference sequences. Duplicate names are removed while preserving order.
+#' @param reference_name `NULL` or a non-empty character vector naming one or
+#'   more BAM reference sequences. `NULL` applies the filters to alignments on
+#'   every reference sequence. Duplicate names are removed while preserving
+#'   order.
 #' @param region_start,region_end Positive 1-based coordinates defining a
 #'   closed reference interval.
 #' @param min_mapq Integer from 0 to 255. Only alignments with mapping quality
@@ -82,12 +84,21 @@
 #'   seed = 2026
 #' )
 #' per_reference$per_reference
+#'
+#' # Omit reference_name to filter and sample across every reference.
+#' all_references <- subset_bam_reads(
+#'   bam = "barcode01.aligned.sorted.bam",
+#'   output_bam = "barcode01.all-references.bam",
+#'   region_start = 1000,
+#'   region_end = 1500,
+#'   max_reads = 2000
+#' )
 #' }
 #'
 #' @export
 subset_bam_reads <- function(bam,
                              output_bam,
-                             reference_name,
+                             reference_name = NULL,
                              region_start,
                              region_end,
                              min_mapq = 20L,
@@ -100,12 +111,15 @@ subset_bam_reads <- function(bam,
                              overwrite = FALSE) {
   check_file_arg(bam, "bam")
   check_scalar_character(output_bam, "output_bam")
-  if (!is.character(reference_name) || length(reference_name) == 0L ||
-      anyNA(reference_name) || any(!nzchar(trimws(reference_name)))) {
-    stop("`reference_name` must contain one or more non-empty names.",
+  if (!is.null(reference_name) &&
+      (!is.character(reference_name) || length(reference_name) == 0L ||
+       anyNA(reference_name) || any(!nzchar(trimws(reference_name))))) {
+    stop("`reference_name` must be `NULL` or contain non-empty names.",
          call. = FALSE)
   }
-  reference_name <- unique(trimws(reference_name))
+  if (!is.null(reference_name)) {
+    reference_name <- unique(trimws(reference_name))
+  }
   check_logical_scalar(max_reads_per_reference, "max_reads_per_reference")
   check_logical_scalar(primary_only, "primary_only")
   check_logical_scalar(index_output, "index_output")
@@ -181,8 +195,11 @@ subset_bam_reads <- function(bam,
     )
     alignment_start <- as.integer(records$pos)
     alignment_end <- alignment_start + reference_length - 1
-    reference_match <- !is.na(records$rname) &
-      as.character(records$rname) %in% reference_name
+    reference_match <- !is.na(records$rname)
+    if (!is.null(reference_name)) {
+      reference_match <- reference_match &
+        as.character(records$rname) %in% reference_name
+    }
     region_match <- if (coverage == "complete") {
       alignment_start <= region_start & alignment_end >= region_end
     } else {
@@ -196,6 +213,11 @@ subset_bam_reads <- function(bam,
   }
 
   eligible_reference <- as.character(records$rname[eligible])
+  summary_references <- if (is.null(reference_name)) {
+    unique(eligible_reference)
+  } else {
+    reference_name
+  }
   selected <- sample_bam_record_indices(
     eligible = eligible,
     eligible_reference = eligible_reference,
@@ -205,15 +227,15 @@ subset_bam_reads <- function(bam,
   )
   sampled <- length(selected) < length(eligible)
   eligible_count <- tabulate(
-    match(eligible_reference, reference_name),
-    nbins = length(reference_name)
+    match(eligible_reference, summary_references),
+    nbins = length(summary_references)
   )
   selected_count <- tabulate(
-    match(as.character(records$rname[selected]), reference_name),
-    nbins = length(reference_name)
+    match(as.character(records$rname[selected]), summary_references),
+    nbins = length(summary_references)
   )
   per_reference <- data.frame(
-    reference_name = reference_name,
+    reference_name = summary_references,
     eligible_reads = as.integer(eligible_count),
     selected_reads = as.integer(selected_count),
     sampled = selected_count < eligible_count,
