@@ -1766,6 +1766,8 @@ run_editing_batch <- function(sample_info,
                               force_rebuild = FALSE,
                               colored_xlsx = NULL) {
   sample_info <- normalize_editing_sample_info(sample_info)
+  explicit_bam_column <- ".ontools_bam_file"
+  use_explicit_bam <- explicit_bam_column %in% names(sample_info)
   if (length(ref_all) == 0L || is.null(names(ref_all)) ||
       anyNA(names(ref_all)) || any(!nzchar(names(ref_all))) ||
       anyDuplicated(names(ref_all))) {
@@ -1780,7 +1782,9 @@ run_editing_batch <- function(sample_info,
            call. = FALSE)
     }
   }
-  check_dir_arg(bam_root, "bam_root")
+  if (!use_explicit_bam) {
+    check_dir_arg(bam_root, "bam_root")
+  }
   check_scalar_character(cache_dir, "cache_dir")
   min_anchor <- validate_nonnegative_integer(min_anchor, "min_anchor")
   min_event_reads <- validate_positive_integer(
@@ -1813,7 +1817,9 @@ run_editing_batch <- function(sample_info,
   if (!is.null(colored_xlsx)) check_scalar_character(colored_xlsx, "colored_xlsx")
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   cache_dir <- normalizePath(cache_dir, mustWork = TRUE)
-  bam_root <- normalizePath(bam_root, mustWork = TRUE)
+  if (!use_explicit_bam) {
+    bam_root <- normalizePath(bam_root, mustWork = TRUE)
+  }
 
   bam_param <- Rsamtools::ScanBamParam(
     flag = Rsamtools::scanBamFlag(
@@ -1851,12 +1857,16 @@ run_editing_batch <- function(sample_info,
 
   process_barcode <- function(indices) {
     barcode <- sample_info$barcode[[indices[[1L]]]]
-    bam_file <- file.path(
-      bam_root,
-      barcode,
-      "alignments",
-      paste0(barcode, ".aligned.sorted.bam")
-    )
+    bam_file <- if (use_explicit_bam) {
+      sample_info[[explicit_bam_column]][[indices[[1L]]]]
+    } else {
+      file.path(
+        bam_root,
+        barcode,
+        "alignments",
+        paste0(barcode, ".aligned.sorted.bam")
+      )
+    }
     local_rows <- list()
     local_source_rows <- integer()
     local_per_sample <- stats::setNames(
@@ -2059,4 +2069,153 @@ run_editing_batch <- function(sample_info,
     }
   }
   list(table = result_table, per_sample = per_sample_results)
+}
+
+#' Run batch gene-editing analysis with explicit BAM paths
+#'
+#' `run_editing_batch2()` is the explicit-path counterpart of
+#' [run_editing_batch()]. Instead of deriving each BAM path from a fixed
+#' `bam_root/<barcode>/alignments/` directory layout, it reads the complete BAM
+#' path from `sample_info$bam_file`. The event calling, cache validation,
+#' filtering, parallel strategies, returned tables, and optional Excel output
+#' are otherwise the same as in [run_editing_batch()].
+#'
+#' @param sample_info A data frame or Excel path. It must contain `barcode`,
+#'   `ref_name`, `region_start`, `region_end`, and `bam_file`. Each `bam_file`
+#'   value must identify an existing BAM file and may be absolute or relative
+#'   to the current working directory. Multiple rows for one barcode are
+#'   allowed when they use the same BAM. This function requires a one-to-one
+#'   mapping between unique barcodes and unique BAM files.
+#' @param ref_all Named reference sequences. Every configured reference must be
+#'   present.
+#' @param re_names Optional named character vector mapping BAM reference names
+#'   to names in `ref_all`. Unmapped names are retained unchanged.
+#' @param cache_dir Directory for versioned event caches. Default is
+#'   `"event_cache"` under the current working directory.
+#' @param min_anchor Non-negative reference bases required on both sides of the
+#'   calling interval.
+#' @param min_event_reads Minimum number of distinct reads supporting a non-WT
+#'   event label.
+#' @param min_event_ratio Minimum percentage of callable reads supporting a
+#'   non-WT event label.
+#' @param min_comb_reads Minimum number of reads supporting a final
+#'   `variant_combination`, including WT.
+#' @param min_comb_ratio Minimum percentage of callable reads supporting a final
+#'   `variant_combination`.
+#' @param min_callable_reads Minimum callable read depth required to summarize a
+#'   sample/reference group.
+#' @param filtered_ratio_mode How ratios are reported after combination
+#'   filtering. See [summarise_variant_events()].
+#' @param min_mapq Integer between 0 and 255. Alignments below this mapping
+#'   quality are excluded.
+#' @param mc.cores Optional total worker budget.
+#' @param parallel_strategy One of `"auto"`, `"bam"`, `"read"`, or `"none"`.
+#'   See [run_editing_batch()] for details. Because this function requires a
+#'   one-to-one barcode/BAM mapping, BAM-level parallelism operates on barcode
+#'   groups without searching a directory tree.
+#' @param force_rebuild Logical. Ignore valid caches and rebuild all events.
+#' @param colored_xlsx Optional `.xlsx` output path passed to
+#'   [color_excel_by_barcode_ref()].
+#'
+#' @return The same result as [run_editing_batch()]: a list with `table` and
+#'   `per_sample`.
+#'
+#' @examples
+#' \dontrun{
+#' sample_sheet <- data.frame(
+#'   barcode = c("barcode01", "barcode02"),
+#'   sample_id = c("sample_A", "sample_B"),
+#'   ref_name = c("amplicon_A", "amplicon_B"),
+#'   region_start = c(120L, 85L),
+#'   region_end = c(150L, 115L),
+#'   bam_file = c(
+#'     "/data/results/sample_A.sorted.bam",
+#'     "/another/project/sample_B.bam"
+#'   )
+#' )
+#'
+#' result <- run_editing_batch2(
+#'   sample_info = sample_sheet,
+#'   ref_all = references,
+#'   cache_dir = "event_cache",
+#'   parallel_strategy = "auto",
+#'   mc.cores = 8,
+#'   min_event_reads = 3,
+#'   min_event_ratio = 0.5,
+#'   min_comb_reads = 3,
+#'   min_comb_ratio = 0.5
+#' )
+#' result$table
+#' }
+#'
+#' @seealso [run_editing_batch()], [make_variant_events()]
+#' @export
+run_editing_batch2 <- function(sample_info,
+                               ref_all,
+                               re_names = NULL,
+                               cache_dir = "event_cache",
+                               min_anchor = 0L,
+                               min_event_reads = 3L,
+                               min_event_ratio = 1,
+                               min_comb_reads = 3L,
+                               min_comb_ratio = 1,
+                               min_callable_reads = 10L,
+                               filtered_ratio_mode = c("replace", "add"),
+                               min_mapq = 20L,
+                               mc.cores = NULL,
+                               parallel_strategy = c(
+                                 "auto", "bam", "read", "none"
+                               ),
+                               force_rebuild = FALSE,
+                               colored_xlsx = NULL) {
+  sample_info <- normalize_editing_sample_info(sample_info)
+  if (!"bam_file" %in% names(sample_info)) {
+    stop("`sample_info` must contain a `bam_file` column.", call. = FALSE)
+  }
+  bam_file <- as.character(sample_info$bam_file)
+  if (anyNA(bam_file) || any(!nzchar(trimws(bam_file)))) {
+    stop("`sample_info$bam_file` contains missing or empty paths.",
+         call. = FALSE)
+  }
+  missing_bam <- !file.exists(bam_file)
+  if (any(missing_bam)) {
+    stop(
+      "BAM files do not exist: ",
+      paste(unique(bam_file[missing_bam]), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  bam_file <- normalizePath(bam_file, mustWork = TRUE)
+  mapping <- unique(data.frame(
+    barcode = sample_info$barcode,
+    bam_file = bam_file,
+    stringsAsFactors = FALSE
+  ))
+  if (anyDuplicated(mapping$barcode)) {
+    stop("Each barcode must map to exactly one `bam_file`.", call. = FALSE)
+  }
+  if (anyDuplicated(mapping$bam_file)) {
+    stop("Each `bam_file` must map to exactly one barcode.", call. = FALSE)
+  }
+
+  sample_info[[".ontools_bam_file"]] <- bam_file
+  run_editing_batch(
+    sample_info = sample_info,
+    ref_all = ref_all,
+    re_names = re_names,
+    bam_root = NULL,
+    cache_dir = cache_dir,
+    min_anchor = min_anchor,
+    min_event_reads = min_event_reads,
+    min_event_ratio = min_event_ratio,
+    min_comb_reads = min_comb_reads,
+    min_comb_ratio = min_comb_ratio,
+    min_callable_reads = min_callable_reads,
+    filtered_ratio_mode = filtered_ratio_mode,
+    min_mapq = min_mapq,
+    mc.cores = mc.cores,
+    parallel_strategy = parallel_strategy,
+    force_rebuild = force_rebuild,
+    colored_xlsx = colored_xlsx
+  )
 }

@@ -635,4 +635,28 @@ test_that("BAM-, read-, and non-parallel batch strategies agree", {
   expect_equal(read$table, none$table)
   expect_identical(names(bam$per_sample), names(none$per_sample))
   expect_identical(names(read$per_sample), names(none$per_sample))
+
+  direct_sample_info <- sample_info
+  direct_sample_info$bam_file <- file.path(
+    bam_root,
+    barcodes,
+    "alignments",
+    paste0(barcodes, ".aligned.sorted.bam")
+  )
+  direct <- run_editing_batch2(
+    sample_info = direct_sample_info,
+    ref_all = c(amplicon = "ACGTACGT"),
+    cache_dir = file.path(work, "cache-direct"),
+    min_event_reads = 1L,
+    min_event_ratio = 0,
+    min_comb_reads = 1L,
+    min_comb_ratio = 0,
+    min_callable_reads = 1L,
+    min_mapq = 0L,
+    mc.cores = 2L,
+    parallel_strategy = "bam",
+    force_rebuild = TRUE
+  )
+  expect_equal(direct$table, none$table)
+  expect_identical(names(direct$per_sample), names(none$per_sample))
 })
