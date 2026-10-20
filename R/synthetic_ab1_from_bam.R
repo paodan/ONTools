@@ -41,7 +41,7 @@
 #'   and `"fraction"`. It is ignored by `"count"`, where peak amplitude above
 #'   `baseline` equals the A/C/G/T supporting-read count. Default is `900`.
 #' @param baseline Baseline signal added to every A/C/G/T channel. Default is
-#'   `15`.
+#'   `1`.
 #' @param noise_fraction Minimum off-channel peak fraction used only by
 #'   `peak_value_mode = "relative"`. Default `0.03` keeps non-major channels
 #'   visible at low height; must be between 0 and 1. Count and fraction modes
@@ -118,7 +118,7 @@ synthetic_ab1_from_bam <- function(consensus,
                                    spacing = 12,
                                    sigma = 2,
                                    peak_height = 900,
-                                   baseline = 15,
+                                   baseline = 1,
                                    noise_fraction = 0.03,
                                    peak_value_mode = c(
                                      "count", "relative", "fraction"

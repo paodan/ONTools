@@ -17,7 +17,7 @@ synthetic_ab1_from_bam(
   spacing = 12,
   sigma = 2,
   peak_height = 900,
-  baseline = 15,
+  baseline = 1,
   noise_fraction = 0.03,
   peak_value_mode = c("count", "relative", "fraction"),
   overwrite = FALSE,
@@ -70,7 +70,7 @@ and \code{"fraction"}. It is ignored by \code{"count"}, where peak amplitude abo
 \code{baseline} equals the A/C/G/T supporting-read count. Default is \code{900}.}
 
 \item{baseline}{Baseline signal added to every A/C/G/T channel. Default is
-\code{15}.}
+\code{1}.}
 
 \item{noise_fraction}{Minimum off-channel peak fraction used only by
 \code{peak_value_mode = "relative"}. Default \code{0.03} keeps non-major channels
