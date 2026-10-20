@@ -19,6 +19,7 @@ synthetic_ab1_from_bam(
   peak_height = 900,
   baseline = 15,
   noise_fraction = 0.03,
+  peak_value_mode = c("relative", "count", "fraction"),
   overwrite = FALSE,
   echo = TRUE,
   stderr = ""
@@ -64,16 +65,24 @@ Default \code{0} keeps all bases reported by mpileup.}
 \item{sigma}{Gaussian peak width in trace points. Default is \code{2}; larger
 values make peaks wider and more overlapped.}
 
-\item{peak_height}{Main peak height before scaling by base-support fraction.
-At covered positions the most-supported pileup base receives this height;
-other bases are scaled relative to its read count. Default is \code{900}.}
+\item{peak_height}{Peak-height scale used by \code{peak_value_mode = "relative"}
+and \code{"fraction"}. It is ignored by \code{"count"}, where peak amplitude above
+\code{baseline} equals the A/C/G/T supporting-read count. Default is \code{900}.}
 
 \item{baseline}{Baseline signal added to every A/C/G/T channel. Default is
 \code{15}.}
 
-\item{noise_fraction}{Minimum off-channel peak fraction. Default \code{0.03}
-keeps non-consensus channels visible at low height; must be between 0 and
-1.}
+\item{noise_fraction}{Minimum off-channel peak fraction used only by
+\code{peak_value_mode = "relative"}. Default \code{0.03} keeps non-major channels
+visible at low height; must be between 0 and 1. Count and fraction modes
+do not add artificial off-channel peaks.}
+
+\item{peak_value_mode}{Meaning of peak amplitude. \code{"relative"} (default)
+divides each A/C/G/T count by the largest count at that position, so the
+major peak has amplitude \code{peak_height}. \code{"count"} uses the raw supporting
+read count as amplitude. \code{"fraction"} divides each count by the sum of
+A/C/G/T counts and multiplies by \code{peak_height}. The baseline is added after
+calculating these amplitudes.}
 
 \item{overwrite}{Logical. If \code{FALSE} (default), stop when \code{output_ab1}
 already exists. Set \code{TRUE} to replace it.}
@@ -86,13 +95,14 @@ console.}
 }
 \value{
 Invisibly returns a list with \code{status}, \code{paths}, \code{reference_name},
-\code{called_sequence}, \code{sequence_length}, \code{trace_length}, and \code{command}.
+\code{called_sequence}, \code{sequence_length}, \code{trace_length}, \code{peak_value_mode},
+and \code{command}.
 }
 \description{
 \code{synthetic_ab1_from_bam()} writes a minimal ABIF/AB1 file with simulated
 Sanger-style four-channel peak data. It uses \verb{samtools mpileup} to estimate
-A/C/G/T support at each consensus position, then turns those proportions into
-Gaussian peaks.
+A/C/G/T support at each consensus position, then turns those counts into
+Gaussian peaks using a selectable peak-value mode.
 }
 \details{
 This function does not reconstruct real capillary-sequencing fluorescence
@@ -102,11 +112,20 @@ tools that require an AB1-like chromatogram, not as raw Sanger evidence.
 The function runs \verb{samtools mpileup} with \code{-aa}, so positions with zero read
 coverage are still represented. For each consensus position, pileup symbols
 are reduced to A/C/G/T counts. At covered positions, the most-supported
-pileup base determines the \code{PBAS} call and major peak; other channel heights
-are proportional to their counts relative to that base. At tied positions,
-the FASTA base is preferred when it is among the tied bases. The FASTA base
-is used as a fallback only when no A/C/G/T pileup observation is available.
-Other channels receive at least \code{noise_fraction} of the major signal.
+pileup base determines the \code{PBAS} call. Peak amplitudes are calculated using
+\code{peak_value_mode}. At tied positions, the FASTA base is preferred when it is
+among the tied bases. The FASTA base is used as a \code{PBAS} fallback only when
+no A/C/G/T pileup observation is available. In relative mode, that fallback
+also receives a full-height peak. In count and fraction modes, an uncovered
+position contains baseline only, because there are no supporting reads.
+
+Count and fraction modes currently use the sum of observed A/C/G/T bases.
+Insertions and deletions are not represented by separate AB1 channels and
+are therefore not included in those four peak amplitudes. In count mode,
+values above the signed 16-bit ABIF trace limit are clipped to \code{32767} with
+a warning. Use \code{baseline = 0} when the stored trace value itself should be
+as close as possible to the supporting-read count, or \code{baseline = 1} to
+retain a visible minimum line in regions without A/C/G/T observations.
 
 The AB1 file contains common ABIF tags used by many viewers, including
 sequence calls (\code{PBAS}), peak locations (\code{PLOC}), base qualities (\code{PCON}),
@@ -126,5 +145,9 @@ ab1 <- tempfile(fileext = ".ab1")
 writeLines(c(">contig1", "ACGTACGT"), consensus)
 # A real coordinate-sorted BAM and its index are needed for execution.
 # synthetic_ab1_from_bam(consensus, bam, ab1)
+# synthetic_ab1_from_bam(
+#   consensus, bam, ab1,
+#   peak_value_mode = "count", baseline = 1
+# )
 
 }

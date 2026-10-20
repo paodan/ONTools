@@ -39,6 +39,12 @@ test_that("synthetic_ab1_from_bam validates arguments", {
     "noise_fraction"
   )
   expect_error(
+    synthetic_ab1_from_bam(
+      consensus, bam, ab1, peak_value_mode = "unknown", echo = FALSE
+    ),
+    "arg"
+  )
+  expect_error(
     synthetic_ab1_from_bam("missing.fasta", bam, ab1, echo = FALSE),
     "consensus"
   )
@@ -78,7 +84,7 @@ test_that("pileup support controls peak ratios and base calls", {
     `1` = stats::setNames(c(80L, 0L, 20L, 0L), c("A", "C", "G", "T")),
     `2` = stats::setNames(c(5L, 0L, 5L, 0L), c("A", "C", "G", "T"))
   )
-  fractions <- ab1_base_fractions(counts[["1"]], "G", 0.03)
+  fractions <- ab1_base_values(counts[["1"]], "G", 0.03, "relative")
   trace <- synthetic_ab1_trace(
     sequence = "GGN",
     pileup_counts = counts,
@@ -99,7 +105,7 @@ test_that("pileup support controls peak ratios and base calls", {
 })
 
 test_that("FASTA bases are used only when pileup coverage is absent", {
-  fractions <- ab1_base_fractions(NULL, "C", 0.03)
+  fractions <- ab1_base_values(NULL, "C", 0.03, "relative")
   called <- pileup_called_bases(
     c("C", "T"),
     list(`1` = NULL, `2` = stats::setNames(
@@ -110,6 +116,52 @@ test_that("FASTA bases are used only when pileup coverage is absent", {
 
   expect_equal(unname(fractions), c(0.03, 1, 0.03, 0.03))
   expect_equal(called, c("C", "T"))
+})
+
+test_that("peak value modes have distinct documented meanings", {
+  counts <- stats::setNames(
+    c(100L, 24L, 0L, 1000L),
+    c("A", "C", "G", "T")
+  )
+
+  relative <- ab1_base_values(counts, "T", 0.03, "relative")
+  count <- ab1_base_values(counts, "T", 0.03, "count")
+  fraction <- ab1_base_values(counts, "T", 0.03, "fraction")
+
+  expect_equal(unname(relative), c(0.1, 0.03, 0.03, 1))
+  expect_equal(unname(count), c(100, 24, 0, 1000))
+  expect_equal(unname(fraction), c(100, 24, 0, 1000) / 1124)
+  expect_equal(
+    unname(ab1_base_values(NULL, "T", 0.03, "count")),
+    rep(0, 4)
+  )
+  expect_equal(
+    unname(ab1_base_values(NULL, "T", 0.03, "fraction")),
+    rep(0, 4)
+  )
+})
+
+test_that("count mode stores read support as amplitude above baseline", {
+  counts <- list(`1` = stats::setNames(
+    c(100L, 24L, 0L, 1000L),
+    c("A", "C", "G", "T")
+  ))
+  trace <- synthetic_ab1_trace(
+    sequence = "T",
+    pileup_counts = counts,
+    spacing = 12,
+    sigma = 2,
+    peak_height = 900,
+    baseline = 1,
+    noise_fraction = 0.03,
+    peak_value_mode = "count"
+  )
+  center <- trace$peak_locations[[1L]] + 1L
+
+  expect_equal(trace$channels$A[[center]] - 1L, 100L)
+  expect_equal(trace$channels$C[[center]] - 1L, 24L)
+  expect_equal(trace$channels$G[[center]] - 1L, 0L)
+  expect_equal(trace$channels$T[[center]] - 1L, 1000L)
 })
 
 test_that("synthetic_ab1_from_bam runs on a tiny BAM", {
@@ -142,6 +194,7 @@ test_that("synthetic_ab1_from_bam runs on a tiny BAM", {
   expect_equal(res$reference_name, "contig1")
   expect_equal(res$called_sequence, sequence)
   expect_equal(res$sequence_length, nchar(sequence))
+  expect_equal(res$peak_value_mode, "relative")
   expect_true(file.exists(ab1))
   expect_false(file.exists(paste0(consensus, ".fai")))
   expect_true("PBAS:2" %in% read_abif_test_tags(ab1))

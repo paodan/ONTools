@@ -2,8 +2,8 @@
 #'
 #' `synthetic_ab1_from_bam()` writes a minimal ABIF/AB1 file with simulated
 #' Sanger-style four-channel peak data. It uses `samtools mpileup` to estimate
-#' A/C/G/T support at each consensus position, then turns those proportions into
-#' Gaussian peaks.
+#' A/C/G/T support at each consensus position, then turns those counts into
+#' Gaussian peaks using a selectable peak-value mode.
 #'
 #' This function does not reconstruct real capillary-sequencing fluorescence
 #' signal from the BAM. Use the result for visualization or compatibility with
@@ -37,14 +37,21 @@
 #'   `12` gives separated Sanger-like peaks.
 #' @param sigma Gaussian peak width in trace points. Default is `2`; larger
 #'   values make peaks wider and more overlapped.
-#' @param peak_height Main peak height before scaling by base-support fraction.
-#'   At covered positions the most-supported pileup base receives this height;
-#'   other bases are scaled relative to its read count. Default is `900`.
+#' @param peak_height Peak-height scale used by `peak_value_mode = "relative"`
+#'   and `"fraction"`. It is ignored by `"count"`, where peak amplitude above
+#'   `baseline` equals the A/C/G/T supporting-read count. Default is `900`.
 #' @param baseline Baseline signal added to every A/C/G/T channel. Default is
 #'   `15`.
-#' @param noise_fraction Minimum off-channel peak fraction. Default `0.03`
-#'   keeps non-consensus channels visible at low height; must be between 0 and
-#'   1.
+#' @param noise_fraction Minimum off-channel peak fraction used only by
+#'   `peak_value_mode = "relative"`. Default `0.03` keeps non-major channels
+#'   visible at low height; must be between 0 and 1. Count and fraction modes
+#'   do not add artificial off-channel peaks.
+#' @param peak_value_mode Meaning of peak amplitude. `"relative"` (default)
+#'   divides each A/C/G/T count by the largest count at that position, so the
+#'   major peak has amplitude `peak_height`. `"count"` uses the raw supporting
+#'   read count as amplitude. `"fraction"` divides each count by the sum of
+#'   A/C/G/T counts and multiplies by `peak_height`. The baseline is added after
+#'   calculating these amplitudes.
 #' @param overwrite Logical. If `FALSE` (default), stop when `output_ab1`
 #'   already exists. Set `TRUE` to replace it.
 #' @param echo Logical. If `TRUE` (default), print the `samtools mpileup`
@@ -53,17 +60,27 @@
 #'   console.
 #'
 #' @return Invisibly returns a list with `status`, `paths`, `reference_name`,
-#'   `called_sequence`, `sequence_length`, `trace_length`, and `command`.
+#'   `called_sequence`, `sequence_length`, `trace_length`, `peak_value_mode`,
+#'   and `command`.
 #'
 #' @details
 #' The function runs `samtools mpileup` with `-aa`, so positions with zero read
 #' coverage are still represented. For each consensus position, pileup symbols
 #' are reduced to A/C/G/T counts. At covered positions, the most-supported
-#' pileup base determines the `PBAS` call and major peak; other channel heights
-#' are proportional to their counts relative to that base. At tied positions,
-#' the FASTA base is preferred when it is among the tied bases. The FASTA base
-#' is used as a fallback only when no A/C/G/T pileup observation is available.
-#' Other channels receive at least `noise_fraction` of the major signal.
+#' pileup base determines the `PBAS` call. Peak amplitudes are calculated using
+#' `peak_value_mode`. At tied positions, the FASTA base is preferred when it is
+#' among the tied bases. The FASTA base is used as a `PBAS` fallback only when
+#' no A/C/G/T pileup observation is available. In relative mode, that fallback
+#' also receives a full-height peak. In count and fraction modes, an uncovered
+#' position contains baseline only, because there are no supporting reads.
+#'
+#' Count and fraction modes currently use the sum of observed A/C/G/T bases.
+#' Insertions and deletions are not represented by separate AB1 channels and
+#' are therefore not included in those four peak amplitudes. In count mode,
+#' values above the signed 16-bit ABIF trace limit are clipped to `32767` with
+#' a warning. Use `baseline = 0` when the stored trace value itself should be
+#' as close as possible to the supporting-read count, or `baseline = 1` to
+#' retain a visible minimum line in regions without A/C/G/T observations.
 #'
 #' The AB1 file contains common ABIF tags used by many viewers, including
 #' sequence calls (`PBAS`), peak locations (`PLOC`), base qualities (`PCON`),
@@ -83,6 +100,10 @@
 #' writeLines(c(">contig1", "ACGTACGT"), consensus)
 #' # A real coordinate-sorted BAM and its index are needed for execution.
 #' # synthetic_ab1_from_bam(consensus, bam, ab1)
+#' # synthetic_ab1_from_bam(
+#' #   consensus, bam, ab1,
+#' #   peak_value_mode = "count", baseline = 1
+#' # )
 #'
 #' @export
 synthetic_ab1_from_bam <- function(consensus,
@@ -99,6 +120,9 @@ synthetic_ab1_from_bam <- function(consensus,
                                    peak_height = 900,
                                    baseline = 15,
                                    noise_fraction = 0.03,
+                                   peak_value_mode = c(
+                                     "relative", "count", "fraction"
+                                   ),
                                    overwrite = FALSE,
                                    echo = TRUE,
                                    stderr = "") {
@@ -112,6 +136,7 @@ synthetic_ab1_from_bam <- function(consensus,
   if (!is.null(conda_env)) check_scalar_character(conda_env, "conda_env")
   check_logical_scalar(overwrite, "overwrite")
   check_logical_scalar(echo, "echo")
+  peak_value_mode <- match.arg(peak_value_mode)
 
   min_base_quality <- validate_nonnegative_integer(min_base_quality, "min_base_quality")
   spacing <- validate_positive_integer(spacing, "spacing")
@@ -194,7 +219,8 @@ synthetic_ab1_from_bam <- function(consensus,
     sigma = sigma,
     peak_height = peak_height,
     baseline = baseline,
-    noise_fraction = noise_fraction
+    noise_fraction = noise_fraction,
+    peak_value_mode = peak_value_mode
   )
   if (is.null(sample)) {
     sample <- sub("[.][^.]+$", "", basename(output_ab1))
@@ -215,6 +241,7 @@ synthetic_ab1_from_bam <- function(consensus,
     called_sequence = trace$sequence,
     sequence_length = nchar(sequence),
     trace_length = length(trace$channels$A),
+    peak_value_mode = peak_value_mode,
     command = command
   ))
 }
@@ -335,7 +362,11 @@ synthetic_ab1_trace <- function(sequence,
                                 sigma,
                                 peak_height,
                                 baseline,
-                                noise_fraction) {
+                                noise_fraction,
+                                peak_value_mode = c(
+                                  "relative", "count", "fraction"
+                                )) {
+  peak_value_mode <- match.arg(peak_value_mode)
   bases <- c("A", "C", "G", "T")
   n_bases <- nchar(sequence)
   seq_chars <- strsplit(sequence, "", fixed = TRUE)[[1]]
@@ -351,14 +382,19 @@ synthetic_ab1_trace <- function(sequence,
 
   radius <- max(2L, ceiling(sigma * 4))
   for (idx in seq_len(n_bases)) {
-    fractions <- ab1_base_fractions(
+    values <- ab1_base_values(
       pileup_counts[[as.character(idx)]],
       seq_chars[[idx]],
-      noise_fraction
+      noise_fraction,
+      peak_value_mode
     )
     center <- peak_locations[[idx]]
     for (base in bases) {
-      height <- peak_height * fractions[[base]]
+      height <- if (peak_value_mode == "count") {
+        values[[base]]
+      } else {
+        peak_height * values[[base]]
+      }
       positions <- seq.int(max(1L, center - radius + 1L), min(trace_length, center + radius + 1L))
       distances <- (positions - 1L) - center
       channels[[base]][positions] <- channels[[base]][positions] +
@@ -366,7 +402,17 @@ synthetic_ab1_trace <- function(sequence,
     }
   }
 
-  channels <- lapply(channels, function(x) pmin(32767L, pmax(0L, as.integer(x))))
+  clipped <- any(vapply(channels, max, numeric(1), na.rm = TRUE) > 32767)
+  if (clipped) {
+    warning(
+      "One or more synthetic AB1 trace values exceeded 32767 and were clipped.",
+      call. = FALSE
+    )
+  }
+  channels <- lapply(
+    channels,
+    function(x) pmin(32767L, pmax(0L, as.integer(x)))
+  )
   list(
     sequence = paste0(called_chars, collapse = ""),
     channels = channels,
@@ -375,7 +421,13 @@ synthetic_ab1_trace <- function(sequence,
   )
 }
 
-ab1_base_fractions <- function(counts, consensus_base, noise_fraction) {
+ab1_base_values <- function(counts,
+                            consensus_base,
+                            noise_fraction,
+                            peak_value_mode = c(
+                              "relative", "count", "fraction"
+                            )) {
+  peak_value_mode <- match.arg(peak_value_mode)
   bases <- c("A", "C", "G", "T")
   values <- stats::setNames(rep(0, 4L), bases)
   if (!is.null(counts)) {
@@ -383,10 +435,13 @@ ab1_base_fractions <- function(counts, consensus_base, noise_fraction) {
   }
   total <- sum(values)
   if (total > 0) {
-    values <- values / max(values)
-    values <- pmax(values, noise_fraction)
-    return(values / max(values))
+    if (peak_value_mode == "count") return(values)
+    if (peak_value_mode == "fraction") return(values / total)
+    relative <- values / max(values)
+    relative <- pmax(relative, noise_fraction)
+    return(relative / max(relative))
   }
+  if (peak_value_mode != "relative") return(values)
   consensus_base <- toupper(consensus_base)
   if (consensus_base %in% bases) {
     values[[consensus_base]] <- 1
