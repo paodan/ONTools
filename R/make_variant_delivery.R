@@ -90,6 +90,11 @@
 #' @param igv_format Snapshot image format passed to [igv_snapshot()].
 #' @param igv_sort,igv_display,max_panel_height,use_xvfb IGV rendering options
 #'   passed to [igv_snapshot()].
+#' @param igv_workers Number of barcode-level IGV workers. `NULL` (the default)
+#'   automatically uses the smaller of the number of barcode directories and
+#'   one less than the detected logical CPU count, with a minimum of one.
+#'   Supply a positive integer to set an explicit limit. Parallel IGV rendering
+#'   uses forked workers and therefore falls back to one worker on Windows.
 #' @param dry_run Logical. If `TRUE`, build plans and commands without running
 #'   external analysis steps or copying final deliverables.
 #' @param echo Logical. If `TRUE`, print commands from wrapped command runners.
@@ -171,6 +176,7 @@ make_variant_delivery <- function(path_proj,
                                   igv_display = "collapse",
                                   max_panel_height = NULL,
                                   use_xvfb = FALSE,
+                                  igv_workers = NULL,
                                   dry_run = FALSE,
                                   echo = TRUE,
                                   wait = TRUE,
@@ -237,6 +243,9 @@ make_variant_delivery <- function(path_proj,
          call. = FALSE)
   }
   check_logical_scalar(use_xvfb, "use_xvfb")
+  if (!is.null(igv_workers)) {
+    validate_positive_integer(igv_workers, "igv_workers")
+  }
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
   check_logical_scalar(wait, "wait")
@@ -565,7 +574,8 @@ make_variant_delivery <- function(path_proj,
         max_panel_height = max_panel_height,
         use_xvfb = use_xvfb,
         igv_dir_name = igv_dir_name,
-        dry_run = dry_run
+        dry_run = dry_run,
+        igv_workers = igv_workers
       )
     } else {
       message("Step 7: Generate IGV plots (skipped)")
@@ -1184,35 +1194,34 @@ generate_variant_igv_snapshots <- function(result_dir,
                                            max_panel_height,
                                            use_xvfb,
                                            igv_dir_name,
-                                           dry_run) {
+                                           dry_run,
+                                           igv_workers = NULL) {
   check_file_arg(reference, "reference")
   reference <- normalizePath(reference, mustWork = TRUE)
   ref_names <- variant_reference_names(reference)
   barcode_dirs <- variant_barcode_dirs(result_dir, barcode_pattern)
+  workers <- resolve_variant_igv_workers(igv_workers, length(barcode_dirs))
 
-  rows <- data.frame(
-    barcode = character(),
-    reference_name = character(),
-    bam = character(),
-    bai = character(),
-    snapshot = character(),
-    bam_exists = logical(),
-    bai_exists = logical(),
-    generated = logical(),
-    status = character(),
-    stringsAsFactors = FALSE
-  )
-  details <- list()
+  if (!isTRUE(dry_run) && !file.exists(paste0(reference, ".fai"))) {
+    suppressMessages(suppressWarnings(Rsamtools::indexFa(reference)))
+    if (!file.exists(paste0(reference, ".fai"))) {
+      stop("Failed to create FASTA index: ", paste0(reference, ".fai"),
+           call. = FALSE)
+    }
+  }
 
-  for (barcode_dir in barcode_dirs) {
+  process_barcode <- function(barcode_dir) {
     barcode <- basename(barcode_dir)
     bam <- file.path(barcode_dir, "alignments", paste0(barcode, ".aligned.sorted.bam"))
     bai <- delivery_standard_bam_index_path(bam)
     bam_exists <- file.exists(bam)
     bai_exists <- !is.na(bai)
     igv_dir <- file.path(barcode_dir, igv_dir_name)
+    local_rows <- vector("list", length(ref_names))
+    local_details <- list()
 
-    for (ref_name in ref_names) {
+    for (ref_index in seq_along(ref_names)) {
+      ref_name <- ref_names[[ref_index]]
       snapshot_name <- paste0(
         barcode,
         ".",
@@ -1223,7 +1232,7 @@ generate_variant_igv_snapshots <- function(result_dir,
       snapshot <- file.path(igv_dir, snapshot_name)
 
       if (isTRUE(dry_run)) {
-        rows <- rbind(rows, data.frame(
+        local_rows[[ref_index]] <- data.frame(
           barcode = barcode,
           reference_name = ref_name,
           bam = bam,
@@ -1234,7 +1243,7 @@ generate_variant_igv_snapshots <- function(result_dir,
           generated = FALSE,
           status = "dry_run",
           stringsAsFactors = FALSE
-        ))
+        )
         next
       }
 
@@ -1260,9 +1269,9 @@ generate_variant_igv_snapshots <- function(result_dir,
         use_xvfb = use_xvfb
       )
       key <- paste(barcode, ref_name, sep = ":")
-      details[[key]] <- res
+      local_details[[key]] <- res
 
-      rows <- rbind(rows, data.frame(
+      local_rows[[ref_index]] <- data.frame(
         barcode = barcode,
         reference_name = ref_name,
         bam = bam,
@@ -1273,11 +1282,108 @@ generate_variant_igv_snapshots <- function(result_dir,
         generated = identical(res$status, 0L),
         status = if (identical(res$status, 0L)) "generated" else paste0("status_", res$status),
         stringsAsFactors = FALSE
-      ))
+      )
     }
+    list(
+      rows = do.call(rbind, local_rows),
+      details = local_details
+    )
   }
 
-  list(files = rows, details = details)
+  safe_process_barcode <- function(barcode_dir) {
+    tryCatch(
+      list(ok = TRUE, value = process_barcode(barcode_dir)),
+      error = function(error) list(
+        ok = FALSE,
+        barcode = basename(barcode_dir),
+        message = conditionMessage(error)
+      )
+    )
+  }
+
+  barcode_results <- if (workers == 1L || length(barcode_dirs) < 2L ||
+                         .Platform$OS.type == "windows") {
+    lapply(barcode_dirs, safe_process_barcode)
+  } else {
+    parallel::mclapply(
+      barcode_dirs,
+      safe_process_barcode,
+      mc.cores = workers
+    )
+  }
+
+  failed <- which(!vapply(barcode_results, `[[`, logical(1), "ok"))
+  if (length(failed) > 0L) {
+    failure <- barcode_results[[failed[[1L]]]]
+    stop(
+      "IGV snapshot generation failed for `", failure$barcode,
+      "`: ", failure$message,
+      call. = FALSE
+    )
+  }
+
+  values <- lapply(barcode_results, `[[`, "value")
+  rows <- if (length(values) == 0L) {
+    empty_variant_igv_rows()
+  } else {
+    do.call(rbind, lapply(values, `[[`, "rows"))
+  }
+  rownames(rows) <- NULL
+  details <- if (length(values) == 0L) {
+    list()
+  } else {
+    unlist(lapply(values, `[[`, "details"), recursive = FALSE)
+  }
+
+  list(files = rows, details = details, workers = workers)
+}
+
+resolve_variant_igv_workers <- function(igv_workers, n_barcodes) {
+  if (!is.numeric(n_barcodes) || length(n_barcodes) != 1L ||
+      is.na(n_barcodes) || n_barcodes < 0L ||
+      n_barcodes != as.integer(n_barcodes)) {
+    stop("`n_barcodes` must be a single non-negative integer.", call. = FALSE)
+  }
+  if (n_barcodes == 0L) {
+    return(1L)
+  }
+
+  if (is.null(igv_workers)) {
+    detected <- parallel::detectCores(logical = TRUE)
+    available <- if (is.na(detected) || detected < 2L) {
+      1L
+    } else {
+      as.integer(detected - 1L)
+    }
+  } else {
+    available <- validate_positive_integer(igv_workers, "igv_workers")
+  }
+  workers <- min(available, as.integer(n_barcodes))
+
+  if (.Platform$OS.type == "windows" && workers > 1L) {
+    warning(
+      "Barcode-level IGV parallelization uses forked workers; setting ",
+      "`igv_workers = 1` on Windows.",
+      call. = FALSE
+    )
+    workers <- 1L
+  }
+  as.integer(workers)
+}
+
+empty_variant_igv_rows <- function() {
+  data.frame(
+    barcode = character(),
+    reference_name = character(),
+    bam = character(),
+    bai = character(),
+    snapshot = character(),
+    bam_exists = logical(),
+    bai_exists = logical(),
+    generated = logical(),
+    status = character(),
+    stringsAsFactors = FALSE
+  )
 }
 
 generate_variant_ab1_files <- function(result_dir,

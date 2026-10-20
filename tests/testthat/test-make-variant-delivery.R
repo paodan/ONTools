@@ -407,7 +407,57 @@ test_that("make_variant_delivery plans IGV snapshots and AB1 files in dry-run mo
   expect_true(all(grepl("barcode001/IGV/barcode001[.]amp[12][.]png$", igv$files$snapshot)))
   expect_true(all(grepl("barcode001/AB1/barcode001[.]amp[12][.]synthetic[.]ab1$", ab1$ab1)))
   expect_equal(igv$files$status, c("dry_run", "dry_run"))
+  expect_equal(igv$workers, 1L)
   expect_equal(ab1$status, c("dry_run", "dry_run"))
+})
+
+test_that("variant IGV worker count is capped by available barcodes", {
+  detected <- parallel::detectCores(logical = TRUE)
+  available <- if (is.na(detected) || detected < 2L) 1L else detected - 1L
+  expected_auto <- min(as.integer(available), 3L)
+  if (.Platform$OS.type == "windows") expected_auto <- 1L
+
+  expect_equal(resolve_variant_igv_workers(NULL, 3L), expected_auto)
+  expect_equal(resolve_variant_igv_workers(8L, 3L),
+               if (.Platform$OS.type == "windows") 1L else 3L)
+  expect_equal(resolve_variant_igv_workers(1L, 10L), 1L)
+  expect_equal(resolve_variant_igv_workers(NULL, 0L), 1L)
+  expect_error(resolve_variant_igv_workers(0L, 3L), "positive integer")
+})
+
+test_that("generate_variant_igv_snapshots plans barcodes with multiple workers", {
+  result_dir <- tempfile("wf-amplicon-result-")
+  for (barcode in c("barcode001", "barcode002", "barcode003")) {
+    align_dir <- file.path(result_dir, barcode, "alignments")
+    dir.create(align_dir, recursive = TRUE)
+    bam <- file.path(align_dir, paste0(barcode, ".aligned.sorted.bam"))
+    file.create(bam)
+    file.create(paste0(bam, ".bai"))
+  }
+
+  reference <- tempfile(fileext = ".fasta")
+  writeLines(c(">amp1", "ACGTACGTACGT"), reference)
+
+  result <- generate_variant_igv_snapshots(
+    result_dir = result_dir,
+    reference = reference,
+    barcode_pattern = "^barcode[0-9]+$",
+    format = "png",
+    igv = "igv.sh",
+    sort = "base",
+    display = "collapse",
+    max_panel_height = NULL,
+    use_xvfb = FALSE,
+    igv_dir_name = "IGV",
+    dry_run = TRUE,
+    igv_workers = 2L
+  )
+
+  expect_equal(result$workers,
+               if (.Platform$OS.type == "windows") 1L else 2L)
+  expect_equal(result$files$barcode,
+               c("barcode001", "barcode002", "barcode003"))
+  expect_true(all(result$files$status == "dry_run"))
 })
 
 test_that("collect_variant_results documents IGV snapshots and AB1 files", {

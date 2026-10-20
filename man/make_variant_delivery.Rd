@@ -68,6 +68,7 @@ make_variant_delivery(
   igv_display = "collapse",
   max_panel_height = NULL,
   use_xvfb = FALSE,
+  igv_workers = NULL,
   dry_run = FALSE,
   echo = TRUE,
   wait = TRUE,
@@ -203,6 +204,12 @@ when present.}
 
 \item{igv_sort, igv_display, max_panel_height, use_xvfb}{IGV rendering options
 passed to \code{\link[=igv_snapshot]{igv_snapshot()}}.}
+
+\item{igv_workers}{Number of barcode-level IGV workers. \code{NULL} (the default)
+automatically uses the smaller of the number of barcode directories and
+one less than the detected logical CPU count, with a minimum of one.
+Supply a positive integer to set an explicit limit. Parallel IGV rendering
+uses forked workers and therefore falls back to one worker on Windows.}
 
 \item{dry_run}{Logical. If \code{TRUE}, build plans and commands without running
 external analysis steps or copying final deliverables.}
