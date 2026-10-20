@@ -19,6 +19,7 @@ run_editing_batch(
   filtered_ratio_mode = c("replace", "add"),
   min_mapq = 20L,
   mc.cores = NULL,
+  parallel_strategy = c("auto", "bam", "read", "none"),
   force_rebuild = FALSE,
   colored_xlsx = NULL
 )
@@ -52,10 +53,10 @@ event label.}
 non-WT event label.}
 
 \item{min_comb_reads}{Minimum number of reads supporting a final
-\code{variation_combination}, including WT.}
+\code{variant_combination}, including WT.}
 
 \item{min_comb_ratio}{Minimum percentage of callable reads supporting a final
-\code{variation_combination}.}
+\code{variant_combination}.}
 
 \item{min_callable_reads}{Minimum callable read depth required to summarize a
 sample/reference group. Passed to \code{\link[=summarise_variant_events]{summarise_variant_events()}}.}
@@ -68,7 +69,16 @@ recalculated after combination filtering; \code{"add"} preserves the original
 \item{min_mapq}{Integer between 0 and 255. Alignments below this mapping
 quality are excluded.}
 
-\item{mc.cores}{Optional worker count passed to \code{\link[=make_variant_events]{make_variant_events()}}.}
+\item{mc.cores}{Optional total worker budget. Its use is controlled by
+\code{parallel_strategy}. Defaults to one fewer than the detected logical cores.}
+
+\item{parallel_strategy}{Parallelization level. \code{"auto"} (default) uses
+BAM-level parallelism when more than one unique barcode/BAM is present and
+read-level parallelism otherwise. \code{"bam"} processes barcode/BAM groups in
+parallel and forces each \code{\link[=make_variant_events]{make_variant_events()}} call to one core.
+\code{"read"} processes BAM files sequentially and parallelizes reads within
+\code{\link[=make_variant_events]{make_variant_events()}}. \code{"none"} disables both levels. Nested BAM and
+read parallelism is never used.}
 
 \item{force_rebuild}{Logical. Ignore valid caches and rebuild all events.}
 
@@ -89,8 +99,10 @@ workbook.
 Only mapped primary, non-supplementary, non-duplicate, QC-passing alignments
 are loaded. A BAM index is not required: BAM files are read sequentially,
 and the loaded alignments are reused for every input row belonging to the
-same barcode. The alignments are released when processing moves to the next
-barcode. Reads must span the complete calling interval plus anchors. Cache
+same barcode. In BAM-parallel mode, each worker owns one complete barcode
+group, writes only that barcode's event-cache files, and returns its tables
+to the main process. Excel output is written only by the main process. Reads
+must span the complete calling interval plus anchors. Cache
 files from older implementations are automatically considered stale. All
 output table columns use lower \code{snake_case}; legacy \code{Sample_HiTOM} input is
 normalized to \code{sample_hitom}; legacy \code{Sample_ID} input is
@@ -121,6 +133,7 @@ result <- run_editing_batch(
   min_callable_reads = 10,
   filtered_ratio_mode = "replace",
   min_mapq = 20,
+  parallel_strategy = "auto",
   colored_xlsx = "editing-summary.xlsx"
 )
 result$table

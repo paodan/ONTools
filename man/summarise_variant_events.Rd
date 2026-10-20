@@ -24,10 +24,10 @@ reads that must support a non-WT event label.}
 callable reads that must support a non-WT event label.}
 
 \item{min_comb_reads}{Positive integer. Minimum number of reads that must
-support a final \code{variation_combination}, including WT.}
+support a final \code{variant_combination}, including WT.}
 
 \item{min_comb_ratio}{Number between 0 and 100. Minimum percentage of
-callable reads that must support a final \code{variation_combination}.}
+callable reads that must support a final \code{variant_combination}.}
 
 \item{min_callable_reads}{Positive integer. Minimum number of callable reads
 required for a sample/reference group to produce \code{var_info}. Groups below
@@ -50,7 +50,7 @@ denominators. \code{var_info$ratio} always uses all callable reads; only
 \code{var_info_filtered} is affected by \code{filtered_ratio_mode}. All returned table
 columns use lower \code{snake_case}. \code{reference_aligned_trim} and
 \code{read_aligned_trim} form one deterministic aligned pair representing the
-retained variation combination; they are not selected independently from
+retained variant combination; they are not selected independently from
 raw read strings. Legacy input containing \code{Ref_name} is accepted and
 normalized to \code{ref_name}.
 }
@@ -58,7 +58,7 @@ normalized to \code{ref_name}.
 \code{summarise_variant_events()} first calculates read support for each event
 label. A non-WT label is retained only when it reaches both the absolute
 support threshold \code{min_event_reads} and the relative threshold
-\code{min_event_ratio}. Final variation combinations are filtered independently
+\code{min_event_ratio}. Final variant combinations are filtered independently
 with \code{min_comb_reads} and \code{min_comb_ratio}.
 Reads with no retained non-WT label are classified as WT. The aligned
 sequence columns are reconstructed from the retained events, so events that

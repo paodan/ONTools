@@ -206,13 +206,13 @@ test_that("event filtering combines absolute support and relative frequency", {
   expect_true(all(!summary$event_frequency$pass_filter[singletons]))
   expect_equal(
     summary$var_info$read_count[
-      summary$var_info$variation_combination == "WT"
+      summary$var_info$variant_combination == "WT"
     ],
     10L
   )
   expect_equal(
     summary$var_info$read_count[
-      summary$var_info$variation_combination == "SNP_20_20:G>T"
+      summary$var_info$variant_combination == "SNP_20_20:G>T"
     ],
     3L
   )
@@ -244,7 +244,7 @@ test_that("aligned summaries are rebuilt from retained events", {
     min_callable_reads = 1
   )
 
-  expect_equal(summary$var_info$variation_combination, "WT")
+  expect_equal(summary$var_info$variant_combination, "WT")
   expect_equal(summary$var_info$reference_aligned_trim, "ACGT")
   expect_equal(summary$var_info$read_aligned_trim, "ACGT")
 })
@@ -275,8 +275,8 @@ test_that("aligned summaries reconstruct retained insertions and deletions", {
     min_callable_reads = 1
   )$var_info
 
-  insertion <- grepl("IN_after_4:T", summary$variation_combination, fixed = TRUE)
-  deletion <- grepl("DEL_4_4:T", summary$variation_combination, fixed = TRUE)
+  insertion <- grepl("IN_after_4:T", summary$variant_combination, fixed = TRUE)
+  deletion <- grepl("DEL_4_4:T", summary$variant_combination, fixed = TRUE)
   expect_equal(summary$reference_aligned_trim[insertion], "ACGT-AC")
   expect_equal(summary$read_aligned_trim[insertion], "ACGTTAC")
   expect_equal(summary$reference_aligned_trim[deletion], "ACGTAC")
@@ -372,8 +372,8 @@ test_that("combination read and ratio thresholds are independent", {
     min_callable_reads = 1
   )
 
-  expect_equal(summary$var_info$variation_combination, c("A", "B"))
-  expect_equal(summary$var_info_filtered$variation_combination, "A")
+  expect_equal(summary$var_info$variant_combination, c("A", "B"))
+  expect_equal(summary$var_info_filtered$variant_combination, "A")
 })
 
 test_that("filtered combination ratios can be added or replace ratio", {
@@ -529,4 +529,110 @@ test_that("sample sheet normalization accepts legacy names", {
   expect_equal(out$region_end, 7L)
   expect_equal(out$sample_hitom, "sample-A")
   expect_false("Sample_HiTOM" %in% names(out))
+})
+
+test_that("editing parallel strategies use only one parallel level", {
+  auto_bam <- resolve_editing_parallel_strategy("auto", 8L, 3L)
+  auto_read <- resolve_editing_parallel_strategy("auto", 8L, 1L)
+  bam <- resolve_editing_parallel_strategy("bam", 8L, 3L)
+  read <- resolve_editing_parallel_strategy("read", 8L, 3L)
+  none <- resolve_editing_parallel_strategy("none", 8L, 3L)
+
+  expect_identical(auto_bam, list(
+    strategy = "bam", bam_cores = 3L, read_cores = 1L
+  ))
+  expect_identical(auto_read, list(
+    strategy = "read", bam_cores = 1L, read_cores = 8L
+  ))
+  expect_identical(bam, list(
+    strategy = "bam", bam_cores = 3L, read_cores = 1L
+  ))
+  expect_identical(read, list(
+    strategy = "read", bam_cores = 1L, read_cores = 8L
+  ))
+  expect_identical(none, list(
+    strategy = "none", bam_cores = 1L, read_cores = 1L
+  ))
+  expect_error(resolve_editing_parallel_strategy("nested", 8L, 3L), "arg")
+})
+
+test_that("BAM-, read-, and non-parallel batch strategies agree", {
+  skip_on_os("windows")
+  skip_if(Sys.which("samtools") == "", "samtools is not installed")
+
+  work <- tempfile("editing-parallel-")
+  dir.create(work)
+  bam_root <- file.path(work, "bam")
+  dir.create(bam_root)
+  barcodes <- c("barcode01", "barcode02")
+  sequences <- c("ACGTACGT", "ACATACGT")
+  for (i in seq_along(barcodes)) {
+    alignment_dir <- file.path(bam_root, barcodes[[i]], "alignments")
+    dir.create(alignment_dir, recursive = TRUE)
+    sam <- file.path(work, paste0(barcodes[[i]], ".sam"))
+    bam <- file.path(
+      alignment_dir,
+      paste0(barcodes[[i]], ".aligned.sorted.bam")
+    )
+    writeLines(
+      c(
+        "@HD\tVN:1.6\tSO:coordinate",
+        "@SQ\tSN:amplicon\tLN:8",
+        paste0(
+          "read", i, "\t0\tamplicon\t1\t60\t8M\t*\t0\t0\t",
+          sequences[[i]], "\tIIIIIIII"
+        )
+      ),
+      sam
+    )
+    system2("samtools", c("view", "-bS", sam), stdout = bam)
+  }
+
+  sample_info <- data.frame(
+    barcode = barcodes,
+    sample_id = c("sample1", "sample2"),
+    ref_name = "amplicon",
+    region_start = 1L,
+    region_end = 8L,
+    stringsAsFactors = FALSE
+  )
+  common <- list(
+    sample_info = sample_info,
+    ref_all = c(amplicon = "ACGTACGT"),
+    bam_root = bam_root,
+    min_event_reads = 1L,
+    min_event_ratio = 0,
+    min_comb_reads = 1L,
+    min_comb_ratio = 0,
+    min_callable_reads = 1L,
+    min_mapq = 0L,
+    mc.cores = 2L,
+    force_rebuild = TRUE
+  )
+  none <- do.call(
+    run_editing_batch,
+    c(common, list(
+      cache_dir = file.path(work, "cache-none"),
+      parallel_strategy = "none"
+    ))
+  )
+  bam <- do.call(
+    run_editing_batch,
+    c(common, list(
+      cache_dir = file.path(work, "cache-bam"),
+      parallel_strategy = "bam"
+    ))
+  )
+  read <- do.call(
+    run_editing_batch,
+    c(common, list(
+      cache_dir = file.path(work, "cache-read"),
+      parallel_strategy = "read"
+    ))
+  )
+
+  expect_equal(bam$table, none$table)
+  expect_equal(read$table, none$table)
+  expect_identical(names(bam$per_sample), names(none$per_sample))
+  expect_identical(names(read$per_sample), names(none$per_sample))
 })

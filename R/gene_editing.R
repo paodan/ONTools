@@ -713,6 +713,30 @@ normalize_editing_cores <- function(mc.cores) {
   cores
 }
 
+resolve_editing_parallel_strategy <- function(parallel_strategy,
+                                              cores,
+                                              n_bams) {
+  parallel_strategy <- match.arg(
+    parallel_strategy,
+    c("auto", "bam", "read", "none")
+  )
+  n_bams <- validate_positive_integer(n_bams, "n_bams")
+  if (parallel_strategy == "auto") {
+    parallel_strategy <- if (n_bams > 1L) "bam" else "read"
+  }
+  if (parallel_strategy == "bam") {
+    return(list(
+      strategy = "bam",
+      bam_cores = min(cores, n_bams),
+      read_cores = 1L
+    ))
+  }
+  if (parallel_strategy == "read") {
+    return(list(strategy = "read", bam_cores = 1L, read_cores = cores))
+  }
+  list(strategy = "none", bam_cores = 1L, read_cores = 1L)
+}
+
 #' Generate per-read gene-editing events
 #'
 #' `make_variant_events()` filters alignments for complete interval coverage and
@@ -831,8 +855,8 @@ empty_variant_summary <- function() {
     index = integer(),
     read_count = integer(),
     ratio = numeric(),
-    variation_count = integer(),
-    variation_combination = character(),
+    variant_count = integer(),
+    variant_combination = character(),
     region_start = integer(),
     region_end = integer(),
     reference_aligned_trim = character(),
@@ -989,7 +1013,7 @@ validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
 #' `summarise_variant_events()` first calculates read support for each event
 #' label. A non-WT label is retained only when it reaches both the absolute
 #' support threshold `min_event_reads` and the relative threshold
-#' `min_event_ratio`. Final variation combinations are filtered independently
+#' `min_event_ratio`. Final variant combinations are filtered independently
 #' with `min_comb_reads` and `min_comb_ratio`.
 #' Reads with no retained non-WT label are classified as WT. The aligned
 #' sequence columns are reconstructed from the retained events, so events that
@@ -1004,9 +1028,9 @@ validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
 #' @param min_event_ratio Number between 0 and 100. Minimum percentage of
 #'   callable reads that must support a non-WT event label.
 #' @param min_comb_reads Positive integer. Minimum number of reads that must
-#'   support a final `variation_combination`, including WT.
+#'   support a final `variant_combination`, including WT.
 #' @param min_comb_ratio Number between 0 and 100. Minimum percentage of
-#'   callable reads that must support a final `variation_combination`.
+#'   callable reads that must support a final `variant_combination`.
 #' @param min_callable_reads Positive integer. Minimum number of callable reads
 #'   required for a sample/reference group to produce `var_info`. Groups below
 #'   this depth remain visible in `event_frequency` with `pass_filter = FALSE`.
@@ -1026,7 +1050,7 @@ validate_percentage_threshold <- function(x, name, warn_high = FALSE) {
 #' `var_info_filtered` is affected by `filtered_ratio_mode`. All returned table
 #' columns use lower `snake_case`. `reference_aligned_trim` and
 #' `read_aligned_trim` form one deterministic aligned pair representing the
-#' retained variation combination; they are not selected independently from
+#' retained variant combination; they are not selected independently from
 #' raw read strings. Legacy input containing `Ref_name` is accepted and
 #' normalized to `ref_name`.
 #'
@@ -1269,10 +1293,10 @@ summarise_variant_events <- function(events_all,
     count_by_read <- stats::setNames(integer(), character())
   }
   combination_index <- match(read_keys, names(combination_by_read))
-  variation_combination <- unname(combination_by_read[combination_index])
-  variation_count <- unname(count_by_read[combination_index])
-  variation_combination[is.na(variation_combination)] <- "WT"
-  variation_count[is.na(variation_count)] <- 0L
+  variant_combination <- unname(combination_by_read[combination_index])
+  variant_count <- unname(count_by_read[combination_index])
+  variant_combination[is.na(variant_combination)] <- "WT"
+  variant_count[is.na(variant_count)] <- 0L
   has_alignment_columns <- all(c(
     "reference_aligned_trim", "read_aligned_trim", "start", "end",
     "position_after", "ref", "alt"
@@ -1314,8 +1338,8 @@ summarise_variant_events <- function(events_all,
     sample_id = as.character(analysis_events$sample_id[first_read_row]),
     ref_name = as.character(analysis_events$ref_name[first_read_row]),
     read_id = as.character(analysis_events$read_id[first_read_row]),
-    variation_combination = variation_combination,
-    variation_count = as.integer(variation_count),
+    variant_combination = variant_combination,
+    variant_count = as.integer(variant_count),
     region_start = as.integer(analysis_events$region_start[first_read_row]),
     region_end = as.integer(analysis_events$region_end[first_read_row]),
     reference_aligned_trim = aligned_reference,
@@ -1326,7 +1350,7 @@ summarise_variant_events <- function(events_all,
   combination_key <- paste(
     combinations$sample_id,
     combinations$ref_name,
-    combinations$variation_combination,
+    combinations$variant_combination,
     sep = "\034"
   )
   unique_combination_key <- unique(combination_key)
@@ -1350,8 +1374,8 @@ summarise_variant_events <- function(events_all,
     ref_name = combinations$ref_name[first_combination_row],
     read_count = as.integer(combination_counts),
     ratio = round(100 * combination_counts / combination_denominator, 2),
-    variation_count = combinations$variation_count[first_combination_row],
-    variation_combination = combinations$variation_combination[
+    variant_count = combinations$variant_count[first_combination_row],
+    variant_combination = combinations$variant_combination[
       first_combination_row
     ],
     region_start = combinations$region_start[first_combination_row],
@@ -1366,7 +1390,7 @@ summarise_variant_events <- function(events_all,
     var_info$sample_id,
     var_info$ref_name,
     -var_info$read_count,
-    var_info$variation_combination
+    var_info$variant_combination
   ), , drop = FALSE]
   group_key <- paste(var_info$sample_id, var_info$ref_name, sep = "\034")
   var_info$index <- stats::ave(
@@ -1377,7 +1401,7 @@ summarise_variant_events <- function(events_all,
   var_info <- var_info[
     , c(
       "sample_id", "ref_name", "index", "read_count", "ratio",
-      "variation_count", "variation_combination", "region_start",
+      "variant_count", "variant_combination", "region_start",
       "region_end", "reference_aligned_trim", "read_aligned_trim"
     ),
     drop = FALSE
@@ -1649,9 +1673,9 @@ normalize_editing_sample_info <- function(sample_info) {
 #' @param min_event_ratio Minimum percentage of callable reads supporting a
 #'   non-WT event label.
 #' @param min_comb_reads Minimum number of reads supporting a final
-#'   `variation_combination`, including WT.
+#'   `variant_combination`, including WT.
 #' @param min_comb_ratio Minimum percentage of callable reads supporting a final
-#'   `variation_combination`.
+#'   `variant_combination`.
 #' @param min_callable_reads Minimum callable read depth required to summarize a
 #'   sample/reference group. Passed to [summarise_variant_events()].
 #' @param filtered_ratio_mode Passed to [summarise_variant_events()].
@@ -1660,7 +1684,15 @@ normalize_editing_sample_info <- function(sample_info) {
 #'   `ratio` and adds `filtered_ratio`.
 #' @param min_mapq Integer between 0 and 255. Alignments below this mapping
 #'   quality are excluded.
-#' @param mc.cores Optional worker count passed to [make_variant_events()].
+#' @param mc.cores Optional total worker budget. Its use is controlled by
+#'   `parallel_strategy`. Defaults to one fewer than the detected logical cores.
+#' @param parallel_strategy Parallelization level. `"auto"` (default) uses
+#'   BAM-level parallelism when more than one unique barcode/BAM is present and
+#'   read-level parallelism otherwise. `"bam"` processes barcode/BAM groups in
+#'   parallel and forces each [make_variant_events()] call to one core.
+#'   `"read"` processes BAM files sequentially and parallelizes reads within
+#'   [make_variant_events()]. `"none"` disables both levels. Nested BAM and
+#'   read parallelism is never used.
 #' @param force_rebuild Logical. Ignore valid caches and rebuild all events.
 #' @param colored_xlsx Optional `.xlsx` output path passed to
 #'   [color_excel_by_barcode_ref()].
@@ -1672,8 +1704,10 @@ normalize_editing_sample_info <- function(sample_info) {
 #' Only mapped primary, non-supplementary, non-duplicate, QC-passing alignments
 #' are loaded. A BAM index is not required: BAM files are read sequentially,
 #' and the loaded alignments are reused for every input row belonging to the
-#' same barcode. The alignments are released when processing moves to the next
-#' barcode. Reads must span the complete calling interval plus anchors. Cache
+#' same barcode. In BAM-parallel mode, each worker owns one complete barcode
+#' group, writes only that barcode's event-cache files, and returns its tables
+#' to the main process. Excel output is written only by the main process. Reads
+#' must span the complete calling interval plus anchors. Cache
 #' files from older implementations are automatically considered stale. All
 #' output table columns use lower `snake_case`; legacy `Sample_HiTOM` input is
 #' normalized to `sample_hitom`; legacy `Sample_ID` input is
@@ -1704,6 +1738,7 @@ normalize_editing_sample_info <- function(sample_info) {
 #'   min_callable_reads = 10,
 #'   filtered_ratio_mode = "replace",
 #'   min_mapq = 20,
+#'   parallel_strategy = "auto",
 #'   colored_xlsx = "editing-summary.xlsx"
 #' )
 #' result$table
@@ -1725,6 +1760,9 @@ run_editing_batch <- function(sample_info,
                               filtered_ratio_mode = c("replace", "add"),
                               min_mapq = 20L,
                               mc.cores = NULL,
+                              parallel_strategy = c(
+                                "auto", "bam", "read", "none"
+                              ),
                               force_rebuild = FALSE,
                               colored_xlsx = NULL) {
   sample_info <- normalize_editing_sample_info(sample_info)
@@ -1770,6 +1808,7 @@ run_editing_batch <- function(sample_info,
   min_mapq <- validate_nonnegative_integer(min_mapq, "min_mapq")
   if (min_mapq > 255L) stop("`min_mapq` cannot exceed 255.", call. = FALSE)
   cores <- normalize_editing_cores(mc.cores)
+  parallel_strategy <- match.arg(parallel_strategy)
   check_logical_scalar(force_rebuild, "force_rebuild")
   if (!is.null(colored_xlsx)) check_scalar_character(colored_xlsx, "colored_xlsx")
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1787,176 +1826,212 @@ run_editing_batch <- function(sample_info,
     mapqFilter = min_mapq,
     what = c("qname", "rname", "pos", "cigar", "mapq", "seq", "flag")
   )
-  output_rows <- list()
-  output_source_rows <- integer()
   result_names <- paste0(sample_info$barcode, "_", seq_len(nrow(sample_info)))
   per_sample_results <- stats::setNames(
     vector("list", nrow(sample_info)),
     result_names
   )
-  output_index <- 1L
   safe_name <- function(x) gsub("[^A-Za-z0-9_.-]", "_", x)
-  barcode_order <- match(sample_info$barcode, unique(sample_info$barcode))
-  processing_order <- order(barcode_order, seq_len(nrow(sample_info)))
-  alignment_cache <- new.env(hash = TRUE, parent = emptyenv())
+  barcodes <- unique(sample_info$barcode)
+  parallel_plan <- resolve_editing_parallel_strategy(
+    parallel_strategy,
+    cores,
+    length(barcodes)
+  )
+  message(
+    "Parallel strategy: ", parallel_plan$strategy,
+    " (BAM workers: ", parallel_plan$bam_cores,
+    ", read workers: ", parallel_plan$read_cores, ")"
+  )
+  barcode_group_id <- match(sample_info$barcode, barcodes)
+  barcode_groups <- split(
+    seq_len(nrow(sample_info)),
+    factor(barcode_group_id, levels = seq_along(barcodes))
+  )
 
-  for (processing_index in seq_along(processing_order)) {
-    i <- processing_order[[processing_index]]
-    barcode <- sample_info$barcode[[i]]
-    if (processing_index > 1L &&
-        barcode != sample_info$barcode[[processing_order[[
-          processing_index - 1L
-        ]]]]) {
-      rm(list = ls(alignment_cache, all.names = TRUE),
-         envir = alignment_cache)
-    }
-    reference_names <- trimws(strsplit(
-      sample_info$ref_name[[i]],
-      split = "\\|"
-    )[[1L]])
-    reference_names <- unique(reference_names[nzchar(reference_names)])
-    region_start <- sample_info$region_start[[i]]
-    region_end <- sample_info$region_end[[i]]
-    message("Processing ", barcode, ": ", paste(reference_names, collapse = ", "))
-
-    missing_references <- setdiff(reference_names, names(ref_all))
-    if (length(missing_references) > 0L) {
-      warning(
-        "References not found in `ref_all` for ", barcode, ": ",
-        paste(missing_references, collapse = ", "),
-        call. = FALSE
-      )
-    }
-    reference_names <- intersect(reference_names, names(ref_all))
-    if (length(reference_names) == 0L) {
-      per_sample_results[[paste0(barcode, "_", i)]] <- list()
-      next
-    }
-
+  process_barcode <- function(indices) {
+    barcode <- sample_info$barcode[[indices[[1L]]]]
     bam_file <- file.path(
       bam_root,
       barcode,
       "alignments",
       paste0(barcode, ".aligned.sorted.bam")
     )
-    if (!file.exists(bam_file)) {
-      warning("BAM file not found; skipping: ", bam_file, call. = FALSE)
-      per_sample_results[[paste0(barcode, "_", i)]] <- list()
-      next
-    }
-    cache_files <- stats::setNames(
-      file.path(
-        cache_dir,
-        paste0(
-          safe_name(barcode), "__", safe_name(reference_names), "__",
-          region_start, "_", region_end, "__anchor", min_anchor,
-          "__mapq", min_mapq, ".events.rds"
-        )
-      ),
-      reference_names
+    local_rows <- list()
+    local_source_rows <- integer()
+    local_per_sample <- stats::setNames(
+      vector("list", length(indices)),
+      paste0(barcode, "_", indices)
     )
-    signatures <- lapply(reference_names, function(reference_name) {
-      editing_cache_signature(
-        bam_file = bam_file,
-        reference = ref_all[[reference_name]],
-        reference_name = reference_name,
-        region_start = region_start,
-        region_end = region_end,
-        min_anchor = min_anchor,
-        min_mapq = min_mapq,
-        reference_name_map = re_names
-      )
-    })
-    names(signatures) <- reference_names
-    cached_events <- lapply(reference_names, function(reference_name) {
-      if (force_rebuild) return(NULL)
-      read_editing_cache(
-        cache_files[[reference_name]],
-        signatures[[reference_name]]
-      )
-    })
-    names(cached_events) <- reference_names
-    needs_rebuild <- vapply(cached_events, is.null, logical(1))
+    local_output_index <- 1L
+    alignment <- NULL
+    alignment_loaded <- FALSE
 
-    if (any(needs_rebuild)) {
-      if (exists(bam_file, envir = alignment_cache, inherits = FALSE)) {
-        alignment <- get(bam_file, envir = alignment_cache, inherits = FALSE)
-      } else {
-        alignment <- as.data.frame(
-          Rsamtools::scanBam(bam_file, param = bam_param)[[1L]]
+    for (i in indices) {
+      reference_names <- trimws(strsplit(
+        sample_info$ref_name[[i]],
+        split = "\\|"
+      )[[1L]])
+      reference_names <- unique(reference_names[nzchar(reference_names)])
+      region_start <- sample_info$region_start[[i]]
+      region_end <- sample_info$region_end[[i]]
+      message(
+        "Processing ", barcode, ": ",
+        paste(reference_names, collapse = ", ")
+      )
+
+      missing_references <- setdiff(reference_names, names(ref_all))
+      if (length(missing_references) > 0L) {
+        warning(
+          "References not found in `ref_all` for ", barcode, ": ",
+          paste(missing_references, collapse = ", "),
+          call. = FALSE
         )
-        if (nrow(alignment) > 0L) {
-          alignment <- alignment[
-            !is.na(alignment$mapq) & alignment$mapq >= min_mapq,
-            ,
-            drop = FALSE
-          ]
-        }
-        original_name <- as.character(alignment$rname)
-        mapped_name <- original_name
-        if (!is.null(re_names) && length(original_name) > 0L) {
-          candidate <- unname(re_names[original_name])
-          mapped_name[!is.na(candidate)] <- candidate[!is.na(candidate)]
-        }
-        alignment$rname <- mapped_name
-        assign(bam_file, alignment, envir = alignment_cache)
+      }
+      reference_names <- intersect(reference_names, names(ref_all))
+      if (length(reference_names) == 0L) next
+      if (!file.exists(bam_file)) {
+        warning("BAM file not found; skipping: ", bam_file, call. = FALSE)
+        next
       }
 
-      for (reference_name in reference_names[needs_rebuild]) {
-        alignment_reference <- alignment[
-          !is.na(alignment$rname) & alignment$rname == reference_name,
-          ,
-          drop = FALSE
-        ]
-        events <- make_variant_events(
-          aln_valid = alignment_reference,
-          reference = stats::setNames(
-            as.character(ref_all[[reference_name]]),
-            reference_name
-          ),
+      cache_files <- stats::setNames(
+        file.path(
+          cache_dir,
+          paste0(
+            safe_name(barcode), "__", safe_name(reference_names), "__",
+            region_start, "_", region_end, "__anchor", min_anchor,
+            "__mapq", min_mapq, ".events.rds"
+          )
+        ),
+        reference_names
+      )
+      signatures <- lapply(reference_names, function(reference_name) {
+        editing_cache_signature(
+          bam_file = bam_file,
+          reference = ref_all[[reference_name]],
+          reference_name = reference_name,
           region_start = region_start,
           region_end = region_end,
           min_anchor = min_anchor,
-          sample_id = barcode,
-          mc.cores = cores
+          min_mapq = min_mapq,
+          reference_name_map = re_names
         )
-        write_editing_cache(
-          events,
+      })
+      names(signatures) <- reference_names
+      cached_events <- lapply(reference_names, function(reference_name) {
+        if (force_rebuild) return(NULL)
+        read_editing_cache(
           cache_files[[reference_name]],
           signatures[[reference_name]]
         )
-        cached_events[[reference_name]] <- events
-      }
-    }
+      })
+      names(cached_events) <- reference_names
+      needs_rebuild <- vapply(cached_events, is.null, logical(1))
 
-    barcode_result <- list()
-    for (reference_name in reference_names) {
-      events <- cached_events[[reference_name]]
-      if (is.null(events) || nrow(events) == 0L) next
-      summary_result <- summarise_variant_events(
-        events,
-        min_event_reads = min_event_reads,
-        min_event_ratio = min_event_ratio,
-        min_comb_reads = min_comb_reads,
-        min_comb_ratio = min_comb_ratio,
-        min_callable_reads = min_callable_reads,
-        filtered_ratio_mode = filtered_ratio_mode
-      )
-      table <- summary_result$var_info_filtered
-      if (nrow(table) == 0L) next
-      table$barcode <- barcode
-      # if ("sample_hitom" %in% names(sample_info)) {
-      #   table$sample_hitom <- as.character(sample_info$sample_hitom[[i]])
-      # }
-      if ("sample_id" %in% names(sample_info)) {
-        table$sample_id <- as.character(sample_info$sample_id[[i]])
+      if (any(needs_rebuild)) {
+        if (!alignment_loaded) {
+          alignment <- as.data.frame(
+            Rsamtools::scanBam(bam_file, param = bam_param)[[1L]]
+          )
+          if (nrow(alignment) > 0L) {
+            alignment <- alignment[
+              !is.na(alignment$mapq) & alignment$mapq >= min_mapq,
+              ,
+              drop = FALSE
+            ]
+          }
+          original_name <- as.character(alignment$rname)
+          mapped_name <- original_name
+          if (!is.null(re_names) && length(original_name) > 0L) {
+            candidate <- unname(re_names[original_name])
+            mapped_name[!is.na(candidate)] <- candidate[!is.na(candidate)]
+          }
+          alignment$rname <- mapped_name
+          alignment_loaded <- TRUE
+        }
+
+        for (reference_name in reference_names[needs_rebuild]) {
+          alignment_reference <- alignment[
+            !is.na(alignment$rname) & alignment$rname == reference_name,
+            ,
+            drop = FALSE
+          ]
+          events <- make_variant_events(
+            aln_valid = alignment_reference,
+            reference = stats::setNames(
+              as.character(ref_all[[reference_name]]),
+              reference_name
+            ),
+            region_start = region_start,
+            region_end = region_end,
+            min_anchor = min_anchor,
+            sample_id = barcode,
+            mc.cores = parallel_plan$read_cores
+          )
+          write_editing_cache(
+            events,
+            cache_files[[reference_name]],
+            signatures[[reference_name]]
+          )
+          cached_events[[reference_name]] <- events
+        }
       }
-      barcode_result[[reference_name]] <- table
-      output_rows[[output_index]] <- table
-      output_source_rows[[output_index]] <- i
-      output_index <- output_index + 1L
+
+      sample_result <- list()
+      for (reference_name in reference_names) {
+        events <- cached_events[[reference_name]]
+        if (is.null(events) || nrow(events) == 0L) next
+        summary_result <- summarise_variant_events(
+          events,
+          min_event_reads = min_event_reads,
+          min_event_ratio = min_event_ratio,
+          min_comb_reads = min_comb_reads,
+          min_comb_ratio = min_comb_ratio,
+          min_callable_reads = min_callable_reads,
+          filtered_ratio_mode = filtered_ratio_mode
+        )
+        table <- summary_result$var_info_filtered
+        if (nrow(table) == 0L) next
+        table$barcode <- barcode
+        if ("sample_id" %in% names(sample_info)) {
+          table$sample_id <- as.character(sample_info$sample_id[[i]])
+        }
+        sample_result[[reference_name]] <- table
+        local_rows[[local_output_index]] <- table
+        local_source_rows[[local_output_index]] <- i
+        local_output_index <- local_output_index + 1L
+      }
+      local_per_sample[[paste0(barcode, "_", i)]] <- sample_result
     }
-    per_sample_results[[paste0(barcode, "_", i)]] <- barcode_result
+    list(
+      output_rows = local_rows,
+      output_source_rows = local_source_rows,
+      per_sample = local_per_sample
+    )
+  }
+
+  worker_results <- if (.Platform$OS.type == "windows" ||
+                        parallel_plan$bam_cores == 1L) {
+    lapply(barcode_groups, process_barcode)
+  } else {
+    parallel::mclapply(
+      barcode_groups,
+      process_barcode,
+      mc.cores = parallel_plan$bam_cores
+    )
+  }
+  output_rows <- unlist(
+    lapply(worker_results, `[[`, "output_rows"),
+    recursive = FALSE
+  )
+  output_source_rows <- unlist(
+    lapply(worker_results, `[[`, "output_source_rows"),
+    use.names = FALSE
+  )
+  for (worker_result in worker_results) {
+    per_sample_results[names(worker_result$per_sample)] <-
+      worker_result$per_sample
   }
 
   result_table <- if (length(output_rows) == 0L) {
@@ -1966,7 +2041,7 @@ run_editing_batch <- function(sample_info,
     output <- do.call(rbind, output_rows)
     rownames(output) <- NULL
     # front_columns <- intersect(c("sample_hitom", "barcode"), names(output))
-    front_columns <- intersect(c("sample_id", "barcode"), names(output))
+    front_columns <- intersect(c("barcode", "sample_id"), names(output))
     output[, c(front_columns, setdiff(names(output), front_columns)), drop = FALSE]
   }
   if (!is.null(colored_xlsx)) {
