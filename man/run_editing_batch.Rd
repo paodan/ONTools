@@ -93,7 +93,8 @@ same barcode. The alignments are released when processing moves to the next
 barcode. Reads must span the complete calling interval plus anchors. Cache
 files from older implementations are automatically considered stale. All
 output table columns use lower \code{snake_case}; legacy \code{Sample_HiTOM} input is
-normalized to \code{sample_hitom}.
+normalized to \code{sample_hitom}; legacy \code{Sample_ID} input is
+normalized to \code{sample_id}.
 }
 \examples{
 \dontrun{

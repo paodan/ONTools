@@ -1585,6 +1585,13 @@ normalize_editing_sample_info <- function(sample_info) {
   if ("Sample_HiTOM" %in% names(sample_info)) {
     sample_info[["Sample_HiTOM"]] <- NULL
   }
+  if (!"sample_id" %in% names(sample_info) &&
+      "Sample_ID" %in% names(sample_info)) {
+    sample_info$sample_id <- sample_info[["Sample_ID"]]
+  }
+  if ("Sample_ID" %in% names(sample_info)) {
+    sample_info[["Sample_ID"]] <- NULL
+  }
   if (!"barcode" %in% names(sample_info)) {
     stop("`sample_info` is missing column `barcode`.", call. = FALSE)
   }
@@ -1669,7 +1676,8 @@ normalize_editing_sample_info <- function(sample_info) {
 #' barcode. Reads must span the complete calling interval plus anchors. Cache
 #' files from older implementations are automatically considered stale. All
 #' output table columns use lower `snake_case`; legacy `Sample_HiTOM` input is
-#' normalized to `sample_hitom`.
+#' normalized to `sample_hitom`; legacy `Sample_ID` input is
+#' normalized to `sample_id`.
 #'
 #' @examples
 #' \dontrun{
@@ -1937,8 +1945,11 @@ run_editing_batch <- function(sample_info,
       table <- summary_result$var_info_filtered
       if (nrow(table) == 0L) next
       table$barcode <- barcode
-      if ("sample_hitom" %in% names(sample_info)) {
-        table$sample_hitom <- as.character(sample_info$sample_hitom[[i]])
+      # if ("sample_hitom" %in% names(sample_info)) {
+      #   table$sample_hitom <- as.character(sample_info$sample_hitom[[i]])
+      # }
+      if ("sample_id" %in% names(sample_info)) {
+        table$sample_id <- as.character(sample_info$sample_id[[i]])
       }
       barcode_result[[reference_name]] <- table
       output_rows[[output_index]] <- table
@@ -1954,7 +1965,8 @@ run_editing_batch <- function(sample_info,
     output_rows <- output_rows[order(output_source_rows)]
     output <- do.call(rbind, output_rows)
     rownames(output) <- NULL
-    front_columns <- intersect(c("sample_hitom", "barcode"), names(output))
+    # front_columns <- intersect(c("sample_hitom", "barcode"), names(output))
+    front_columns <- intersect(c("sample_id", "barcode"), names(output))
     output[, c(front_columns, setdiff(names(output), front_columns)), drop = FALSE]
   }
   if (!is.null(colored_xlsx)) {
