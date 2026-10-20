@@ -46,10 +46,10 @@
 #'   `peak_value_mode = "relative"`. Default `0.03` keeps non-major channels
 #'   visible at low height; must be between 0 and 1. Count and fraction modes
 #'   do not add artificial off-channel peaks.
-#' @param peak_value_mode Meaning of peak amplitude. `"relative"` (default)
-#'   divides each A/C/G/T count by the largest count at that position, so the
-#'   major peak has amplitude `peak_height`. `"count"` uses the raw supporting
-#'   read count as amplitude. `"fraction"` divides each count by the sum of
+#' @param peak_value_mode Meaning of peak amplitude. `"count"` (default) uses the
+#'   raw supporting read count as amplitude. `"relative"` divides each A/C/G/T
+#'   count by the largest count at that position, so the major peak has amplitude
+#'   `peak_height`. `"fraction"` divides each count by the sum of
 #'   A/C/G/T counts and multiplies by `peak_height`. The baseline is added after
 #'   calculating these amplitudes.
 #' @param overwrite Logical. If `FALSE` (default), stop when `output_ab1`
@@ -121,7 +121,7 @@ synthetic_ab1_from_bam <- function(consensus,
                                    baseline = 15,
                                    noise_fraction = 0.03,
                                    peak_value_mode = c(
-                                     "relative", "count", "fraction"
+                                     "count", "relative", "fraction"
                                    ),
                                    overwrite = FALSE,
                                    echo = TRUE,
@@ -364,7 +364,7 @@ synthetic_ab1_trace <- function(sequence,
                                 baseline,
                                 noise_fraction,
                                 peak_value_mode = c(
-                                  "relative", "count", "fraction"
+                                  "count", "relative", "fraction"
                                 )) {
   peak_value_mode <- match.arg(peak_value_mode)
   bases <- c("A", "C", "G", "T")
@@ -425,7 +425,7 @@ ab1_base_values <- function(counts,
                             consensus_base,
                             noise_fraction,
                             peak_value_mode = c(
-                              "relative", "count", "fraction"
+                              "count", "relative", "fraction"
                             )) {
   peak_value_mode <- match.arg(peak_value_mode)
   bases <- c("A", "C", "G", "T")

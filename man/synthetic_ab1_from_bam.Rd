@@ -19,7 +19,7 @@ synthetic_ab1_from_bam(
   peak_height = 900,
   baseline = 15,
   noise_fraction = 0.03,
-  peak_value_mode = c("relative", "count", "fraction"),
+  peak_value_mode = c("count", "relative", "fraction"),
   overwrite = FALSE,
   echo = TRUE,
   stderr = ""
@@ -77,10 +77,10 @@ and \code{"fraction"}. It is ignored by \code{"count"}, where peak amplitude abo
 visible at low height; must be between 0 and 1. Count and fraction modes
 do not add artificial off-channel peaks.}
 
-\item{peak_value_mode}{Meaning of peak amplitude. \code{"relative"} (default)
-divides each A/C/G/T count by the largest count at that position, so the
-major peak has amplitude \code{peak_height}. \code{"count"} uses the raw supporting
-read count as amplitude. \code{"fraction"} divides each count by the sum of
+\item{peak_value_mode}{Meaning of peak amplitude. \code{"count"} (default) uses the
+raw supporting read count as amplitude. \code{"relative"} divides each A/C/G/T
+count by the largest count at that position, so the major peak has amplitude
+\code{peak_height}. \code{"fraction"} divides each count by the sum of
 A/C/G/T counts and multiplies by \code{peak_height}. The baseline is added after
 calculating these amplitudes.}
 
