@@ -409,6 +409,7 @@ test_that("make_variant_delivery plans IGV snapshots and AB1 files in dry-run mo
   expect_equal(igv$files$status, c("dry_run", "dry_run"))
   expect_equal(igv$workers, 1L)
   expect_equal(ab1$status, c("dry_run", "dry_run"))
+  expect_equal(attr(ab1, "workers"), 1L)
 })
 
 test_that("variant IGV worker count is capped by available barcodes", {
@@ -458,6 +459,147 @@ test_that("generate_variant_igv_snapshots plans barcodes with multiple workers",
   expect_equal(result$files$barcode,
                c("barcode001", "barcode002", "barcode003"))
   expect_true(all(result$files$status == "dry_run"))
+})
+
+test_that("generate_variant_igv_snapshots defaults to primary-only filtering", {
+  result_dir <- tempfile("wf-amplicon-result-")
+  align_dir <- file.path(result_dir, "barcode001", "alignments")
+  dir.create(align_dir, recursive = TRUE)
+  bam <- file.path(align_dir, "barcode001.aligned.sorted.bam")
+  file.create(bam)
+  file.create(paste0(bam, ".bai"))
+
+  reference <- tempfile(fileext = ".fasta")
+  writeLines(c(">amp1", "ACGTACGTACGT"), reference)
+  file.create(paste0(reference, ".fai"))
+
+  seen <- new.env(parent = emptyenv())
+  seen$igv_primary_only <- NULL
+  testthat::local_mocked_bindings(
+    igv_snapshot = function(out_dir,
+                            snapshot_name,
+                            igv_primary_only,
+                            ...) {
+      seen$igv_primary_only <- igv_primary_only
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      file.create(file.path(out_dir, snapshot_name))
+      list(status = 0L)
+    }
+  )
+
+  result <- generate_variant_igv_snapshots(
+    result_dir = result_dir,
+    reference = reference,
+    barcode_pattern = "^barcode[0-9]+$",
+    format = "png",
+    igv = "igv.sh",
+    sort = "base",
+    display = "collapse",
+    max_panel_height = NULL,
+    use_xvfb = FALSE,
+    igv_dir_name = "IGV",
+    dry_run = FALSE,
+    igv_workers = 1L
+  )
+
+  expect_true(seen$igv_primary_only)
+  expect_equal(result$files$status, "generated")
+})
+
+test_that("variant AB1 worker count is capped by available barcodes", {
+  detected <- parallel::detectCores(logical = TRUE)
+  available <- if (is.na(detected) || detected < 2L) 1L else detected - 1L
+  expected_auto <- min(as.integer(available), 3L)
+  if (.Platform$OS.type == "windows") expected_auto <- 1L
+
+  expect_equal(resolve_variant_ab1_workers(NULL, 3L), expected_auto)
+  expect_equal(resolve_variant_ab1_workers(8L, 3L),
+               if (.Platform$OS.type == "windows") 1L else 3L)
+  expect_equal(resolve_variant_ab1_workers(1L, 10L), 1L)
+  expect_equal(resolve_variant_ab1_workers(NULL, 0L), 1L)
+  expect_error(resolve_variant_ab1_workers(0L, 3L), "positive integer")
+})
+
+test_that("generate_variant_ab1_files plans barcodes with multiple workers", {
+  result_dir <- tempfile("wf-amplicon-result-")
+  for (barcode in c("barcode001", "barcode002", "barcode003")) {
+    align_dir <- file.path(result_dir, barcode, "alignments")
+    dir.create(align_dir, recursive = TRUE)
+    bam <- file.path(align_dir, paste0(barcode, ".aligned.sorted.bam"))
+    file.create(bam)
+    file.create(paste0(bam, ".bai"))
+  }
+
+  reference <- tempfile(fileext = ".fasta")
+  writeLines(c(">amp1", "ACGTACGTACGT"), reference)
+
+  result <- generate_variant_ab1_files(
+    result_dir = result_dir,
+    reference = reference,
+    barcode_pattern = "^barcode[0-9]+$",
+    ab1_name_template = "{barcode}.{reference}.synthetic.ab1",
+    ab1_dir_name = "AB1",
+    samtools = "samtools",
+    overwrite = TRUE,
+    dry_run = TRUE,
+    echo = FALSE,
+    stderr = FALSE,
+    ab1_workers = 2L
+  )
+
+  expect_equal(attr(result, "workers"),
+               if (.Platform$OS.type == "windows") 1L else 2L)
+  expect_equal(result$barcode, c("barcode001", "barcode002", "barcode003"))
+  expect_true(all(result$status == "dry_run"))
+})
+
+test_that("generate_variant_ab1_files writes AB1 files in barcode workers", {
+  skip_if(Sys.which("samtools") == "", "samtools is not installed")
+  skip_if(.Platform$OS.type == "windows", "forked workers are unavailable")
+
+  result_dir <- tempfile("wf-amplicon-result-")
+  reference <- tempfile(fileext = ".fasta")
+  sequence <- "ACGTACGTACGT"
+  writeLines(c(">amp1", sequence), reference)
+
+  for (barcode in c("barcode001", "barcode002")) {
+    align_dir <- file.path(result_dir, barcode, "alignments")
+    dir.create(align_dir, recursive = TRUE)
+    sam <- file.path(align_dir, paste0(barcode, ".sam"))
+    bam <- file.path(align_dir, paste0(barcode, ".aligned.sorted.bam"))
+    writeLines(
+      c(
+        "@HD\tVN:1.6\tSO:coordinate",
+        paste0("@SQ\tSN:amp1\tLN:", nchar(sequence)),
+        paste0(
+          barcode, "_read\t0\tamp1\t1\t60\t12M\t*\t0\t0\t",
+          sequence, "\tIIIIIIIIIIII"
+        )
+      ),
+      sam
+    )
+    system2("samtools", c("view", "-bS", sam), stdout = bam)
+    system2("samtools", c("index", bam))
+  }
+
+  result <- generate_variant_ab1_files(
+    result_dir = result_dir,
+    reference = reference,
+    barcode_pattern = "^barcode[0-9]+$",
+    ab1_name_template = "{barcode}.{reference}.synthetic.ab1",
+    ab1_dir_name = "AB1",
+    samtools = "samtools",
+    overwrite = TRUE,
+    dry_run = FALSE,
+    echo = FALSE,
+    stderr = FALSE,
+    ab1_workers = 2L
+  )
+
+  expect_equal(attr(result, "workers"), 2L)
+  expect_equal(result$status, c("generated", "generated"))
+  expect_true(all(file.exists(result$ab1)))
+  expect_false(file.exists(paste0(reference, ".fai")))
 })
 
 test_that("collect_variant_results documents IGV snapshots and AB1 files", {

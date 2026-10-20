@@ -47,6 +47,9 @@
 #'   Additional [make_consensus_delivery()] parameters passed through when
 #'   consensus results need to be generated. Defaults match
 #'   [make_consensus_delivery()].
+#' @param igv_primary_only Logical. If `TRUE` (the default), IGV snapshots made
+#'   by [make_consensus_delivery()] show primary alignments only. Set to `FALSE`
+#'   to include secondary and supplementary alignments.
 #' @param path_work Fallback work root used to derive default ITS workflow
 #'   output and work directories when the Dorado run directory cannot be found.
 #'   If `NULL`, sibling directories of `path_delivery` are used as the fallback.
@@ -242,6 +245,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
                               dorado_conda_env = NULL,
                               conda = "conda",
                               igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh",
+                              igv_primary_only = TRUE,
                               overwrite_fastq = FALSE,
                               overwrite_delivery = TRUE,
                               include_execution = FALSE,
@@ -368,6 +372,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
   if (!is.null(dorado_conda_env)) check_scalar_character(dorado_conda_env, "dorado_conda_env")
   check_scalar_character(conda, "conda")
   check_scalar_character(igv, "igv")
+  check_logical_scalar(igv_primary_only, "igv_primary_only")
   check_logical_scalar(overwrite_fastq, "overwrite_fastq")
   check_logical_scalar(overwrite_delivery, "overwrite_delivery")
   check_logical_scalar(include_execution, "include_execution")
@@ -524,6 +529,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       trim_consensus_step = trim_consensus_step,
       run_filtered_QC_step = run_filtered_QC_step,
       run_igv_step = run_igv_step,
+      igv_primary_only = igv_primary_only,
       collect_results_step = collect_results_step,
       make_ab1 = make_ab1,
       run_ITS_step = run_ITS_step,
@@ -607,6 +613,7 @@ make_ITS_delivery <- function(path_ITS_result = NULL,
       dorado_conda_env = dorado_conda_env,
       conda = conda,
       igv = igv,
+      igv_primary_only = igv_primary_only,
       overwrite_fastq = overwrite_fastq,
       overwrite_delivery = overwrite_delivery,
       include_execution = include_execution,
@@ -1325,6 +1332,7 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
                                        trim_consensus_step,
                                        run_filtered_QC_step,
                                        run_igv_step,
+                                       igv_primary_only,
                                        collect_results_step,
                                        make_ab1,
                                        run_ITS_step,
@@ -1374,6 +1382,7 @@ make_ITS_delivery_dry_plan <- function(path_ITS_result,
       trim_consensus_step = trim_consensus_step,
       run_filtered_QC_step = run_filtered_QC_step,
       run_igv_step = run_igv_step,
+      igv_primary_only = igv_primary_only,
       collect_results_step = collect_results_step,
       make_ab1 = make_ab1
     ),

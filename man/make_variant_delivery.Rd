@@ -28,6 +28,7 @@ make_variant_delivery(
   make_ab1 = TRUE,
   ab1_name_template = "{barcode}.{reference}.synthetic.ab1",
   ab1_samtools = "samtools",
+  ab1_workers = NULL,
   igv_dir_name = "IGV",
   ab1_dir_name = "AB1",
   collect_results_step = TRUE,
@@ -68,6 +69,7 @@ make_variant_delivery(
   igv_display = "collapse",
   max_panel_height = NULL,
   use_xvfb = FALSE,
+  igv_primary_only = TRUE,
   igv_workers = NULL,
   dry_run = FALSE,
   echo = TRUE,
@@ -141,6 +143,13 @@ FASTA record name.}
 \item{ab1_samtools}{Command name or full path used by
 \code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}} to launch \code{samtools}.}
 
+\item{ab1_workers}{Number of barcode-level synthetic AB1 workers. \code{NULL}
+(the default) automatically uses the smaller of the number of barcode
+directories and one less than the detected logical CPU count, with a
+minimum of one. Supply a positive integer to set an explicit limit.
+Parallel AB1 generation uses forked workers and therefore falls back to
+one worker on Windows.}
+
 \item{igv_dir_name}{Directory name under each barcode folder for IGV
 snapshots.}
 
@@ -204,6 +213,10 @@ when present.}
 
 \item{igv_sort, igv_display, max_panel_height, use_xvfb}{IGV rendering options
 passed to \code{\link[=igv_snapshot]{igv_snapshot()}}.}
+
+\item{igv_primary_only}{Logical. If \code{TRUE}, IGV snapshots filter both
+secondary (\code{0x100}) and supplementary (\code{0x800}) alignments so that only
+primary BAM alignments are displayed. Default is \code{TRUE}.}
 
 \item{igv_workers}{Number of barcode-level IGV workers. \code{NULL} (the default)
 automatically uses the smaller of the number of barcode directories and

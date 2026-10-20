@@ -26,6 +26,7 @@ test_that("igv_snapshot writes an IGV batch file in dry-run mode", {
   expect_equal(res$args, c("-b", batch_file))
   expect_equal(res$status, 0L)
   expect_equal(res$format, "png")
+  expect_true(res$igv_primary_only)
   expect_true(res$quiet)
   expect_false(res$stdout)
   expect_false(res$stderr)
@@ -33,6 +34,10 @@ test_that("igv_snapshot writes an IGV batch file in dry-run mode", {
   expect_equal(readLines(batch_file), res$commands)
   expect_true(any(grepl("^genome ", res$commands)))
   expect_true(any(grepl("^load ", res$commands)))
+  expect_true(any(res$commands ==
+                    "preference SAM.FILTER_SECONDARY_ALIGNMENTS true"))
+  expect_true(any(res$commands ==
+                    "preference SAM.FILTER_SUPPLEMENTARY_ALIGNMENTS true"))
   expect_true(any(res$commands == "goto barcode09:1-12"))
   expect_true(any(res$commands == "sort base"))
   expect_true(any(res$commands == "collapse"))
@@ -61,6 +66,48 @@ test_that("igv_snapshot can leave command output unsuppressed for debugging", {
   expect_false(res$quiet)
   expect_equal(res$stdout, "")
   expect_equal(res$stderr, "")
+})
+
+test_that("igv_snapshot can filter secondary and supplementary alignments", {
+  ref <- tempfile(fileext = ".fasta")
+  bam <- tempfile(fileext = ".bam")
+  writeLines(c(">contig1", "ACGT"), ref)
+  file.create(paste0(ref, ".fai"))
+  file.create(bam)
+  file.create(paste0(bam, ".bai"))
+
+  res <- igv_snapshot(
+    genome_fasta = ref,
+    bam = bam,
+    chr = "contig1",
+    igv_primary_only = TRUE,
+    dry_run = TRUE
+  )
+
+  secondary <- which(
+    res$commands == "preference SAM.FILTER_SECONDARY_ALIGNMENTS true"
+  )
+  supplementary <- which(
+    res$commands == "preference SAM.FILTER_SUPPLEMENTARY_ALIGNMENTS true"
+  )
+  load <- grep("^load ", res$commands)
+
+  expect_true(res$igv_primary_only)
+  expect_length(secondary, 1L)
+  expect_length(supplementary, 1L)
+  expect_lt(secondary, load)
+  expect_lt(supplementary, load)
+
+  unfiltered <- igv_snapshot(
+    genome_fasta = ref,
+    bam = bam,
+    chr = "contig1",
+    igv_primary_only = FALSE,
+    dry_run = TRUE
+  )
+  expect_false(unfiltered$igv_primary_only)
+  expect_false(any(grepl("FILTER_(SECONDARY|SUPPLEMENTARY)",
+                         unfiltered$commands)))
 })
 
 test_that("igv_snapshot can generate PDF snapshot names", {

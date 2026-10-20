@@ -31,6 +31,10 @@
 #'   index with [Rsamtools::indexFa()] before writing the IGV batch script.
 #' @param extra_commands Character vector of additional IGV batch commands added
 #'   after `load` and before `goto`.
+#' @param igv_primary_only Logical. If `TRUE`, filter both secondary (`0x100`)
+#'   and supplementary (`0x800`) BAM alignments so the snapshot displays only
+#'   primary alignments. These temporary IGV preferences are set before loading
+#'   the BAM. Default is `TRUE`.
 #' @param use_xvfb Logical. If `TRUE`, run IGV through `xvfb-run -a`, useful on
 #'   headless Linux servers.
 #' @param dry_run Logical. If `TRUE`, write and return the batch script and
@@ -97,6 +101,7 @@ igv_snapshot <- function(genome_fasta,
                          index = NULL,
                          auto_index_fasta = TRUE,
                          extra_commands = NULL,
+                         igv_primary_only = TRUE,
                          use_xvfb = FALSE,
                          dry_run = FALSE,
                          quiet = TRUE,
@@ -171,6 +176,7 @@ igv_snapshot <- function(genome_fasta,
     stop("`extra_commands` must be a character vector or `NULL`.",
          call. = FALSE)
   }
+  check_logical_scalar(igv_primary_only, "igv_primary_only")
 
   genome_fasta <- normalizePath(genome_fasta, mustWork = TRUE)
   bam <- normalizePath(bam, mustWork = TRUE)
@@ -236,8 +242,18 @@ igv_snapshot <- function(genome_fasta,
     load_command <- paste(load_command, paste0("index=", index))
   }
 
+  primary_filter_commands <- if (isTRUE(igv_primary_only)) {
+    c(
+      "preference SAM.FILTER_SECONDARY_ALIGNMENTS true",
+      "preference SAM.FILTER_SUPPLEMENTARY_ALIGNMENTS true"
+    )
+  } else {
+    character()
+  }
+
   commands <- c(
     "new",
+    primary_filter_commands,
     paste("genome", genome_fasta),
     paste("snapshotDirectory", out_dir),
     if (!is.null(max_panel_height)) {
@@ -287,6 +303,7 @@ igv_snapshot <- function(genome_fasta,
     args = args,
     status = status,
     format = format,
+    igv_primary_only = igv_primary_only,
     quiet = quiet,
     stdout = system_stdout,
     stderr = system_stderr,

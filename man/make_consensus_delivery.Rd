@@ -58,6 +58,7 @@ make_consensus_delivery(
   dorado_conda_env = NULL,
   conda = "conda",
   igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh",
+  igv_primary_only = TRUE,
   overwrite_fastq = FALSE,
   overwrite_delivery = TRUE,
   include_execution = FALSE,
@@ -168,6 +169,11 @@ samtools, and gzip steps.}
 supplied.}
 
 \item{igv}{IGV executable path passed to \code{\link[=igv_snapshot]{igv_snapshot()}}.}
+
+\item{igv_primary_only}{Logical. If \code{TRUE} (the default), IGV snapshots
+filter secondary (\code{0x100}) and supplementary (\code{0x800}) alignments so only
+primary BAM alignments are displayed. Set to \code{FALSE} to show all
+alignments.}
 
 \item{overwrite_fastq}{Logical. Passed to \code{\link[=move_fastq_to_folders]{move_fastq_to_folders()}}.}
 

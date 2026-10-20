@@ -21,6 +21,7 @@ igv_snapshot(
   index = NULL,
   auto_index_fasta = TRUE,
   extra_commands = NULL,
+  igv_primary_only = TRUE,
   use_xvfb = FALSE,
   dry_run = FALSE,
   quiet = TRUE,
@@ -71,6 +72,11 @@ index with \code{\link[Rsamtools:scanFa]{Rsamtools::indexFa()}} before writing t
 
 \item{extra_commands}{Character vector of additional IGV batch commands added
 after \code{load} and before \code{goto}.}
+
+\item{igv_primary_only}{Logical. If \code{TRUE}, filter both secondary (\code{0x100})
+and supplementary (\code{0x800}) BAM alignments so the snapshot displays only
+primary alignments. These temporary IGV preferences are set before loading
+the BAM. Default is \code{TRUE}.}
 
 \item{use_xvfb}{Logical. If \code{TRUE}, run IGV through \code{xvfb-run -a}, useful on
 headless Linux servers.}

@@ -72,6 +72,10 @@
 #' @param conda Conda executable name or path used when `dorado_conda_env` is
 #'   supplied.
 #' @param igv IGV executable path passed to [igv_snapshot()].
+#' @param igv_primary_only Logical. If `TRUE` (the default), IGV snapshots
+#'   filter secondary (`0x100`) and supplementary (`0x800`) alignments so only
+#'   primary BAM alignments are displayed. Set to `FALSE` to show all
+#'   alignments.
 #' @param overwrite_fastq Logical. Passed to [move_fastq_to_folders()].
 #' @param overwrite_delivery Logical. Passed to [collect_amplicon_results()].
 #' @param include_execution Logical. Passed to [collect_amplicon_results()].
@@ -201,6 +205,7 @@ make_consensus_delivery <- function(path_proj,
                                     dorado_conda_env = NULL,
                                     conda = "conda",
                                     igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh",
+                                    igv_primary_only = TRUE,
                                     overwrite_fastq = FALSE,
                                     overwrite_delivery = TRUE,
                                     include_execution = FALSE,
@@ -228,6 +233,7 @@ make_consensus_delivery <- function(path_proj,
   check_scalar_character(gzip, "gzip")
   check_scalar_character(conda, "conda")
   check_scalar_character(igv, "igv")
+  check_logical_scalar(igv_primary_only, "igv_primary_only")
   check_logical_scalar(barcode_both_ends, "barcode_both_ends")
   check_logical_scalar(run_basecalling_demux_step, "run_basecalling_demux_step")
   check_logical_scalar(run_dorado_basecall_step, "run_dorado_basecall_step")
@@ -782,7 +788,8 @@ make_consensus_delivery <- function(path_proj,
             ),
             out_dir = file.path(workflow[[folder]]$paths$out_dir, barcode_dir, "alignments"),
             chr = barcode_dir,
-            igv = igv
+            igv = igv,
+            igv_primary_only = igv_primary_only
           )
         })
         names(igv_results[[folder]]) <- barcode_dirs

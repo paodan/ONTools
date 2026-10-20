@@ -194,7 +194,7 @@ test_that("synthetic_ab1_from_bam runs on a tiny BAM", {
   expect_equal(res$reference_name, "contig1")
   expect_equal(res$called_sequence, sequence)
   expect_equal(res$sequence_length, nchar(sequence))
-  expect_equal(res$peak_value_mode, "relative")
+  expect_equal(res$peak_value_mode, "count")
   expect_true(file.exists(ab1))
   expect_false(file.exists(paste0(consensus, ".fai")))
   expect_true("PBAS:2" %in% read_abif_test_tags(ab1))

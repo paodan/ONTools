@@ -214,6 +214,7 @@ test_that("make_ITS_delivery passes unified ITS workflow arguments", {
   expect_false(plan$consensus_steps$trim_consensus_step)
   expect_false(plan$consensus_steps$run_filtered_QC_step)
   expect_false(plan$consensus_steps$run_igv_step)
+  expect_true(plan$consensus_steps$igv_primary_only)
   expect_false(plan$consensus_steps$collect_results_step)
   expect_false(plan$consensus_steps$make_ab1)
   expect_true(plan$ITS_steps$run_ITS_step)

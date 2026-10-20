@@ -479,3 +479,13 @@ test_that("make_consensus_delivery writes AB1 files to delivered barcode folders
     "README.zh-CN.txt"
   )))
 })
+test_that("IGV-generating functions default to primary-only alignments", {
+  expect_identical(formals(igv_snapshot)$igv_primary_only, TRUE)
+  expect_identical(formals(make_variant_delivery)$igv_primary_only, TRUE)
+  expect_identical(
+    formals(generate_variant_igv_snapshots)$igv_primary_only,
+    TRUE
+  )
+  expect_identical(formals(make_consensus_delivery)$igv_primary_only, TRUE)
+  expect_identical(formals(make_ITS_delivery)$igv_primary_only, TRUE)
+})

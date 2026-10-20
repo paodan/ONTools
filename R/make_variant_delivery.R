@@ -49,6 +49,12 @@
 #'   FASTA record name.
 #' @param ab1_samtools Command name or full path used by
 #'   [synthetic_ab1_from_bam()] to launch `samtools`.
+#' @param ab1_workers Number of barcode-level synthetic AB1 workers. `NULL`
+#'   (the default) automatically uses the smaller of the number of barcode
+#'   directories and one less than the detected logical CPU count, with a
+#'   minimum of one. Supply a positive integer to set an explicit limit.
+#'   Parallel AB1 generation uses forked workers and therefore falls back to
+#'   one worker on Windows.
 #' @param igv_dir_name Directory name under each barcode folder for IGV
 #'   snapshots.
 #' @param ab1_dir_name Directory name under each barcode folder for synthetic
@@ -90,6 +96,9 @@
 #' @param igv_format Snapshot image format passed to [igv_snapshot()].
 #' @param igv_sort,igv_display,max_panel_height,use_xvfb IGV rendering options
 #'   passed to [igv_snapshot()].
+#' @param igv_primary_only Logical. If `TRUE`, IGV snapshots filter both
+#'   secondary (`0x100`) and supplementary (`0x800`) alignments so that only
+#'   primary BAM alignments are displayed. Default is `TRUE`.
 #' @param igv_workers Number of barcode-level IGV workers. `NULL` (the default)
 #'   automatically uses the smaller of the number of barcode directories and
 #'   one less than the detected logical CPU count, with a minimum of one.
@@ -131,6 +140,7 @@ make_variant_delivery <- function(path_proj,
                                   make_ab1 = TRUE,
                                   ab1_name_template = "{barcode}.{reference}.synthetic.ab1",
                                   ab1_samtools = "samtools",
+                                  ab1_workers = NULL,
                                   igv_dir_name = "IGV",
                                   ab1_dir_name = "AB1",
                                   collect_results_step = TRUE,
@@ -176,6 +186,7 @@ make_variant_delivery <- function(path_proj,
                                   igv_display = "collapse",
                                   max_panel_height = NULL,
                                   use_xvfb = FALSE,
+                                  igv_primary_only = TRUE,
                                   igv_workers = NULL,
                                   dry_run = FALSE,
                                   echo = TRUE,
@@ -221,6 +232,9 @@ make_variant_delivery <- function(path_proj,
   check_logical_scalar(make_ab1, "make_ab1")
   check_scalar_character(ab1_name_template, "ab1_name_template")
   check_scalar_character(ab1_samtools, "ab1_samtools")
+  if (!is.null(ab1_workers)) {
+    validate_positive_integer(ab1_workers, "ab1_workers")
+  }
   check_scalar_character(igv_dir_name, "igv_dir_name")
   check_scalar_character(ab1_dir_name, "ab1_dir_name")
   check_logical_scalar(collect_results_step, "collect_results_step")
@@ -243,6 +257,7 @@ make_variant_delivery <- function(path_proj,
          call. = FALSE)
   }
   check_logical_scalar(use_xvfb, "use_xvfb")
+  check_logical_scalar(igv_primary_only, "igv_primary_only")
   if (!is.null(igv_workers)) {
     validate_positive_integer(igv_workers, "igv_workers")
   }
@@ -573,6 +588,7 @@ make_variant_delivery <- function(path_proj,
         display = igv_display,
         max_panel_height = max_panel_height,
         use_xvfb = use_xvfb,
+        igv_primary_only = igv_primary_only,
         igv_dir_name = igv_dir_name,
         dry_run = dry_run,
         igv_workers = igv_workers
@@ -594,7 +610,8 @@ make_variant_delivery <- function(path_proj,
         overwrite = overwrite_delivery,
         dry_run = dry_run,
         echo = echo,
-        stderr = stderr
+        stderr = stderr,
+        ab1_workers = ab1_workers
       )
     } else {
       message("Step 8: Generate synthetic AB1 files (skipped)")
@@ -1195,7 +1212,9 @@ generate_variant_igv_snapshots <- function(result_dir,
                                            use_xvfb,
                                            igv_dir_name,
                                            dry_run,
-                                           igv_workers = NULL) {
+                                           igv_workers = NULL,
+                                           igv_primary_only = TRUE) {
+  check_logical_scalar(igv_primary_only, "igv_primary_only")
   check_file_arg(reference, "reference")
   reference <- normalizePath(reference, mustWork = TRUE)
   ref_names <- variant_reference_names(reference)
@@ -1266,6 +1285,7 @@ generate_variant_igv_snapshots <- function(result_dir,
         sort = sort,
         display = display,
         max_panel_height = max_panel_height,
+        igv_primary_only = igv_primary_only,
         use_xvfb = use_xvfb
       )
       key <- paste(barcode, ref_name, sep = ":")
@@ -1395,7 +1415,8 @@ generate_variant_ab1_files <- function(result_dir,
                                        overwrite,
                                        dry_run,
                                        echo,
-                                       stderr) {
+                                       stderr,
+                                       ab1_workers = NULL) {
   if (!grepl("[{]barcode[}]", ab1_name_template)) {
     stop("`ab1_name_template` must contain `{barcode}`.", call. = FALSE)
   }
@@ -1404,8 +1425,173 @@ generate_variant_ab1_files <- function(result_dir,
   reference <- normalizePath(reference, mustWork = TRUE)
   ref_names <- variant_reference_names(reference)
   barcode_dirs <- variant_barcode_dirs(result_dir, barcode_pattern)
+  workers <- resolve_variant_ab1_workers(ab1_workers, length(barcode_dirs))
 
-  rows <- data.frame(
+  indexed_reference <- reference
+  indexed_tmpdir <- NULL
+  if (!isTRUE(dry_run) && length(barcode_dirs) > 0L) {
+    indexed <- prepare_indexed_consensus_fasta(
+      consensus = reference,
+      samtools = samtools,
+      conda_env = NULL,
+      conda = "conda",
+      stderr = stderr
+    )
+    indexed_reference <- indexed$fasta
+    indexed_tmpdir <- indexed$tmpdir
+    if (!is.null(indexed_tmpdir)) {
+      on.exit(unlink(indexed_tmpdir, recursive = TRUE), add = TRUE)
+    }
+  }
+
+  process_barcode <- function(barcode_dir) {
+    barcode <- basename(barcode_dir)
+    bam <- file.path(barcode_dir, "alignments", paste0(barcode, ".aligned.sorted.bam"))
+    bai <- delivery_standard_bam_index_path(bam)
+    bam_exists <- file.exists(bam)
+    bai_exists <- !is.na(bai)
+    ab1_dir <- file.path(barcode_dir, ab1_dir_name)
+    local_rows <- vector("list", length(ref_names))
+
+    for (ref_index in seq_along(ref_names)) {
+      ref_name <- ref_names[[ref_index]]
+      ab1_name <- sub("[{]barcode[}]", barcode, ab1_name_template)
+      ab1_name <- sub("[{]reference[}]", sanitize_igv_snapshot_name(ref_name), ab1_name)
+      ab1 <- file.path(ab1_dir, ab1_name)
+
+      if (isTRUE(dry_run)) {
+        local_rows[[ref_index]] <- data.frame(
+          barcode = barcode,
+          reference_name = ref_name,
+          reference = reference,
+          bam = bam,
+          bai = if (is.na(bai)) paste0(bam, ".bai") else bai,
+          ab1 = ab1,
+          reference_exists = file.exists(reference),
+          bam_exists = bam_exists,
+          bai_exists = bai_exists,
+          generated = FALSE,
+          status = "dry_run",
+          stringsAsFactors = FALSE
+        )
+        next
+      }
+
+      if (!bam_exists) {
+        stop("BAM file not found for `", barcode, "`: ", bam, call. = FALSE)
+      }
+      if (!bai_exists) {
+        stop("BAM index not found for `", barcode, "`: ", paste0(bam, ".bai"),
+             call. = FALSE)
+      }
+
+      synthetic_ab1_from_bam(
+        consensus = indexed_reference,
+        bam = bam,
+        output_ab1 = ab1,
+        reference_name = ref_name,
+        sample = paste(barcode, ref_name, sep = "_"),
+        samtools = samtools,
+        overwrite = overwrite,
+        echo = echo,
+        stderr = stderr
+      )
+
+      local_rows[[ref_index]] <- data.frame(
+        barcode = barcode,
+        reference_name = ref_name,
+        reference = reference,
+        bam = bam,
+        bai = bai,
+        ab1 = normalizePath(ab1, mustWork = TRUE),
+        reference_exists = file.exists(reference),
+        bam_exists = bam_exists,
+        bai_exists = bai_exists,
+        generated = TRUE,
+        status = "generated",
+        stringsAsFactors = FALSE
+      )
+    }
+    do.call(rbind, local_rows)
+  }
+
+  safe_process_barcode <- function(barcode_dir) {
+    tryCatch(
+      list(ok = TRUE, rows = process_barcode(barcode_dir)),
+      error = function(error) list(
+        ok = FALSE,
+        barcode = basename(barcode_dir),
+        message = conditionMessage(error)
+      )
+    )
+  }
+
+  barcode_results <- if (workers == 1L || length(barcode_dirs) < 2L ||
+                         .Platform$OS.type == "windows") {
+    lapply(barcode_dirs, safe_process_barcode)
+  } else {
+    parallel::mclapply(
+      barcode_dirs,
+      safe_process_barcode,
+      mc.cores = workers
+    )
+  }
+
+  failed <- which(!vapply(barcode_results, `[[`, logical(1), "ok"))
+  if (length(failed) > 0L) {
+    failure <- barcode_results[[failed[[1L]]]]
+    stop(
+      "Synthetic AB1 generation failed for `", failure$barcode,
+      "`: ", failure$message,
+      call. = FALSE
+    )
+  }
+
+  rows <- if (length(barcode_results) == 0L) {
+    empty_variant_ab1_rows()
+  } else {
+    do.call(rbind, lapply(barcode_results, `[[`, "rows"))
+  }
+  rownames(rows) <- NULL
+  attr(rows, "workers") <- workers
+  rows
+}
+
+resolve_variant_ab1_workers <- function(ab1_workers, n_barcodes) {
+  if (!is.numeric(n_barcodes) || length(n_barcodes) != 1L ||
+      is.na(n_barcodes) || n_barcodes < 0L ||
+      n_barcodes != as.integer(n_barcodes)) {
+    stop("`n_barcodes` must be a single non-negative integer.", call. = FALSE)
+  }
+  if (n_barcodes == 0L) {
+    return(1L)
+  }
+
+  if (is.null(ab1_workers)) {
+    detected <- parallel::detectCores(logical = TRUE)
+    available <- if (is.na(detected) || detected < 2L) {
+      1L
+    } else {
+      as.integer(detected - 1L)
+    }
+  } else {
+    available <- validate_positive_integer(ab1_workers, "ab1_workers")
+  }
+  workers <- min(available, as.integer(n_barcodes))
+
+  if (.Platform$OS.type == "windows" && workers > 1L) {
+    warning(
+      "Barcode-level AB1 parallelization uses forked workers; setting ",
+      "`ab1_workers = 1` on Windows.",
+      call. = FALSE
+    )
+    workers <- 1L
+  }
+  as.integer(workers)
+}
+
+empty_variant_ab1_rows <- function() {
+  data.frame(
     barcode = character(),
     reference_name = character(),
     reference = character(),
@@ -1419,76 +1605,6 @@ generate_variant_ab1_files <- function(result_dir,
     status = character(),
     stringsAsFactors = FALSE
   )
-
-  for (barcode_dir in barcode_dirs) {
-    barcode <- basename(barcode_dir)
-    bam <- file.path(barcode_dir, "alignments", paste0(barcode, ".aligned.sorted.bam"))
-    bai <- delivery_standard_bam_index_path(bam)
-    bam_exists <- file.exists(bam)
-    bai_exists <- !is.na(bai)
-    ab1_dir <- file.path(barcode_dir, ab1_dir_name)
-
-    for (ref_name in ref_names) {
-      ab1_name <- sub("[{]barcode[}]", barcode, ab1_name_template)
-      ab1_name <- sub("[{]reference[}]", sanitize_igv_snapshot_name(ref_name), ab1_name)
-      ab1 <- file.path(ab1_dir, ab1_name)
-
-      if (isTRUE(dry_run)) {
-        rows <- rbind(rows, data.frame(
-          barcode = barcode,
-          reference_name = ref_name,
-          reference = reference,
-          bam = bam,
-          bai = if (is.na(bai)) paste0(bam, ".bai") else bai,
-          ab1 = ab1,
-          reference_exists = file.exists(reference),
-          bam_exists = bam_exists,
-          bai_exists = bai_exists,
-          generated = FALSE,
-          status = "dry_run",
-          stringsAsFactors = FALSE
-        ))
-        next
-      }
-
-      if (!bam_exists) {
-        stop("BAM file not found for `", barcode, "`: ", bam, call. = FALSE)
-      }
-      if (!bai_exists) {
-        stop("BAM index not found for `", barcode, "`: ", paste0(bam, ".bai"),
-             call. = FALSE)
-      }
-
-      synthetic_ab1_from_bam(
-        consensus = reference,
-        bam = bam,
-        output_ab1 = ab1,
-        reference_name = ref_name,
-        sample = paste(barcode, ref_name, sep = "_"),
-        samtools = samtools,
-        overwrite = overwrite,
-        echo = echo,
-        stderr = stderr
-      )
-
-      rows <- rbind(rows, data.frame(
-        barcode = barcode,
-        reference_name = ref_name,
-        reference = reference,
-        bam = bam,
-        bai = bai,
-        ab1 = normalizePath(ab1, mustWork = TRUE),
-        reference_exists = file.exists(reference),
-        bam_exists = bam_exists,
-        bai_exists = bai_exists,
-        generated = TRUE,
-        status = "generated",
-        stringsAsFactors = FALSE
-      ))
-    }
-  }
-
-  rows
 }
 
 variant_barcode_dirs <- function(result_dir, barcode_pattern) {
