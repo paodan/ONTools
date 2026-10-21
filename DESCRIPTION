@@ -18,6 +18,7 @@ Imports:
     DECIPHER,
     ggplot2,
     patchwork,
+    parallel,
     pwalign,
     readxl,
     rlang,
