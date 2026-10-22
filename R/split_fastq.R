@@ -27,6 +27,10 @@
 #'   between detected peaks. Set to `NULL` to disable distance filtering.
 #' @param density_n Integer of at least three giving the density-grid resolution
 #'   passed to [plot_read_length_peaks()].
+#' @param detection_range the range of detecting peaks, default is NULL, meaning
+#' to detect peaks from all reads
+#' @param left_offset left boundary offset from the peaks, default 150.
+#' @param right_offset right boundary offset from the peaks, default 150.
 #' @param x_breaks Optional finite numeric vector of plot-axis breaks in base
 #'   pairs. It affects only the returned peak plot.
 #' @param x_scale Plot x-axis scale: `"auto"`, `"log10"`, or `"linear"`.
@@ -123,6 +127,9 @@ split_fastq <- function(fastq_file,
                         log_scale = FALSE,
                         min_distance = 400,
                         density_n = 5000,
+                        detection_range = NULL,
+                        left_offset = 150,
+                        right_offset = 150,
                         x_breaks = c(1, seq(500, 3000, by = 500)),
                         x_scale = c("linear", "auto", "log10"),
                         seqkit = "seqkit",
@@ -219,6 +226,9 @@ split_fastq <- function(fastq_file,
         log_scale = log_scale,
         min_distance = min_distance,
         density_n = density_n,
+        detection_range = detection_range,
+        left_offset = left_offset,
+        right_offset = right_offset,
         title = sub(
           "[.]fastq([.]gz)?$",
           "",

@@ -25,117 +25,113 @@ make_gene_editing_delivery(
 }
 \arguments{
 \item{sample_info}{A data frame in the format returned by
-\code{standard_sample_info_gene_editing()}. It must contain \code{sample_id},
-\code{barcode}, \code{ref_name}, \code{region_start}, \code{region_end},
-\code{bam_file_origin}, \code{bam_file}, \code{output_fastq},
-\code{reference_file}, and \code{ab1_file}. Multiple references in
-\code{ref_name} must be separated by \code{"|"} and share the row's analysis
-interval.}
+\code{\link[=standard_sample_info_gene_editing]{standard_sample_info_gene_editing()}}. It must contain \code{sample_id},
+\code{barcode}, \code{ref_name}, \code{region_start}, \code{region_end}, \code{bam_file_origin},
+\code{bam_file}, \code{output_fastq}, \code{reference_file}, and \code{ab1_file}. Multiple
+references in \code{ref_name} must be separated by \code{"|"} and share the row's
+analysis interval.}
 
 \item{paths}{A named path list, normally returned by
-\code{standard_paths_gene_editing()}. It must contain \code{ref_sanitized},
+\code{\link[=standard_paths_gene_editing]{standard_paths_gene_editing()}}. It must contain \code{ref_sanitized},
 \code{xlsx_file_full}, \code{xlsx_file_filtered}, \code{sample_info_path},
-\code{work_bam_path}, \code{work_qc_path}, \code{work_ab1_path}, and
-\code{delivery_path}. Variant calling also uses \code{event_cache_dir}.}
+\code{work_bam_path}, \code{work_qc_path}, \code{work_ab1_path}, and \code{delivery_path}.
+Variant calling also uses \code{event_cache_dir}.}
 
-\item{ref_all}{Named reference sequences accepted by
-\code{run_editing_batch2()}. Names must correspond to the reference names
-stored in \code{sample_info$ref_name}.}
+\item{ref_all}{Named reference sequences accepted by \code{\link[=run_editing_batch2]{run_editing_batch2()}}.
+Names must correspond to the reference names stored in \code{sample_info$ref_name}.}
 
-\item{re_names}{A named character vector mapping sanitized BAM/FASTA
-reference names to the names in \code{ref_all}. For example,
-\code{c(PLA3_A_ = "PLA3-A")}. Every reference listed in
-\code{sample_info$ref_name} must have a matching value.}
+\item{re_names}{A named character vector mapping sanitized BAM/FASTA reference
+names to the names in \code{ref_all}. For example,
+\code{c(PLA3_A_ = "PLA3-A")}. Every reference listed in \code{sample_info$ref_name}
+must have a matching value.}
 
 \item{max_reads}{Positive number giving the maximum total number of eligible
 alignments retained in each sample's subset BAM across all references.}
 
 \item{min_event_ratio}{Minimum event-support percentage passed to
-\code{run_editing_batch2()} for both output workbooks.}
+\code{\link[=run_editing_batch2]{run_editing_batch2()}} for both output workbooks.}
 
 \item{min_comb_ratio}{Minimum variant-combination percentage used for the
 filtered workbook. The full workbook uses zero for this threshold.}
 
-\item{run_subset_bam_step}{Logical. If \code{TRUE}, generate indexed work
-BAMs from \code{bam_file_origin}; otherwise, existing paths in \code{bam_file}
-are used.}
+\item{run_subset_bam_step}{Logical. If \code{TRUE}, generate indexed work BAMs
+from \code{bam_file_origin}; otherwise, existing paths in \code{bam_file} are used.}
 
 \item{run_variant_calling}{Logical. If \code{TRUE}, run gene-editing variant
 calling and write the full and filtered Excel workbooks.}
 
-\item{make_ab1}{Logical. If \code{TRUE}, generate one synthetic AB1 file for
-every sanitized reference associated with each retained sample.}
+\item{make_ab1}{Logical. If \code{TRUE}, generate one synthetic AB1 file for every
+sanitized reference associated with each retained sample.}
 
-\item{make_fastq}{Logical. If \code{TRUE}, convert each retained work BAM to
-the corresponding \code{output_fastq} file.}
+\item{make_fastq}{Logical. If \code{TRUE}, convert each retained work BAM to the
+corresponding \code{output_fastq} file.}
 
 \item{mc.cores}{Number of forked workers used by the per-row workflow stages
-and passed to \code{run_editing_batch2()}. If \code{NULL}, the smaller of the
-sample count and the number reported by \code{parallel::detectCores()} is used,
-with a minimum of one.}
+and passed to \code{\link[=run_editing_batch2]{run_editing_batch2()}}. If \code{NULL}, the smaller of the sample
+count and the number reported by \code{\link[parallel:detectCores]{parallel::detectCores()}} is used, with a
+minimum of one.}
 
-\item{plot_qc_peaks}{Logical. If \code{TRUE}, draw a read-length peak plot for
-each existing output FASTQ and save it under
-\code{work_qc_path/Read_length}.}
+\item{plot_qc_peaks}{Logical. If \code{TRUE}, draw a read-length peak plot for each
+existing output FASTQ and save it under \code{work_qc_path/Read_length}.}
 
 \item{plot_qc_igv}{Logical. If \code{TRUE}, generate a primary-alignment IGV
 snapshot for each sanitized reference under \code{work_qc_path/IGV}.}
 
-\item{run_delivery}{Logical. If \code{TRUE}, collect the sanitized reference
-and its index, both variant workbooks, the source sample-information file, and
+\item{run_delivery}{Logical. If \code{TRUE}, collect the sanitized reference and
+its index, both variant workbooks, the source sample-information file, and
 the work BAM, QC, and AB1 directories under \code{paths$delivery_path}.}
 
 \item{igv}{Character scalar giving the path or command used to launch IGV.}
 }
 \value{
-A list with two elements: \code{sample_info_valid}, containing the rows whose
-source and work BAM files were found at the relevant stages, and \code{paths},
-containing the input path list. The function also writes the selected workflow
-outputs as side effects.
+A list with two elements: \code{sample_info_valid}, containing the rows
+whose source and work BAM files were found at the relevant stages, and
+\code{paths}, containing the input path list. The function also writes the
+selected workflow outputs as side effects.
 }
 \description{
-Run the gene-editing delivery workflow for standardized sample metadata. The
-workflow can subset source BAM files, call and summarize variants, generate
-synthetic AB1 files and FASTQ files, draw read-length and IGV quality-control
-figures, and collect the resulting files into a delivery directory.
+Run the gene-editing delivery workflow for standardized sample metadata.
+The workflow can subset source BAM files, call and summarize variants,
+generate synthetic AB1 files and FASTQ files, draw read-length and IGV
+quality-control figures, and collect the resulting files into a delivery
+directory.
 }
 \details{
-\code{sample_info} is expected to contain one row per sample/barcode. A row
-may specify multiple candidate references in \code{ref_name} by separating
-their names with \code{"|"}, for example
-\code{"PLA3-A|PLA3-B|PLA3-D"}. The row's \code{region_start} and
-\code{region_end} are applied to every reference named in that row. The names
-in \code{ref_name} refer to the names used by \code{ref_all}; \code{re_names}
+\code{sample_info} is expected to contain one row per sample/barcode. A row may
+specify multiple candidate references in \code{ref_name} by separating their
+names with \code{"|"}, for example \code{"PLA3-A|PLA3-B|PLA3-D"}. The row's
+\code{region_start} and \code{region_end} are applied to every reference named in that
+row. The names in \code{ref_name} refer to the names used by \code{ref_all}; \code{re_names}
 maps the sanitized names stored in the BAM and sanitized FASTA to those
 reference names.
 
 When BAM subsetting is enabled, reads must be primary alignments with mapping
 quality at least 20 and must completely cover the configured closed interval.
-At most \code{max_reads} eligible alignments are retained across all references
-in a row. The subset BAM is indexed and replaces an existing work BAM.
+At most \code{max_reads} eligible alignments are retained across all references in
+a row. The subset BAM is indexed and replaces an existing work BAM.
 
-Variant calling creates two workbooks. Both apply a minimum of three reads per
-event and combination, \code{min_event_ratio}, at least 20 callable reads, and
-mapping quality 20. The workbook at \code{paths$xlsx_file_full} uses a
-combination ratio threshold of zero; the workbook at
-\code{paths$xlsx_file_filtered} uses \code{min_comb_ratio}.
+Variant calling creates two workbooks. Both apply a minimum of three reads
+per event and combination, \code{min_event_ratio}, at least 20 callable reads, and
+mapping quality 20. The workbook at \code{paths$xlsx_file_full} uses a combination
+ratio threshold of zero; the workbook at \code{paths$xlsx_file_filtered} uses
+\code{min_comb_ratio}.
 
 One synthetic AB1 file is generated for every sanitized reference associated
 with a sample. The reference name is inserted before the \code{.ab1} suffix of
-\code{sample_info$ab1_file}. FASTQ and read-length QC outputs are generated
-once per row. IGV snapshots are generated once per sanitized reference.
+\code{sample_info$ab1_file}. FASTQ and read-length QC outputs are generated once
+per row. IGV snapshots are generated once per sanitized reference.
 
 Source-BAM rows that do not exist are removed before processing. After the
-optional subset step, rows whose work BAM does not exist are also removed. An
-error is raised if no rows remain at either point.
+optional subset step, rows whose work BAM does not exist are also removed.
+An error is raised if no rows remain at either point.
 
-The per-row stages use fork-based \code{parallel::mclapply()}. On platforms
-where forked processing is unavailable, the behavior and degree of parallelism
-are governed by \pkg{parallel}'s platform-specific implementation.
+The per-row stages use fork-based \code{\link[parallel:mclapply]{parallel::mclapply()}}. On platforms where
+forked processing is unavailable, the behavior and degree of parallelism are
+governed by \code{parallel}'s platform-specific implementation.
 
 Existing subset BAM, AB1, and FASTQ outputs are overwritten. The subset BAM
 sampling seed is fixed at 1234. AB1 generation uses the defaults of
-\code{synthetic_ab1_from_bam()}. IGV output contains primary alignments only.
+\code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}}. IGV output contains primary alignments only.
 }
 \examples{
 \dontrun{
@@ -190,10 +186,11 @@ result <- make_gene_editing_delivery(
 )
 result$sample_info_valid
 }
+
 }
 \seealso{
-\code{standard_paths_gene_editing()},
-\code{standard_sample_info_gene_editing()}, \code{subset_bam_reads()},
-\code{run_editing_batch2()}, \code{synthetic_ab1_from_bam()},
-\code{igv_snapshot()}, \code{collect_items()}
+\code{\link[=standard_paths_gene_editing]{standard_paths_gene_editing()}},
+\code{\link[=standard_sample_info_gene_editing]{standard_sample_info_gene_editing()}}, \code{\link[=subset_bam_reads]{subset_bam_reads()}},
+\code{\link[=run_editing_batch2]{run_editing_batch2()}}, \code{\link[=synthetic_ab1_from_bam]{synthetic_ab1_from_bam()}}, \code{\link[=igv_snapshot]{igv_snapshot()}},
+\code{\link[=collect_items]{collect_items()}}
 }

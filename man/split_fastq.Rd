@@ -15,6 +15,9 @@ split_fastq(
   log_scale = FALSE,
   min_distance = 400,
   density_n = 5000,
+  detection_range = NULL,
+  left_offset = 150,
+  right_offset = 150,
   x_breaks = c(1, seq(500, 3000, by = 500)),
   x_scale = c("linear", "auto", "log10"),
   seqkit = "seqkit",
@@ -55,6 +58,13 @@ between detected peaks. Set to \code{NULL} to disable distance filtering.}
 
 \item{density_n}{Integer of at least three giving the density-grid resolution
 passed to \code{\link[=plot_read_length_peaks]{plot_read_length_peaks()}}.}
+
+\item{detection_range}{the range of detecting peaks, default is NULL, meaning
+to detect peaks from all reads}
+
+\item{left_offset}{left boundary offset from the peaks, default 150.}
+
+\item{right_offset}{right boundary offset from the peaks, default 150.}
 
 \item{x_breaks}{Optional finite numeric vector of plot-axis breaks in base
 pairs. It affects only the returned peak plot.}
