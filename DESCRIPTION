@@ -17,6 +17,7 @@ Imports:
     Biostrings,
     DECIPHER,
     ggplot2,
+    grid,
     patchwork,
     parallel,
     pwalign,
@@ -28,8 +29,10 @@ Imports:
     stringr,
     R.utils
 Suggests:
+    ape,
     openxlsx,
     pagedown,
+    phangorn,
     ShortRead,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
