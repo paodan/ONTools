@@ -412,3 +412,131 @@ read_fastq_lengths <- function(path, chunk_records = 100000L) {
 
   read_length
 }
+
+#' Read mean quality values from a FASTQ file
+#'
+#' `read_fastq_qvalues()` calculates the mean Phred quality score of every
+#' record in a four-line FASTQ or FASTQ.GZ file. It has the same arguments as
+#' [read_fastq_lengths()] and reads records in chunks, avoiding storage of all
+#' sequence and quality strings in memory at once.
+#'
+#' @param path Path to an input `.fastq` or `.fastq.gz` file.
+#' @param chunk_records Positive integer giving the maximum number of FASTQ
+#'   records read and validated per chunk. Larger values may improve throughput
+#'   at the cost of temporary memory use. This does not limit the total number
+#'   of records returned.
+#'
+#' @return A numeric vector containing one mean Phred quality score per FASTQ
+#'   record, in input order. An empty FASTQ returns `numeric(0)`.
+#'
+#' @details
+#' Quality strings are interpreted using Phred+33 encoding. For each quality
+#' character, the Phred score is its ASCII code minus 33. Following Dorado's
+#' definition, the leading 60 bases are excluded when a read is longer than 60
+#' bases. The remaining scores are converted to error probabilities, those
+#' probabilities are averaged, and the mean is converted back to Phred scale:
+#'
+#' `mean_q = -10 * log10(mean(10^(-base_q / 10)))`.
+#'
+#' For example, `!` represents Q0, `+` represents Q10, `5` represents Q20,
+#' `?` represents Q30, and `I` represents Q40. Because averaging is performed
+#' on the error-probability scale, the result is not generally equal to the
+#' arithmetic mean of the per-base Q scores.
+#'
+#' Each record must use the standard four-line FASTQ representation: a header
+#' beginning with `@`, one unwrapped sequence line, a separator beginning with
+#' `+`, and one unwrapped quality line. Sequence and quality strings must have
+#' identical byte lengths. Wrapped FASTQ records are not supported. Quality
+#' characters must fall in the printable Phred+33 ASCII range 33--126.
+#'
+#' Both plain-text and gzip-compressed inputs are supported. The function
+#' calculates the mean from the FASTQ quality string itself; it does not use a
+#' `qs` value that may be present in a MinKNOW/Dorado FASTQ header. The leading
+#' 60-base rule and probability-scale mean reproduce the current Dorado method
+#' for ordinary DNA reads. Values can still differ for data produced with a
+#' different basecaller/version or workflows with molecule-specific trimming,
+#' such as direct RNA poly(A)-tail handling.
+#'
+#' @examples
+#' reads <- tempfile(fileext = ".fastq")
+#' writeLines(
+#'   c(
+#'     "@read1", "ACGT", "+", "IIII", # four Q40 bases
+#'     "@read2", "ACGT", "+", "!+5?"  # Q0, Q10, Q20, Q30
+#'   ),
+#'   reads
+#' )
+#' read_fastq_qvalues(reads)
+#'
+#' compressed <- tempfile(fileext = ".fastq.gz")
+#' con <- gzfile(compressed, open = "wt")
+#' writeLines(c("@read3", "ACGTA", "+", "55555"), con)
+#' close(con)
+#' read_fastq_qvalues(compressed, chunk_records = 1)
+#'
+#' @seealso [read_fastq_lengths()], [fastq_read_info2()]
+#' @export
+read_fastq_qvalues <- function(path, chunk_records = 100000L) {
+  check_file_arg(path, "path")
+  split_fastq_suffix(path, name = "path")
+  chunk_records <- validate_positive_integer(chunk_records, "chunk_records")
+  path <- normalizePath(path, mustWork = TRUE)
+
+  con <- if (grepl("[.]gz$", path, ignore.case = TRUE)) {
+    gzfile(path, open = "rt")
+  } else {
+    file(path, open = "rt")
+  }
+  on.exit(close(con), add = TRUE)
+
+  mean_qvalue <- numeric()
+  repeat {
+    block <- readLines(con, n = 4L * chunk_records, warn = FALSE)
+    if (length(block) == 0L) break
+    if (length(block) %% 4L != 0L) {
+      stop("Incomplete FASTQ record in file: ", path, call. = FALSE)
+    }
+
+    header_index <- seq.int(1L, length(block), by = 4L)
+    sequence_index <- header_index + 1L
+    plus_index <- header_index + 2L
+    quality_index <- header_index + 3L
+    if (any(!startsWith(block[header_index], "@")) ||
+        any(!startsWith(block[plus_index], "+"))) {
+      stop("Invalid four-line FASTQ record in file: ", path, call. = FALSE)
+    }
+
+    sequence_length <- nchar(block[sequence_index], type = "bytes")
+    quality <- block[quality_index]
+    quality_length <- nchar(quality, type = "bytes")
+    if (any(sequence_length != quality_length)) {
+      stop(
+        "Sequence and quality lengths differ in FASTQ file: ",
+        path,
+        call. = FALSE
+      )
+    }
+
+    chunk_qvalue <- vapply(
+      quality,
+      FUN.VALUE = numeric(1L),
+      FUN = function(value) {
+        score <- as.integer(charToRaw(value)) - 33L
+        if (any(score < 0L | score > 93L)) {
+          stop(
+            "Invalid Phred+33 quality character in FASTQ file: ",
+            path,
+            call. = FALSE
+          )
+        }
+        if (length(score) == 0L) return(NaN)
+        if (length(score) > 60L) score <- score[-seq_len(60L)]
+        -10 * log10(mean(10^(-score / 10)))
+      },
+      USE.NAMES = FALSE
+    )
+    mean_qvalue <- c(mean_qvalue, chunk_qvalue)
+  }
+
+  mean_qvalue
+}

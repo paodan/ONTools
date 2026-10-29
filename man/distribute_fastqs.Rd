@@ -17,75 +17,74 @@ distribute_fastqs(
 \arguments{
 \item{fastqs_split}{A non-empty character vector of existing split FASTQ
 files. Every basename must end in
-`"_peak_<number>_<length>bp.fastq.gz"`, for example
-`"sample01_peak_2_720bp.fastq.gz"`.}
+\code{"_peak_<number>_<length>bp.fastq.gz"}, for example
+\code{"sample01_peak_2_720bp.fastq.gz"}.}
 
 \item{out_path}{A single non-empty path to the output root directory.}
 
 \item{size_breaks}{A strictly increasing numeric vector containing at least
-two finite boundaries. Non-`peak_1` files, or all files when
-`separate_peak1 = FALSE`, are grouped into consecutive intervals. The
+two finite boundaries. Non-\code{peak_1} files, or all files when
+\code{separate_peak1 = FALSE}, are grouped into consecutive intervals. The
 first interval includes its lower boundary and every interval includes its
 upper boundary.}
 
-\item{save_diff_size_folder}{Logical. If `TRUE`, add the group name as a
-directory between `out_path` and the file-specific directory. If `FALSE`,
-file-specific directories are created directly under `out_path`.}
+\item{save_diff_size_folder}{Logical. If \code{TRUE}, add the group name as a
+directory between \code{out_path} and the file-specific directory. If \code{FALSE},
+file-specific directories are created directly under \code{out_path}.}
 
-\item{separate_peak1}{Logical. If `TRUE`, files labelled `peak_1` bypass
-length binning and are assigned to the `peak1_target_range` group.}
+\item{separate_peak1}{Logical. If \code{TRUE}, files labelled \code{peak_1} bypass
+length binning and are assigned to the \code{peak1_target_range} group.}
 
-\item{overwrite}{Logical. If `TRUE`, replace an existing destination file.
-If `FALSE`, retain it and report `destination_exists` in the returned
+\item{overwrite}{Logical. If \code{TRUE}, replace an existing destination file.
+If \code{FALSE}, retain it and report \code{destination_exists} in the returned
 status table.}
 
 \item{out_of_range}{How to handle files whose peak length lies outside
-`size_breaks`. `"warn"` skips them and issues a warning, `"error"` stops
-before copying any file, and `"drop"` skips them without a warning.}
+\code{size_breaks}. \code{"warn"} skips them and issues a warning, \code{"error"} stops
+before copying any file, and \code{"drop"} skips them without a warning.}
 }
 \value{
 Invisibly returns a data frame with one row per input file and the
-  following columns:
-
-* `source`: input FASTQ path;
-* `peak`: parsed peak label such as `"peak_2"`;
-* `peak_size`: parsed peak length in base pairs;
-* `group`: length-range group or `"peak1_target_range"`;
-* `destination`: complete output path, or `NA` when the file is outside the
-  configured ranges;
-* `copied`: whether the file was copied by this call;
-* `status`: one of `"copied"`, `"destination_exists"`, `"copy_failed"`, or
-  `"out_of_range"`.
+following columns:
+\itemize{
+\item \code{source}: input FASTQ path;
+\item \code{peak}: parsed peak label such as \code{"peak_2"};
+\item \code{peak_size}: parsed peak length in base pairs;
+\item \code{group}: length-range group or \code{"peak1_target_range"};
+\item \code{destination}: complete output path, or \code{NA} when the file is outside the
+configured ranges;
+\item \code{copied}: whether the file was copied by this call;
+\item \code{status}: one of \code{"copied"}, \code{"destination_exists"}, \code{"copy_failed"}, or
+\code{"out_of_range"}.
+}
 }
 \description{
 Parse peak numbers and peak lengths from FASTQ filenames produced by
-[split_fastq()] or [split_fastqs()], group the files by configured length
+\code{\link[=split_fastq]{split_fastq()}} or \code{\link[=split_fastqs]{split_fastqs()}}, group the files by configured length
 ranges, and copy every file into its own directory. The original filename
 and modification time are retained.
 }
 \details{
-With the default `size_breaks = c(500, 1000, 2000)`, the generated groups
-are `read_len_range__500_1000` and `read_len_range__1000_2000`. A length of
+With the default \code{size_breaks = c(500, 1000, 2000)}, the generated groups
+are \code{read_len_range__500_1000} and \code{read_len_range__1000_2000}. A length of
 500 is included in the first group, 1000 is included in the first group,
 and 2000 is included in the second group.
 
-When `save_diff_size_folder = TRUE`, a file such as
-`sample01_peak_2_720bp.fastq.gz` is copied to:
+When \code{save_diff_size_folder = TRUE}, a file such as
+\code{sample01_peak_2_720bp.fastq.gz} is copied to:
 
-```
-<out_path>/read_len_range__500_1000/
+\if{html}{\out{<div class="sourceCode">}}\preformatted{<out_path>/read_len_range__500_1000/
   sample01_peak_2_720bp/sample01_peak_2_720bp.fastq.gz
-```
+}\if{html}{\out{</div>}}
 
-When `save_diff_size_folder = FALSE`, the length-group directory is omitted:
+When \code{save_diff_size_folder = FALSE}, the length-group directory is omitted:
 
-```
-<out_path>/sample01_peak_2_720bp/sample01_peak_2_720bp.fastq.gz
-```
+\if{html}{\out{<div class="sourceCode">}}\preformatted{<out_path>/sample01_peak_2_720bp/sample01_peak_2_720bp.fastq.gz
+}\if{html}{\out{</div>}}
 
 Filenames are parsed strictly so malformed names cannot be silently placed
 in an incorrect directory. File-specific directory names are derived from
-the FASTQ basename without `.fastq.gz`; characters other than ASCII letters,
+the FASTQ basename without \code{.fastq.gz}; characters other than ASCII letters,
 digits, underscores, and hyphens are replaced with underscores. Ambiguous
 duplicate destinations are rejected before copying.
 }
@@ -115,5 +114,5 @@ file.exists(result$destination)
 
 }
 \seealso{
-[split_fastq()], [split_fastqs()], [collect_items()]
+\code{\link[=split_fastq]{split_fastq()}}, \code{\link[=split_fastqs]{split_fastqs()}}, \code{\link[=collect_items]{collect_items()}}
 }
