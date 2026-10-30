@@ -328,7 +328,7 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
   # Delivery
   if(run_delivery){
     message("run_delivery")
-    dir.create(paths$delivery_path)
+    dir.create(paths$delivery_path, showWarnings = FALSE, recursive = TRUE)
     collect_items(
       source = c(paths$ref_sanitized, paste0(paths$ref_sanitized, ".fai"),
                  unlist(paths[c("xlsx_file_full", "xlsx_file_filtered", "sample_info_path",
