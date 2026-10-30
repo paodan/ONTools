@@ -181,13 +181,13 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
     stop("`", paste(missing_col, collapse = "`, `"), "` column must exist in `sample_info`")
   }
 
-  sample_info$region_start = max(1, sample_info$region_start - upstream)
+  sample_info$region_start = pmax(1, sample_info$region_start - upstream)
 
-  sample_info$region_end = unname(sapply(sample_info$ref_name, function(x) {
-    nm = strsplit(x, split = "\\|")
+  sample_info$region_end = sapply(1:nrow(sample_info), function(x) {
+    nm = strsplit(sample_info$ref_name[x], split = "\\|")[[1]]
     min(Biostrings::width(ref_all[nm]),
-        sample_info$region_end + downstream)
-  }))
+        sample_info$region_end[x] + downstream)
+  })
 
 
   path_names = c("ref_sanitized", "xlsx_file_full", "xlsx_file_filtered", "sample_info_path",
