@@ -12,6 +12,8 @@ make_gene_editing_delivery(
   max_reads = 2500,
   min_event_ratio = 0.5,
   min_comb_ratio = 0.5,
+  upstream = 20,
+  downstream = 20,
   run_subset_bam_step = TRUE,
   run_variant_calling = TRUE,
   make_ab1 = TRUE,
@@ -53,6 +55,10 @@ alignments retained in each sample's subset BAM across all references.}
 
 \item{min_comb_ratio}{Minimum variant-combination percentage used for the
 filtered workbook. The full workbook uses zero for this threshold.}
+
+\item{upstream}{= 20, upstream of the start editing site.}
+
+\item{downstream}{= 20, downstream of the end editing site.}
 
 \item{run_subset_bam_step}{Logical. If \code{TRUE}, generate indexed work BAMs
 from \code{bam_file_origin}; otherwise, existing paths in \code{bam_file} are used.}

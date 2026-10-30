@@ -53,6 +53,8 @@
 #'   [run_editing_batch2()] for both output workbooks.
 #' @param min_comb_ratio Minimum variant-combination percentage used for the
 #'   filtered workbook. The full workbook uses zero for this threshold.
+#' @param upstream = 20, upstream of the start editing site.
+#' @param downstream = 20, downstream of the end editing site.
 #' @param run_subset_bam_step Logical. If `TRUE`, generate indexed work BAMs
 #'   from `bam_file_origin`; otherwise, existing paths in `bam_file` are used.
 #' @param run_variant_calling Logical. If `TRUE`, run gene-editing variant
@@ -152,38 +154,49 @@
 #'   [collect_items()]
 #' @importFrom parallel mclapply
 #' @export
-make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names, 
+make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
                                       max_reads = 2500,
-                                      min_event_ratio = 0.5, min_comb_ratio = 0.5, 
+                                      min_event_ratio = 0.5, min_comb_ratio = 0.5,
+                                      upstream = 20,
+                                      downstream = 20,
                                       run_subset_bam_step = TRUE,
                                       run_variant_calling = TRUE,
                                       make_ab1 = TRUE,
                                       make_fastq = TRUE,
                                       mc.cores = NULL,
-                                      plot_qc_peaks = TRUE, 
-                                      plot_qc_igv = TRUE, 
+                                      plot_qc_peaks = TRUE,
+                                      plot_qc_igv = TRUE,
                                       run_delivery = TRUE,
                                       igv = "/usr/local/bin/IGV_Linux_2.19.8/igv.sh"
                                       ){
   missing_col = c()
-  for(mi in c("sample_id", "barcode", "ref_name", "region_start", "region_end", 
+  for(mi in c("sample_id", "barcode", "ref_name", "region_start", "region_end",
               "bam_file_origin", "bam_file", "output_fastq", "reference_file", "ab1_file")){
     if(!mi %in% colnames(sample_info)){
       missing_col = c(missing_col, mi)
     }
   }
-  
+
   if(length(missing_col) > 0){
     stop("`", paste(missing_col, collapse = "`, `"), "` column must exist in `sample_info`")
   }
-  
+
+  sample_info$region_start = max(1, sample_info$region_start - upstream)
+
+  sample_info$region_end = unname(sapply(sample_info$ref_name, function(x) {
+    nm = strsplit(x, split = "\\|")
+    min(Biostrings::width(ref_all[nm]),
+        sample_info$region_end + downstream)
+  }))
+
+
   path_names = c("ref_sanitized", "xlsx_file_full", "xlsx_file_filtered", "sample_info_path",
                  "work_bam_path", "work_qc_path", "work_ab1_path", "delivery_path")
   not_exist_paths = path_names[!(path_names %in% names(paths))]
   if(length(not_exist_paths) > 0){
     stop("These path names do not exist:\n", paste(not_exist_paths, collapse = ", "))
   }
-  
+
   sample_info = sample_info[file.exists(sample_info[["bam_file_origin"]]), , drop = FALSE]
   if(nrow(sample_info) < 1){
     stop("No bam file is found")
@@ -191,32 +204,32 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
   if(is.null(mc.cores)){
     mc.cores = max(1, min(nrow(sample_info), parallel::detectCores()))
   }
-  
+
   sanitized_ref_name = function(x, re_names){
     names(re_names)[re_names %in% strsplit(x, "\\|")[[1]]]
   }
-  
+
   if(run_subset_bam_step){
     message("run_subset_bam_step")
     tmp = mclapply(1:nrow(sample_info), function(mi){
       # if(file.exists(sample_info$bam_file_origin[mi])){}
-      subset_bam_reads(bam = sample_info$bam_file_origin[mi], 
-                       output_bam = sample_info$bam_file[mi], 
-                       reference_name = sanitized_ref_name(sample_info$ref_name[mi], re_names), 
-                       min_mapq = 20, max_reads = max_reads, 
-                       region_start = sample_info$region_start[mi], 
-                       region_end = sample_info$region_end[mi], 
-                       coverage = "complete", 
-                       primary_only = TRUE, 
+      subset_bam_reads(bam = sample_info$bam_file_origin[mi],
+                       output_bam = sample_info$bam_file[mi],
+                       reference_name = sanitized_ref_name(sample_info$ref_name[mi], re_names),
+                       min_mapq = 20, max_reads = max_reads,
+                       region_start = sample_info$region_start[mi],
+                       region_end = sample_info$region_end[mi],
+                       coverage = "complete",
+                       primary_only = TRUE,
                        seed = 1234, index_output = TRUE, overwrite = TRUE)
-      
+
     }, mc.cores = mc.cores)
   }
   sample_info = sample_info[file.exists(sample_info[["bam_file"]]), , drop = FALSE]
   if(nrow(sample_info) < 1){
     stop("No bam_file is found")
   }
-  
+
   if(run_variant_calling){
     message("run_variant_calling")
     # Generate the gene variant tables
@@ -227,7 +240,7 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
         ref_all = ref_all,
         re_names = re_names,
         cache_dir = paths$event_cache_dir,
-        min_anchor = 0, 
+        min_anchor = 0,
         min_event_reads = 3,
         min_event_ratio = min_event_ratio,  # Important parameter
         min_comb_reads = 3,
@@ -237,38 +250,38 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
         colored_xlsx = paths[[fi]], mc.cores = mc.cores)
     }
   }
-  
-  
-  # Generate ab1 files 
+
+
+  # Generate ab1 files
   if(make_ab1){
     message("make_ab1")
-    
+
     tmp = mclapply(1:nrow(sample_info), function(mi){
       sample_info_mi = sample_info[mi, , drop = FALSE]
       if(file.exists(sample_info_mi$bam_file)){
         for(refi in sanitized_ref_name(sample_info_mi$ref_name, re_names)){
-          synthetic_ab1_from_bam(sample_info_mi$reference_file, 
-                                 bam = sample_info_mi$bam_file, 
-                                 output_ab1 = gsub("\\.ab1$", paste0("_", refi, ".ab1"), 
-                                                   sample_info_mi$ab1_file), 
-                                 reference_name = refi, 
+          synthetic_ab1_from_bam(sample_info_mi$reference_file,
+                                 bam = sample_info_mi$bam_file,
+                                 output_ab1 = gsub("\\.ab1$", paste0("_", refi, ".ab1"),
+                                                   sample_info_mi$ab1_file),
+                                 reference_name = refi,
                                  overwrite = TRUE)
         }
       }
     }, mc.cores = mc.cores)
   }
-  
+
   # Convert bam to fastq files
   if(make_fastq){
     message("make_fastq")
     tmp = mclapply(1:nrow(sample_info), function(mi){
       if(file.exists(sample_info$bam_file[mi])){
-        bam_to_fastq(sample_info$bam_file[mi], output_fastq = sample_info$output_fastq[mi], 
+        bam_to_fastq(sample_info$bam_file[mi], output_fastq = sample_info$output_fastq[mi],
                      threads = 1, copy_tags = TRUE, overwrite = TRUE)
       }
     }, mc.cores = mc.cores)
   }
-  
+
   if(plot_qc_peaks){
     message("plot_qc_peaks")
     # Plot peaks
@@ -276,14 +289,14 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
       sample_info_mi = sample_info[mi,,drop = FALSE]
       fastq_file_mi = sample_info_mi$output_fastq
       if(file.exists(fastq_file_mi)){
-        p = plot_fastq_peaks(fastq_file_mi, 
-                             min_distance = (sample_info_mi$region_end - sample_info_mi$region_start)/2, 
-                             left_offset = (sample_info_mi$region_end - sample_info_mi$region_start)/3, 
-                             right_offset = (sample_info_mi$region_end - sample_info_mi$region_start)/3, 
+        p = plot_fastq_peaks(fastq_file_mi,
+                             min_distance = (sample_info_mi$region_end - sample_info_mi$region_start)/2,
+                             left_offset = (sample_info_mi$region_end - sample_info_mi$region_start)/3,
+                             right_offset = (sample_info_mi$region_end - sample_info_mi$region_start)/3,
                              print_plots = FALSE, subtitle = sample_info_mi$sample_id)
-        
+
         file_mi = gsub(".fastq.gz", "_read_length.png", basename(fastq_file_mi))
-        ggplot2::ggsave(filename = file.path(paths$work_qc_path,  "Read_length", file_mi), 
+        ggplot2::ggsave(filename = file.path(paths$work_qc_path,  "Read_length", file_mi),
                         plot = p[[1]], width = 7, height = 4.5, create.dir = TRUE)
         return(1)
       } else {
@@ -291,7 +304,7 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
       }
     }, mc.cores = mc.cores)
   }
-  
+
   # Save IGV figures
   if(plot_qc_igv){
     message("plot_qc_igv")
@@ -311,7 +324,7 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
       }
     }, mc.cores = mc.cores)
   }
-  
+
   # Delivery
   if(run_delivery){
     message("run_delivery")
@@ -319,7 +332,7 @@ make_gene_editing_delivery = function(sample_info, paths, ref_all, re_names,
     collect_items(
       source = c(paths$ref_sanitized, paste0(paths$ref_sanitized, ".fai"),
                  unlist(paths[c("xlsx_file_full", "xlsx_file_filtered", "sample_info_path",
-                                "work_bam_path", "work_qc_path", "work_ab1_path")])), 
+                                "work_bam_path", "work_qc_path", "work_ab1_path")])),
       destination_dir = paths$delivery_path)
   }
   return(list(sample_info_valid = sample_info, paths = paths))
