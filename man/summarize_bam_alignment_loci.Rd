@@ -16,8 +16,14 @@ summarize_bam_alignment_loci(
 )
 }
 \arguments{
-\item{bam}{Path to a BAM file. An index is not required because the BAM is
-scanned sequentially.}
+\item{bam}{Path to a BAM file containing reads aligned to a genomic reference.
+The file must contain a valid SAM header and aligned records with query
+name, reference name, leftmost reference position, CIGAR, flag, and MAPQ.
+Coordinate sorting and a BAM index are recommended for interoperability
+with \code{samtools} and IGV, but an index is not required by this function
+because the BAM is scanned sequentially. For finding non-specific wheat
+amplicons, align the reads to the complete wheat genome rather than only to
+the intended amplicon sequence.}
 
 \item{min_mapq}{Non-negative integer. Keep alignments with mapping quality
 greater than or equal to this value. Use \code{21} to reproduce a strict
@@ -77,18 +83,155 @@ Counts in \code{alignments}, \code{reference_summary$alignment_records}, and
 \code{peak_summary$alignment_records} refer to BAM alignment records. Unique read
 counts are based on distinct query names and may be smaller when a query name
 occurs more than once.
+
+The input BAM may contain unmapped, secondary, supplementary, duplicate, and
+QC-fail records. Keeping an unfiltered source BAM is useful because filtering
+choices can then be changed without repeating alignment. This function always
+removes unmapped records; the remaining flag filters are controlled by
+\code{primary_only}, \code{exclude_duplicates}, and \code{exclude_qcfail}. The MAPQ filter is
+inclusive: \code{min_mapq = 20} means \code{MAPQ >= 20}, whereas the original R
+expression \code{mapq > 20} is reproduced with \code{min_mapq = 21}.
 }
+\section{Preparing a wheat-genome BAM from ONT reads}{
+
+
+To determine where non-specific PCR products originate, map the demultiplexed
+ONT reads against a complete wheat reference genome. For example, the Chinese
+Spring bread-wheat assembly IWGSC CS RefSeq v2.1 is available from NCBI as
+assembly \code{GCF_018294505.1}. Assume the downloaded and decompressed FASTA is:
+
+\if{html}{\out{<div class="sourceCode text">}}\preformatted{GCF_018294505.1_IWGSC_CS_RefSeq_v2.1_genomic.fna
+}\if{html}{\out{</div>}}
+
+and the sample reads are:
+
+\if{html}{\out{<div class="sourceCode text">}}\preformatted{barcode150.fastq.gz
+}\if{html}{\out{</div>}}
+
+First build a reusable minimap2 index. This is done once for the wheat
+reference and can require substantial memory and disk space because the
+assembly is approximately 14 Gb:
+
+\if{html}{\out{<div class="sourceCode bash">}}\preformatted{minimap2 -d wheat_CS_RefSeq_v2.1.mmi \\
+  GCF_018294505.1_IWGSC_CS_RefSeq_v2.1_genomic.fna
+}\if{html}{\out{</div>}}
+
+Minimap2 normally indexes a limited number of target bases in one batch
+(\code{-I}, commonly 8G by default). The wheat assembly is larger than one default
+batch, so its \code{.mmi} can be a multi-part index. When mapping against such an
+index, provide \code{--split-prefix} so minimap2 has a writable prefix for its
+temporary intermediate files and can combine the index parts correctly.
+
+Align the ONT reads with the \code{map-ont} preset, convert the SAM stream to a
+coordinate-sorted BAM, and create its index:
+
+\if{html}{\out{<div class="sourceCode bash">}}\preformatted{minimap2 -ax map-ont -t 32 \\
+  --split-prefix=barcode150.wheat.minimap2_split \\
+  -R '@RG\\tID:barcode150\\tSM:barcode150\\tPL:ONT' \\
+  wheat_CS_RefSeq_v2.1.mmi barcode150.fastq.gz \\
+| samtools sort -@ 8 -m 2G -o barcode150.wheat.bam -
+
+samtools index -@ 8 barcode150.wheat.bam
+}\if{html}{\out{</div>}}
+
+\verb{-t 32} controls minimap2 threads, while \verb{samtools sort -@ 8 -m 2G} uses up
+to 2 GB per sorting thread. Adjust both settings to the available computer.
+\code{--split-prefix} is a filename prefix, not an output BAM name. Put it on a
+fast local disk with sufficient free space when possible, for example
+\verb{/scratch/project/barcode150.minimap2_split}. It must be writable and must be
+unique for every simultaneously running sample; reusing one prefix in
+parallel jobs can corrupt or overwrite temporary files. Interrupted jobs may
+leave files with this prefix, which can be removed after confirming that no
+minimap2 process is still using them.
+
+The \code{-R} read-group field is optional for this function but records the sample
+identity in the BAM. \verb{samtools sort} is essential before indexing; the final
+\code{-} tells it to read SAM/BAM data from the pipe.
+
+On a machine with enough RAM, an alternative is to rebuild a single-part
+wheat index by setting \code{-I} above the reference size, for example:
+
+\if{html}{\out{<div class="sourceCode bash">}}\preformatted{minimap2 -I 20G -d wheat_CS_RefSeq_v2.1.single.mmi \\
+  GCF_018294505.1_IWGSC_CS_RefSeq_v2.1_genomic.fna
+}\if{html}{\out{</div>}}
+
+This can require substantially more memory. For typical servers, retaining
+the multi-part index and using a unique \code{--split-prefix} is safer.
+
+Do not apply a high MAPQ filter while creating the archival BAM unless disk
+space requires it. Bread wheat is hexaploid and contains many highly similar
+A-, B-, and D-subgenome loci. Genuine reads from homologous or repetitive
+regions can therefore receive MAPQ 0 or have secondary alignments. Retaining
+these records allows comparison of \code{min_mapq = 0}, \code{20}, or \code{21} later. With
+\code{primary_only = TRUE}, the function reports only the primary placement of
+each alignment record; use \code{primary_only = FALSE} when investigating all
+alternative placements.
+
+Validate and summarize the BAM before analysis:
+
+\if{html}{\out{<div class="sourceCode bash">}}\preformatted{samtools quickcheck -v barcode150.wheat.bam
+samtools flagstat barcode150.wheat.bam
+samtools idxstats barcode150.wheat.bam \\
+  | sort -k3,3nr \\
+  | head -30
+}\if{html}{\out{</div>}}
+
+\code{quickcheck} prints nothing when the BAM passes its basic checks. \code{flagstat}
+reports mapped, secondary, supplementary, duplicate, and other flag counts.
+In \code{idxstats}, the third column is the number of mapped alignment records for
+each reference sequence. NCBI FASTA files commonly use accessions such as
+\code{NC_...} as BAM reference names. Use those exact names in \code{reference_name};
+they can be inspected with \verb{samtools idxstats} or in
+\code{result$reference_summary}.
+
+If only a smaller diagnostic BAM is desired, mapped primary records with
+strict \code{MAPQ > 20} can be written as follows:
+
+\if{html}{\out{<div class="sourceCode bash">}}\preformatted{samtools view -b -F 2308 -q 21 barcode150.wheat.bam \\
+| samtools sort -@ 8 -o barcode150.wheat.primary.mapq21.bam -
+samtools index barcode150.wheat.primary.mapq21.bam
+}\if{html}{\out{</div>}}
+
+Here \verb{-F 2308} excludes unmapped (\code{0x4}), secondary (\code{0x100}), and
+supplementary (\code{0x800}) records, and \verb{-q 21} means MAPQ at least 21. This
+smaller file cannot later be used to inspect the excluded placements, so the
+unfiltered \code{barcode150.wheat.bam} should normally be retained.
+}
+
+\section{Interpreting the returned wheat results}{
+
+
+\code{reference_summary} ranks wheat chromosomes or unplaced scaffolds by retained
+unique reads and alignment records. \code{peak_summary} then divides each reference
+into \code{bin_width}-base intervals and ranks occupied intervals. A strong peak at
+the expected target locus supports the intended amplicon; strong peaks on
+other chromosomes or subgenomes suggest non-specific amplification or
+homeologous targets. MAPQ should be interpreted together with read count:
+low-MAPQ peaks may represent ambiguous homeologous placements rather than a
+unique off-target locus.
+
+For a wheat-scale genome, avoid using very small histogram bins across whole
+chromosomes. A 1-kb bin across hundreds of megabases can create hundreds of
+thousands of empty plotting bins. \code{peak_summary} contains only occupied bins
+and is therefore preferable for ranking loci; use a larger \code{bin_width} such
+as \code{100000} or \code{1000000} for chromosome-wide plots, then rerun on selected
+references or regions at higher resolution.
+}
+
 \examples{
 \dontrun{
 result <- summarize_bam_alignment_loci(
-  "barcode150.wheat.bam",
+  bam = "barcode150.wheat.bam",
   min_mapq = 21,
-  min_reference_reads = 50,
-  bin_width = 1000
+  primary_only = TRUE,
+  min_reference_reads = 51,
+  bin_width = 100000
 )
 
+result$filter_summary
+head(result$mapq_distribution)
 result$reference_summary
-head(result$peak_summary)
+head(result$peak_summary, 30)
 result$plot
 }
 
