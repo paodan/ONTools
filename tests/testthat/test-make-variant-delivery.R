@@ -258,6 +258,14 @@ test_that("make_variant_delivery uses workflow-generated reference matching VCF 
     "TGCATGCATGCATGCATGCATGCATGCA"
   ), workflow_reference)
 
+  # Workflow work directories also contain filtered FASTQ files. These must
+  # never be treated as candidate reference FASTA files.
+  filtered_fastq <- file.path(result_dir, "work", "0_fastq", "1_filtered.fastq.gz")
+  dir.create(dirname(filtered_fastq), recursive = TRUE)
+  fastq_con <- gzfile(filtered_fastq, open = "wt")
+  writeLines(c("@read1", "ACGT", "+", "IIII"), fastq_con)
+  close(fastq_con)
+
   vcf <- file.path(vcf_dir, "medaka.annotated.vcf.gz")
   con <- gzfile(vcf, open = "wt")
   on.exit(close(con), add = TRUE)

@@ -1110,7 +1110,7 @@ resolve_wf_amplicon_variant_reference <- function(result_dir,
     )]
   } else {
     candidates <- candidates[grepl(
-      "^reference_sanitized_seqID[.](fa|fasta|fna|fq|fastq)([.]gz)?$",
+      "^reference_sanitized_seqID[.](fa|fasta|fna)([.]gz)?$",
       basename(candidates),
       ignore.case = TRUE
     )]
@@ -1144,7 +1144,7 @@ resolve_wf_amplicon_variant_reference <- function(result_dir,
 wf_amplicon_reference_candidates <- function(result_dir) {
   candidates <- list.files(
     result_dir,
-    pattern = "[.](fa|fasta|fna|fq|fastq)([.]gz)?$",
+    pattern = "[.](fa|fasta|fna)([.]gz)?$",
     full.names = TRUE,
     recursive = TRUE,
     ignore.case = TRUE
@@ -1157,7 +1157,7 @@ wf_amplicon_reference_candidates <- function(result_dir) {
   base <- basename(candidates)
   direct <- dirname(candidates) == normalizePath(result_dir, mustWork = TRUE)
   sanitized <- grepl(
-    "^reference_sanitized_seqID[.](fa|fasta|fna|fq|fastq)([.]gz)?$",
+    "^reference_sanitized_seqID[.](fa|fasta|fna)([.]gz)?$",
     base,
     ignore.case = TRUE
   )
@@ -1193,7 +1193,13 @@ vcf_chrom_values <- function(vcf_file) {
 }
 
 reference_contains_chroms <- function(reference, chroms) {
-  refs <- Biostrings::readDNAStringSet(reference)
+  refs <- tryCatch(
+    Biostrings::readDNAStringSet(reference),
+    error = function(e) NULL
+  )
+  if (is.null(refs)) {
+    return(FALSE)
+  }
   all(chroms %in% names(refs))
 }
 
