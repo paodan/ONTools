@@ -109,6 +109,35 @@ test_that("finalize_run_fastqs concatenates batches for each alias", {
   expect_equal(result$n_fragments[result$alias == "sampleA"], 2L)
 })
 
+test_that("finalize_run_fastqs preserves alias subdirectories and writes MD5", {
+  root <- tempfile("finalize-layout-")
+  fastq_dir <- file.path(root, "fastq")
+  final_dir <- file.path(root, "final")
+  dir.create(file.path(fastq_dir, "sampleA"), recursive = TRUE)
+  writeLines(c("@a", "AC", "+", "II"),
+             file.path(fastq_dir, "sampleA", "batch01__sampleA.fastq"))
+  writeLines(c("@b", "GT", "+", "II"),
+             file.path(fastq_dir, "sampleA", "batch02__sampleA.fastq"))
+
+  result <- finalize_run_fastqs(
+    fastq_path = fastq_dir,
+    output_path = final_dir,
+    preserve_subdirs = TRUE,
+    write_md5 = TRUE
+  )
+
+  expected_fastq <- file.path(final_dir, "sampleA", "sampleA.fastq")
+  expected_md5 <- paste0(expected_fastq, ".md5")
+  expect_equal(result$output_fastq, normalizePath(expected_fastq))
+  expect_equal(result$md5_file, normalizePath(expected_md5))
+  expect_true(file.exists(expected_md5))
+  expect_equal(
+    readLines(expected_md5),
+    paste(unname(tools::md5sum(expected_fastq)), basename(expected_fastq))
+  )
+  expect_true(dir.exists(file.path(fastq_dir, "sampleA")))
+})
+
 test_that("watch_dorado_fastq processes stable POD5 files once", {
   root <- tempfile("watch-realtime-")
   pod5_dir <- file.path(root, "pod5")

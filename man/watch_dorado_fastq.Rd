@@ -60,3 +60,69 @@ Invisibly returns elapsed time and per-POD5 results.
 The watcher preserves the existing ONTools stability rule: a POD5 is
 processed after its size is unchanged across one checking interval.
 }
+\details{
+At each scan the watcher compares POD5 stems with \code{.done} marker stems. For
+each unfinished POD5 it applies the same rule as \code{\link[=watch_basecalling]{watch_basecalling()}}: wait
+one \code{check_interval} and process the file when its size is unchanged.
+
+Processing is sequential. Each completed POD5 produces:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{bam/<pod5_stem>.bam
+fastq_live/<alias>/<pod5_stem>__<alias>.fastq
+state/<pod5_stem>.done
+}\if{html}{\out{</div>}}
+
+Restarting the watcher is safe: \code{.done} batches are skipped, while an
+existing BAM without a marker is reused to retry demultiplexing. The watcher
+never calls \code{\link[=finalize_run_fastqs]{finalize_run_fastqs()}} and therefore never creates an incomplete
+run-level merged FASTQ during sequencing.
+
+\code{max_run_time} limits this watcher invocation, not the sequencing run. Set it
+to the desired monitoring window and invoke the watcher again if necessary.
+}
+\examples{
+root <- tempfile("watch-dorado-")
+pod5_dir <- file.path(root, "pod5")
+dir.create(pod5_dir, recursive = TRUE)
+writeLines("pod5", file.path(pod5_dir, "batch001.pod5"))
+writeLines("pod5", file.path(pod5_dir, "batch002.pod5"))
+sheet <- file.path(root, "sample_sheet.csv")
+writeLines(
+  c(
+    "experiment_id,flow_cell_id,kit,barcode,alias",
+    "run1,FLOWCELL01,SQK-NBD114-96,barcode01,sampleA",
+    "run1,FLOWCELL01,SQK-NBD114-96,barcode02,sampleB"
+  ),
+  sheet
+)
+
+# Plan both batches without sleeping or running Dorado.
+plan <- watch_dorado_fastq(
+  pod5_path = pod5_dir,
+  bam_path = file.path(root, "bam"),
+  fastq_path = file.path(root, "fastq_live"),
+  state_path = file.path(root, "state"),
+  kit_name = "SQK-NBD114-96",
+  sample_sheet = sheet,
+  dry_run = TRUE,
+  echo = FALSE
+)
+names(plan$batches)
+
+\dontrun{
+# A realistic 72-hour watcher invocation.
+watch_dorado_fastq(
+  pod5_path = "/data/project/pod5",
+  bam_path = "/data/project/bam",
+  fastq_path = "/data/project/fastq_live",
+  state_path = "/data/project/state",
+  kit_name = "SQK-NBD114-96",
+  sample_sheet = "/data/project/sample_sheet.csv",
+  model = "hac",
+  threads = 8,
+  max_run_time = 72 * 60 * 60,
+  check_interval = 3,
+  idle_interval = 30
+)
+}
+}

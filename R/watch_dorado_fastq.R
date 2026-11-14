@@ -15,6 +15,22 @@
 #' @param stderr Passed to [system2()] for Dorado's standard error stream.
 #'
 #' @return Invisibly returns command details and discovered FASTQ paths.
+#'
+#' @details
+#' This function must receive a BAM that was already classified during
+#' basecalling. It deliberately uses `--no-classify`, so `kit_name` and
+#' `sample_sheet` are not passed again. Use a unique `demux_dir` for every BAM
+#' because Dorado may reuse batch file names such as `_0.fastq`.
+#'
+#' @examples
+#' planned <- demux_one_bam_fastq(
+#'   bam_file = "/data/project/bam/batch001.bam",
+#'   demux_dir = "/data/project/state/demux/batch001",
+#'   threads = 8,
+#'   dry_run = TRUE,
+#'   echo = FALSE
+#' )
+#' planned$command_string
 #' @export
 demux_one_bam_fastq <- function(bam_file,
                                 demux_dir,
@@ -104,6 +120,31 @@ demux_one_bam_fastq <- function(bam_file,
 #' @param overwrite Replace an existing file for the same POD5 and alias.
 #'
 #' @return A data frame describing the published files.
+#'
+#' @details
+#' Dorado may create several FASTQ chunks for one alias. They are concatenated
+#' without parsing the records. Gzip inputs remain valid because concatenated
+#' gzip members are valid gzip streams. The published files are organized as
+#' `fastq_dir/<alias>/<pod5_stem>__<alias>.fastq[.gz]`.
+#'
+#' @examples
+#' demux <- tempfile("demux-")
+#' dir.create(file.path(demux, "run", "fastq_pass", "sampleA"), recursive = TRUE)
+#' writeLines(
+#'   c("@read1", "ACGT", "+", "IIII"),
+#'   file.path(demux, "run", "fastq_pass", "sampleA", "chunk1.fastq")
+#' )
+#' writeLines(
+#'   c("@read2", "TGCA", "+", "IIII"),
+#'   file.path(demux, "run", "fastq_pass", "sampleA", "chunk2.fastq")
+#' )
+#' published <- publish_demux_fastqs(
+#'   demux_dir = demux,
+#'   pod5_stem = "batch001",
+#'   fastq_dir = tempfile("fastq-live-")
+#' )
+#' published
+#' readLines(published$output_fastq)
 #' @export
 publish_demux_fastqs <- function(demux_dir,
                                  pod5_stem,
@@ -182,6 +223,28 @@ publish_demux_fastqs <- function(demux_dir,
 #' @param overwrite Replace an existing marker.
 #'
 #' @return Invisibly returns the normalized marker path.
+#'
+#' @details
+#' The marker is written through a temporary file and renamed only after all
+#' referenced files exist. A watcher therefore treats a POD5 as complete only
+#' after BAM generation, demultiplexing, and FASTQ publication all succeed.
+#'
+#' @examples
+#' root <- tempfile("done-example-")
+#' dir.create(root)
+#' pod5 <- file.path(root, "batch001.pod5")
+#' bam <- file.path(root, "batch001.bam")
+#' fastq <- file.path(root, "batch001__sampleA.fastq")
+#' writeLines("pod5", pod5)
+#' writeLines("bam", bam)
+#' writeLines(c("@read1", "AC", "+", "II"), fastq)
+#' marker <- write_done_marker(
+#'   done_file = file.path(root, "batch001.done"),
+#'   pod5_file = pod5,
+#'   bam_file = bam,
+#'   fastq_files = fastq
+#' )
+#' readLines(marker)
 #' @export
 write_done_marker <- function(done_file,
                               pod5_file,
@@ -235,6 +298,67 @@ write_done_marker <- function(done_file,
 #'   Dorado functions.
 #'
 #' @return Invisibly returns paths and component results.
+#'
+#' @details
+#' The function performs one transactional batch:
+#'
+#' 1. Create or reuse `<bam_dir>/<pod5_stem>.bam`.
+#' 2. Run Dorado demultiplexing in a private temporary directory.
+#' 3. Publish one FASTQ fragment per alias under `fastq_dir`.
+#' 4. Write `<state_dir>/<pod5_stem>.done` last.
+#'
+#' If the BAM exists but the marker does not, basecalling is not repeated; the
+#' function retries demultiplexing and publication. If the marker exists, the
+#' batch is returned with status `"skipped"`.
+#'
+#' The FASTQ fragments created here are per-POD5 files. They are not the final
+#' run-level FASTQ files; call [finalize_run_fastqs()] only after sequencing is
+#' complete.
+#'
+#' @examples
+#' root <- tempfile("one-pod5-")
+#' dir.create(root)
+#' pod5 <- file.path(root, "batch001.pod5")
+#' sheet <- file.path(root, "sample_sheet.csv")
+#' writeLines("pod5", pod5)
+#' writeLines(
+#'   c(
+#'     "experiment_id,flow_cell_id,kit,barcode,alias",
+#'     "run1,FLOWCELL01,SQK-NBD114-96,barcode01,sampleA"
+#'   ),
+#'   sheet
+#' )
+#'
+#' # dry_run validates paths and returns both planned Dorado commands without
+#' # requiring a Dorado installation or a real POD5 file.
+#' planned <- process_one_pod5(
+#'   pod5_file = pod5,
+#'   bam_dir = file.path(root, "bam"),
+#'   fastq_dir = file.path(root, "fastq_live"),
+#'   state_dir = file.path(root, "state"),
+#'   kit_name = "SQK-NBD114-96",
+#'   sample_sheet = sheet,
+#'   dry_run = TRUE,
+#'   echo = FALSE
+#' )
+#' planned$status
+#' planned$basecall$command_string
+#' planned$demux$command_string
+#'
+#' \dontrun{
+#' # With Dorado installed and a real POD5, omit dry_run.
+#' completed <- process_one_pod5(
+#'   pod5_file = "/data/project/pod5/batch001.pod5",
+#'   bam_dir = "/data/project/bam",
+#'   fastq_dir = "/data/project/fastq_live",
+#'   state_dir = "/data/project/state",
+#'   model = "hac",
+#'   kit_name = "SQK-NBD114-96",
+#'   sample_sheet = "/data/project/sample_sheet.csv",
+#'   threads = 8
+#' )
+#' completed$paths
+#' }
 #' @export
 process_one_pod5 <- function(pod5_file,
                              bam_dir,
@@ -375,6 +499,73 @@ process_one_pod5 <- function(pod5_file,
 #' @inheritParams process_one_pod5
 #'
 #' @return Invisibly returns elapsed time and per-POD5 results.
+#'
+#' @details
+#' At each scan the watcher compares POD5 stems with `.done` marker stems. For
+#' each unfinished POD5 it applies the same rule as [watch_basecalling()]: wait
+#' one `check_interval` and process the file when its size is unchanged.
+#'
+#' Processing is sequential. Each completed POD5 produces:
+#'
+#' ```
+#' bam/<pod5_stem>.bam
+#' fastq_live/<alias>/<pod5_stem>__<alias>.fastq
+#' state/<pod5_stem>.done
+#' ```
+#'
+#' Restarting the watcher is safe: `.done` batches are skipped, while an
+#' existing BAM without a marker is reused to retry demultiplexing. The watcher
+#' never calls [finalize_run_fastqs()] and therefore never creates an incomplete
+#' run-level merged FASTQ during sequencing.
+#'
+#' `max_run_time` limits this watcher invocation, not the sequencing run. Set it
+#' to the desired monitoring window and invoke the watcher again if necessary.
+#'
+#' @examples
+#' root <- tempfile("watch-dorado-")
+#' pod5_dir <- file.path(root, "pod5")
+#' dir.create(pod5_dir, recursive = TRUE)
+#' writeLines("pod5", file.path(pod5_dir, "batch001.pod5"))
+#' writeLines("pod5", file.path(pod5_dir, "batch002.pod5"))
+#' sheet <- file.path(root, "sample_sheet.csv")
+#' writeLines(
+#'   c(
+#'     "experiment_id,flow_cell_id,kit,barcode,alias",
+#'     "run1,FLOWCELL01,SQK-NBD114-96,barcode01,sampleA",
+#'     "run1,FLOWCELL01,SQK-NBD114-96,barcode02,sampleB"
+#'   ),
+#'   sheet
+#' )
+#'
+#' # Plan both batches without sleeping or running Dorado.
+#' plan <- watch_dorado_fastq(
+#'   pod5_path = pod5_dir,
+#'   bam_path = file.path(root, "bam"),
+#'   fastq_path = file.path(root, "fastq_live"),
+#'   state_path = file.path(root, "state"),
+#'   kit_name = "SQK-NBD114-96",
+#'   sample_sheet = sheet,
+#'   dry_run = TRUE,
+#'   echo = FALSE
+#' )
+#' names(plan$batches)
+#'
+#' \dontrun{
+#' # A realistic 72-hour watcher invocation.
+#' watch_dorado_fastq(
+#'   pod5_path = "/data/project/pod5",
+#'   bam_path = "/data/project/bam",
+#'   fastq_path = "/data/project/fastq_live",
+#'   state_path = "/data/project/state",
+#'   kit_name = "SQK-NBD114-96",
+#'   sample_sheet = "/data/project/sample_sheet.csv",
+#'   model = "hac",
+#'   threads = 8,
+#'   max_run_time = 72 * 60 * 60,
+#'   check_interval = 3,
+#'   idle_interval = 30
+#' )
+#' }
 #' @export
 watch_dorado_fastq <- function(pod5_path,
                                bam_path,
@@ -495,17 +686,73 @@ watch_dorado_fastq <- function(pod5_path,
 #' @param fastq_path Root directory created by `publish_demux_fastqs()`.
 #' @param output_path Directory for one final FASTQ per alias.
 #' @param include_unclassified Include the `unclassified` alias.
+#' @param preserve_subdirs Logical. If `TRUE`, retain each alias subdirectory
+#'   under `output_path` and write the final file as
+#'   `<output_path>/<alias>/<alias>.fastq[.gz]`. If `FALSE`, write final files
+#'   directly under `output_path`.
+#' @param write_md5 Logical. If `TRUE`, calculate an MD5 checksum for every
+#'   final FASTQ or FASTQ.GZ and write `<final_fastq>.md5` beside it.
 #' @param overwrite Replace existing final FASTQ files.
 #'
 #' @return A data frame describing the final FASTQ files.
+#'
+#' @details
+#' The input must have the layout created by [publish_demux_fastqs()], with one
+#' directory per alias and one immutable FASTQ fragment per POD5. All fragments
+#' for an alias are concatenated into one final file. With
+#' `preserve_subdirs = FALSE`, the output is
+#' `<output_path>/<alias>.fastq[.gz]`. With `preserve_subdirs = TRUE`, it is
+#' `<output_path>/<alias>/<alias>.fastq[.gz]`.
+#'
+#' `write_md5 = TRUE` writes a standard two-column checksum file containing the
+#' checksum and final FASTQ basename. It does not alter or remove source
+#' fragments. Checksums are calculated only after every final FASTQ has been
+#' written successfully.
+#'
+#' This function does not inspect MinKNOW state and is never called by the
+#' watcher. The user is responsible for calling it only after sequencing has
+#' stopped and every expected POD5 has a `.done` marker.
+#'
+#' @examples
+#' root <- tempfile("finalize-fastq-")
+#' live <- file.path(root, "fastq_live")
+#' dir.create(file.path(live, "sampleA"), recursive = TRUE)
+#' dir.create(file.path(live, "sampleB"), recursive = TRUE)
+#'
+#' writeLines(
+#'   c("@a1", "AC", "+", "II"),
+#'   file.path(live, "sampleA", "batch001__sampleA.fastq")
+#' )
+#' writeLines(
+#'   c("@a2", "GT", "+", "II"),
+#'   file.path(live, "sampleA", "batch002__sampleA.fastq")
+#' )
+#' writeLines(
+#'   c("@b1", "AA", "+", "II"),
+#'   file.path(live, "sampleB", "batch001__sampleB.fastq")
+#' )
+#'
+#' final <- finalize_run_fastqs(
+#'   fastq_path = live,
+#'   output_path = file.path(root, "fastq_final"),
+#'   preserve_subdirs = TRUE,
+#'   write_md5 = TRUE
+#' )
+#' final
+#' readLines(final$output_fastq[final$alias == "sampleA"])
+#' readLines(final$md5_file[final$alias == "sampleA"])
 #' @export
 finalize_run_fastqs <- function(fastq_path,
                                 output_path,
                                 include_unclassified = TRUE,
+                                preserve_subdirs = FALSE,
+                                write_md5 = FALSE,
                                 overwrite = FALSE) {
   check_dir_arg(fastq_path, "fastq_path")
   check_scalar_character(output_path, "output_path")
   check_logical_scalar(include_unclassified, "include_unclassified")
+  check_logical_scalar(preserve_subdirs, "preserve_subdirs")
+  check_logical_scalar(write_md5, "write_md5")
   check_logical_scalar(overwrite, "overwrite")
 
   fastq_path <- normalizePath(fastq_path, mustWork = TRUE)
@@ -528,8 +775,22 @@ finalize_run_fastqs <- function(fastq_path,
       stop("Mixed compressed and uncompressed FASTQ fragments for alias: ", alias,
            call. = FALSE)
     }
-    output <- file.path(output_path, paste0(alias, if (compressed[[1L]]) ".fastq.gz" else ".fastq"))
-    list(alias = alias, inputs = sort(inputs), output = output)
+    alias_output_dir <- if (isTRUE(preserve_subdirs)) {
+      file.path(output_path, alias)
+    } else {
+      output_path
+    }
+    output <- file.path(
+      alias_output_dir,
+      paste0(alias, if (compressed[[1L]]) ".fastq.gz" else ".fastq")
+    )
+    list(
+      alias = alias,
+      inputs = sort(inputs),
+      output_dir = alias_output_dir,
+      output = output,
+      md5_file = paste0(output, ".md5")
+    )
   })
 
   existing <- vapply(plan, function(x) file.exists(x$output), logical(1))
@@ -539,11 +800,22 @@ finalize_run_fastqs <- function(fastq_path,
   }
 
   for (item in plan) {
+    dir.create(item$output_dir, recursive = TRUE, showWarnings = FALSE)
     realtime_concatenate_files(item$inputs, item$output, overwrite = overwrite)
+  }
+  if (isTRUE(write_md5)) {
+    for (item in plan) {
+      dorado_write_md5(item$output, item$md5_file)
+    }
   }
   data.frame(
     alias = vapply(plan, `[[`, character(1), "alias"),
     output_fastq = vapply(plan, function(x) normalizePath(x$output, mustWork = TRUE), character(1)),
+    md5_file = if (isTRUE(write_md5)) {
+      vapply(plan, function(x) normalizePath(x$md5_file, mustWork = TRUE), character(1))
+    } else {
+      rep(NA_character_, length(plan))
+    },
     n_fragments = vapply(plan, function(x) length(x$inputs), integer(1)),
     stringsAsFactors = FALSE,
     check.names = FALSE

@@ -43,3 +43,19 @@ Invisibly returns command details and discovered FASTQ paths.
 BAM whose reads were classified during basecalling. Each invocation should
 use a directory dedicated to one input BAM.
 }
+\details{
+This function must receive a BAM that was already classified during
+basecalling. It deliberately uses \code{--no-classify}, so \code{kit_name} and
+\code{sample_sheet} are not passed again. Use a unique \code{demux_dir} for every BAM
+because Dorado may reuse batch file names such as \verb{_0.fastq}.
+}
+\examples{
+planned <- demux_one_bam_fastq(
+  bam_file = "/data/project/bam/batch001.bam",
+  demux_dir = "/data/project/state/demux/batch001",
+  threads = 8,
+  dry_run = TRUE,
+  echo = FALSE
+)
+planned$command_string
+}

@@ -60,11 +60,33 @@ file and only renames it to \code{bam_file} after a successful, non-empty run.
 \examples{
 pod5 <- tempfile(fileext = ".pod5")
 file.create(pod5)
-basecall_one(
+basic <- basecall_one(
   pod5,
   tempfile(fileext = ".bam"),
   dry_run = TRUE,
   echo = FALSE
 )
+basic$args
+
+# Plan inline barcode classification and aliasing with a sample sheet.
+sample_sheet <- tempfile(fileext = ".csv")
+writeLines(
+  c(
+    "experiment_id,flow_cell_id,kit,barcode,alias",
+    "run1,FLOWCELL01,SQK-NBD114-96,barcode01,sampleA",
+    "run1,FLOWCELL01,SQK-NBD114-96,barcode02,sampleB"
+  ),
+  sample_sheet
+)
+classified <- basecall_one(
+  pod5_file = pod5,
+  bam_file = tempfile(fileext = ".bam"),
+  model = "hac",
+  kit_name = "SQK-NBD114-96",
+  sample_sheet = sample_sheet,
+  dry_run = TRUE,
+  echo = FALSE
+)
+classified$command_string
 
 }

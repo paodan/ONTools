@@ -8,6 +8,8 @@ finalize_run_fastqs(
   fastq_path,
   output_path,
   include_unclassified = TRUE,
+  preserve_subdirs = FALSE,
+  write_md5 = FALSE,
   overwrite = FALSE
 )
 }
@@ -18,6 +20,14 @@ finalize_run_fastqs(
 
 \item{include_unclassified}{Include the \code{unclassified} alias.}
 
+\item{preserve_subdirs}{Logical. If \code{TRUE}, retain each alias subdirectory
+under \code{output_path} and write the final file as
+\verb{<output_path>/<alias>/<alias>.fastq[.gz]}. If \code{FALSE}, write final files
+directly under \code{output_path}.}
+
+\item{write_md5}{Logical. If \code{TRUE}, calculate an MD5 checksum for every
+final FASTQ or FASTQ.GZ and write \verb{<final_fastq>.md5} beside it.}
+
 \item{overwrite}{Replace existing final FASTQ files.}
 }
 \value{
@@ -27,4 +37,50 @@ A data frame describing the final FASTQ files.
 This function is intentionally separate from \code{\link[=watch_dorado_fastq]{watch_dorado_fastq()}} and
 should only be called by the user after sequencing and real-time processing
 are complete.
+}
+\details{
+The input must have the layout created by \code{\link[=publish_demux_fastqs]{publish_demux_fastqs()}}, with one
+directory per alias and one immutable FASTQ fragment per POD5. All fragments
+for an alias are concatenated into one final file. With
+\code{preserve_subdirs = FALSE}, the output is
+\verb{<output_path>/<alias>.fastq[.gz]}. With \code{preserve_subdirs = TRUE}, it is
+\verb{<output_path>/<alias>/<alias>.fastq[.gz]}.
+
+\code{write_md5 = TRUE} writes a standard two-column checksum file containing the
+checksum and final FASTQ basename. It does not alter or remove source
+fragments. Checksums are calculated only after every final FASTQ has been
+written successfully.
+
+This function does not inspect MinKNOW state and is never called by the
+watcher. The user is responsible for calling it only after sequencing has
+stopped and every expected POD5 has a \code{.done} marker.
+}
+\examples{
+root <- tempfile("finalize-fastq-")
+live <- file.path(root, "fastq_live")
+dir.create(file.path(live, "sampleA"), recursive = TRUE)
+dir.create(file.path(live, "sampleB"), recursive = TRUE)
+
+writeLines(
+  c("@a1", "AC", "+", "II"),
+  file.path(live, "sampleA", "batch001__sampleA.fastq")
+)
+writeLines(
+  c("@a2", "GT", "+", "II"),
+  file.path(live, "sampleA", "batch002__sampleA.fastq")
+)
+writeLines(
+  c("@b1", "AA", "+", "II"),
+  file.path(live, "sampleB", "batch001__sampleB.fastq")
+)
+
+final <- finalize_run_fastqs(
+  fastq_path = live,
+  output_path = file.path(root, "fastq_final"),
+  preserve_subdirs = TRUE,
+  write_md5 = TRUE
+)
+final
+readLines(final$output_fastq[final$alias == "sampleA"])
+readLines(final$md5_file[final$alias == "sampleA"])
 }

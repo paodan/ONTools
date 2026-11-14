@@ -29,3 +29,25 @@ Invisibly returns the normalized marker path.
 \description{
 Write a completion marker for one POD5 batch
 }
+\details{
+The marker is written through a temporary file and renamed only after all
+referenced files exist. A watcher therefore treats a POD5 as complete only
+after BAM generation, demultiplexing, and FASTQ publication all succeed.
+}
+\examples{
+root <- tempfile("done-example-")
+dir.create(root)
+pod5 <- file.path(root, "batch001.pod5")
+bam <- file.path(root, "batch001.bam")
+fastq <- file.path(root, "batch001__sampleA.fastq")
+writeLines("pod5", pod5)
+writeLines("bam", bam)
+writeLines(c("@read1", "AC", "+", "II"), fastq)
+marker <- write_done_marker(
+  done_file = file.path(root, "batch001.done"),
+  pod5_file = pod5,
+  bam_file = bam,
+  fastq_files = fastq
+)
+readLines(marker)
+}

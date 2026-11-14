@@ -50,3 +50,65 @@ Invisibly returns paths and component results.
 \description{
 Process one completed POD5 file through FASTQ publication
 }
+\details{
+The function performs one transactional batch:
+\enumerate{
+\item Create or reuse \verb{<bam_dir>/<pod5_stem>.bam}.
+\item Run Dorado demultiplexing in a private temporary directory.
+\item Publish one FASTQ fragment per alias under \code{fastq_dir}.
+\item Write \verb{<state_dir>/<pod5_stem>.done} last.
+}
+
+If the BAM exists but the marker does not, basecalling is not repeated; the
+function retries demultiplexing and publication. If the marker exists, the
+batch is returned with status \code{"skipped"}.
+
+The FASTQ fragments created here are per-POD5 files. They are not the final
+run-level FASTQ files; call \code{\link[=finalize_run_fastqs]{finalize_run_fastqs()}} only after sequencing is
+complete.
+}
+\examples{
+root <- tempfile("one-pod5-")
+dir.create(root)
+pod5 <- file.path(root, "batch001.pod5")
+sheet <- file.path(root, "sample_sheet.csv")
+writeLines("pod5", pod5)
+writeLines(
+  c(
+    "experiment_id,flow_cell_id,kit,barcode,alias",
+    "run1,FLOWCELL01,SQK-NBD114-96,barcode01,sampleA"
+  ),
+  sheet
+)
+
+# dry_run validates paths and returns both planned Dorado commands without
+# requiring a Dorado installation or a real POD5 file.
+planned <- process_one_pod5(
+  pod5_file = pod5,
+  bam_dir = file.path(root, "bam"),
+  fastq_dir = file.path(root, "fastq_live"),
+  state_dir = file.path(root, "state"),
+  kit_name = "SQK-NBD114-96",
+  sample_sheet = sheet,
+  dry_run = TRUE,
+  echo = FALSE
+)
+planned$status
+planned$basecall$command_string
+planned$demux$command_string
+
+\dontrun{
+# With Dorado installed and a real POD5, omit dry_run.
+completed <- process_one_pod5(
+  pod5_file = "/data/project/pod5/batch001.pod5",
+  bam_dir = "/data/project/bam",
+  fastq_dir = "/data/project/fastq_live",
+  state_dir = "/data/project/state",
+  model = "hac",
+  kit_name = "SQK-NBD114-96",
+  sample_sheet = "/data/project/sample_sheet.csv",
+  threads = 8
+)
+completed$paths
+}
+}

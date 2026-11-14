@@ -31,3 +31,28 @@ FASTQ chunks produced by Dorado are grouped by alias and concatenated into
 one immutable file per POD5 and alias, named
 \verb{<pod5_stem>__<alias>.fastq[.gz]}.
 }
+\details{
+Dorado may create several FASTQ chunks for one alias. They are concatenated
+without parsing the records. Gzip inputs remain valid because concatenated
+gzip members are valid gzip streams. The published files are organized as
+\verb{fastq_dir/<alias>/<pod5_stem>__<alias>.fastq[.gz]}.
+}
+\examples{
+demux <- tempfile("demux-")
+dir.create(file.path(demux, "run", "fastq_pass", "sampleA"), recursive = TRUE)
+writeLines(
+  c("@read1", "ACGT", "+", "IIII"),
+  file.path(demux, "run", "fastq_pass", "sampleA", "chunk1.fastq")
+)
+writeLines(
+  c("@read2", "TGCA", "+", "IIII"),
+  file.path(demux, "run", "fastq_pass", "sampleA", "chunk2.fastq")
+)
+published <- publish_demux_fastqs(
+  demux_dir = demux,
+  pod5_stem = "batch001",
+  fastq_dir = tempfile("fastq-live-")
+)
+published
+readLines(published$output_fastq)
+}
