@@ -33,7 +33,10 @@ watch_dorado_fastq(
   dry_run = FALSE,
   echo = TRUE,
   stderr = "",
-  run_path = NULL
+  run_path = NULL,
+  barcode_arrangement = NULL,
+  barcode_sequences = NULL,
+  extra_basecaller_params = NULL
 )
 }
 \arguments{
@@ -94,6 +97,16 @@ Dorado functions.}
 \item{run_path}{Optional standardized run root created by
 \code{\link[=create_dorado_run_structure]{create_dorado_run_structure()}}. It supplies missing output directories;
 it does not alter \code{pod5_file} or \code{sample_sheet}.}
+
+\item{barcode_arrangement}{Optional custom Dorado barcode arrangement TOML
+file passed to \code{\link[=basecall_one]{basecall_one()}}. Requires \code{kit_name}.}
+
+\item{barcode_sequences}{Optional custom barcode sequence FASTA file passed
+to \code{\link[=basecall_one]{basecall_one()}}. Requires \code{barcode_arrangement}.}
+
+\item{extra_basecaller_params}{Optional character vector of additional
+\verb{dorado basecaller} arguments passed to \code{\link[=basecall_one]{basecall_one()}}. Dedicated
+barcode and sample-sheet options must use their named arguments instead.}
 }
 \value{
 Invisibly returns elapsed time and per-POD5 results.
@@ -167,6 +180,9 @@ watch_dorado_fastq(
   qc_include_unclassified = FALSE,
   qc_every_n_pod5 = 1,
   qc_plot_args = list(min_distance = 100, density_n = 1024),
+  barcode_arrangement = "/data/config/custom_barcodes.toml",
+  barcode_sequences = "/data/config/custom_barcodes.fasta",
+  extra_basecaller_params = c("--device", "cuda:all"),
   max_run_time = 72 * 60 * 60,
   check_interval = 3,
   idle_interval = 30

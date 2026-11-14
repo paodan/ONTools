@@ -68,6 +68,18 @@ watch_file <- function(path, extension = ".pod5") {
 #'   classification is performed during basecalling.
 #' @param sample_sheet Optional MinKNOW-compatible sample sheet. Requires
 #'   `kit_name` and applies barcode filtering and aliases during basecalling.
+#' @param barcode_arrangement Optional path to a custom Dorado barcode
+#'   arrangement TOML file. Requires `kit_name`; `kit_name` should match the
+#'   arrangement name declared in the TOML file.
+#' @param barcode_sequences Optional path to a FASTA file containing custom
+#'   barcode sequences. Requires `barcode_arrangement`.
+#' @param extra_basecaller_params Optional character vector of additional
+#'   arguments appended to `dorado basecaller`, for example
+#'   `c("--device", "cuda:all")`. Options managed by dedicated arguments
+#'   (`--kit-name`, `--sample-sheet`, `--barcode-arrangement`, and
+#'   `--barcode-sequences`) cannot be repeated here. Output-mode options
+#'   `--emit-fastq` and `--emit-sam` are also rejected because this function
+#'   captures Dorado standard output as BAM.
 #' @param dorado Command name or executable path for Dorado.
 #' @param conda_env Optional Conda environment name. When supplied, Dorado is
 #'   run using `conda run --no-capture-output`.
@@ -114,6 +126,24 @@ watch_file <- function(path, extension = ".pod5") {
 #' )
 #' classified$command_string
 #'
+#' # Plan basecalling with a custom barcode arrangement and extra Dorado
+#' # options. Dorado itself validates the TOML and FASTA contents when run.
+#' arrangement <- tempfile(fileext = ".toml")
+#' sequences <- tempfile(fileext = ".fasta")
+#' writeLines(c("[arrangement]", "name = \"MY_CUSTOM_KIT\""), arrangement)
+#' writeLines(c(">BC01", "ACGTACGT"), sequences)
+#' custom <- basecall_one(
+#'   pod5_file = pod5,
+#'   bam_file = tempfile(fileext = ".bam"),
+#'   kit_name = "MY_CUSTOM_KIT",
+#'   barcode_arrangement = arrangement,
+#'   barcode_sequences = sequences,
+#'   extra_basecaller_params = c("--device", "cuda:all"),
+#'   dry_run = TRUE,
+#'   echo = FALSE
+#' )
+#' custom$command_string
+#'
 #' @export
 basecall_one <- function(pod5_file,
                          bam_file,
@@ -125,7 +155,10 @@ basecall_one <- function(pod5_file,
                          echo = TRUE,
                          stderr = "",
                          kit_name = NULL,
-                         sample_sheet = NULL) {
+                         sample_sheet = NULL,
+                         barcode_arrangement = NULL,
+                         barcode_sequences = NULL,
+                         extra_basecaller_params = NULL) {
   check_file_arg(pod5_file, "pod5_file")
   check_scalar_character(bam_file, "bam_file")
   check_scalar_character(model, "model")
@@ -137,6 +170,24 @@ basecall_one <- function(pod5_file,
     check_file_arg(sample_sheet, "sample_sheet")
     sample_sheet <- normalizePath(sample_sheet, mustWork = TRUE)
   }
+  if (!is.null(barcode_arrangement)) {
+    if (is.null(kit_name)) {
+      stop("`barcode_arrangement` requires `kit_name`.", call. = FALSE)
+    }
+    check_file_arg(barcode_arrangement, "barcode_arrangement")
+    barcode_arrangement <- normalizePath(barcode_arrangement, mustWork = TRUE)
+  }
+  if (!is.null(barcode_sequences)) {
+    if (is.null(barcode_arrangement)) {
+      stop("`barcode_sequences` requires `barcode_arrangement`.",
+           call. = FALSE)
+    }
+    check_file_arg(barcode_sequences, "barcode_sequences")
+    barcode_sequences <- normalizePath(barcode_sequences, mustWork = TRUE)
+  }
+  extra_basecaller_params <- validate_extra_basecaller_params(
+    extra_basecaller_params
+  )
   check_scalar_character(dorado, "dorado")
   check_scalar_character(conda, "conda")
   check_logical_scalar(dry_run, "dry_run")
@@ -160,6 +211,15 @@ basecall_one <- function(pod5_file,
   if (!is.null(sample_sheet)) {
     dorado_args <- c(dorado_args, "--sample-sheet", sample_sheet)
   }
+  if (!is.null(barcode_arrangement)) {
+    dorado_args <- c(
+      dorado_args, "--barcode-arrangement", barcode_arrangement
+    )
+  }
+  if (!is.null(barcode_sequences)) {
+    dorado_args <- c(dorado_args, "--barcode-sequences", barcode_sequences)
+  }
+  dorado_args <- c(dorado_args, extra_basecaller_params)
   if (is.null(conda_env)) {
     call <- list(command = dorado, args = dorado_args)
   } else {
@@ -184,7 +244,9 @@ basecall_one <- function(pod5_file,
   paths <- list(
     pod5_file = pod5_file,
     bam_file = bam_file,
-    sample_sheet = sample_sheet
+    sample_sheet = sample_sheet,
+    barcode_arrangement = barcode_arrangement,
+    barcode_sequences = barcode_sequences
   )
   result <- list(
     status = NA_integer_,
@@ -279,7 +341,12 @@ watch_basecalling <- function(pod5_path,
                               conda = "conda",
                               dry_run = FALSE,
                               echo = TRUE,
-                              stderr = "") {
+                              stderr = "",
+                              kit_name = NULL,
+                              sample_sheet = NULL,
+                              barcode_arrangement = NULL,
+                              barcode_sequences = NULL,
+                              extra_basecaller_params = NULL) {
   check_dir_arg(pod5_path, "pod5_path")
   check_scalar_character(bam_path, "bam_path")
   max_run_time <- validate_watch_duration(max_run_time, "max_run_time")
@@ -317,8 +384,13 @@ watch_basecalling <- function(pod5_path,
         input <- pod5_files$path[pod5_files$name == file_name][[1L]]
         output <- file.path(bam_path, paste0(file_name, ".bam"))
         results[[file_name]] <- basecall_one(
-          input, output, model, dorado, conda_env, conda,
-          dry_run = TRUE, echo = echo, stderr = stderr
+          pod5_file = input, bam_file = output, model = model,
+          dorado = dorado, conda_env = conda_env, conda = conda,
+          dry_run = TRUE, echo = echo, stderr = stderr,
+          kit_name = kit_name, sample_sheet = sample_sheet,
+          barcode_arrangement = barcode_arrangement,
+          barcode_sequences = barcode_sequences,
+          extra_basecaller_params = extra_basecaller_params
         )
       }
       break
@@ -363,8 +435,13 @@ watch_basecalling <- function(pod5_path,
 
       output <- file.path(bam_path, paste0(file_name, ".bam"))
       results[[file_name]] <- basecall_one(
-        input, output, model, dorado, conda_env, conda,
-        dry_run = FALSE, echo = echo, stderr = stderr
+        pod5_file = input, bam_file = output, model = model,
+        dorado = dorado, conda_env = conda_env, conda = conda,
+        dry_run = FALSE, echo = echo, stderr = stderr,
+        kit_name = kit_name, sample_sheet = sample_sheet,
+        barcode_arrangement = barcode_arrangement,
+        barcode_sequences = barcode_sequences,
+        extra_basecaller_params = extra_basecaller_params
       )
     }
   }
@@ -392,4 +469,29 @@ validate_system2_stderr <- function(x) {
          call. = FALSE)
   }
   invisible(x)
+}
+
+validate_extra_basecaller_params <- function(x) {
+  if (is.null(x)) return(character())
+  if (!is.character(x) || !length(x) || anyNA(x) || any(!nzchar(x))) {
+    stop(
+      "`extra_basecaller_params` must be NULL or a non-empty character vector without missing or empty values.",
+      call. = FALSE
+    )
+  }
+
+  protected <- c(
+    "--kit-name", "--sample-sheet", "--barcode-arrangement",
+    "--barcode-sequences", "--emit-fastq", "--emit-sam"
+  )
+  supplied_options <- sub("=.*$", "", x[startsWith(x, "--")])
+  conflicts <- intersect(protected, supplied_options)
+  if (length(conflicts)) {
+    stop(
+      "`extra_basecaller_params` cannot contain managed or output-changing option(s): ",
+      paste(conflicts, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  x
 }

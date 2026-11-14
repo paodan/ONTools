@@ -65,6 +65,38 @@ test_that("basecall_one adds barcode and sample sheet arguments", {
   expect_equal(result$args[[length(result$args)]], normalizePath(sheet))
 })
 
+test_that("watch_dorado_fastq passes custom barcode options to basecalling", {
+  input_dir <- tempfile("custom-barcode-input-")
+  run_dir <- tempfile("custom-barcode-run-")
+  pod5_dir <- file.path(input_dir, "pod5")
+  dir.create(pod5_dir, recursive = TRUE)
+  pod5 <- file.path(pod5_dir, "batch01.pod5")
+  sheet <- file.path(input_dir, "sample_sheet.csv")
+  arrangement <- file.path(input_dir, "custom.toml")
+  sequences <- file.path(input_dir, "custom.fasta")
+  writeLines("pod5", pod5)
+  writeLines("experiment_id,flow_cell_id,kit", sheet)
+  writeLines(c("[arrangement]", "name = \"CUSTOM\""), arrangement)
+  writeLines(c(">BC01", "ACGT"), sequences)
+
+  result <- watch_dorado_fastq(
+    pod5_path = pod5_dir,
+    sample_sheet = sheet,
+    run_path = run_dir,
+    kit_name = "CUSTOM",
+    barcode_arrangement = arrangement,
+    barcode_sequences = sequences,
+    extra_basecaller_params = c("--device", "cuda:all"),
+    update_qc = FALSE,
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  args <- result$batches$batch01$basecall$args
+  expect_true(all(c("--barcode-arrangement", "--barcode-sequences") %in% args))
+  expect_equal(tail(args, 2L), c("--device", "cuda:all"))
+})
+
 test_that("process_one_pod5 publishes per-alias FASTQ files and a marker", {
   root <- tempfile("realtime-")
   pod5_dir <- file.path(root, "pod5")

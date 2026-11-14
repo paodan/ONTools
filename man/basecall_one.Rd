@@ -15,7 +15,10 @@ basecall_one(
   echo = TRUE,
   stderr = "",
   kit_name = NULL,
-  sample_sheet = NULL
+  sample_sheet = NULL,
+  barcode_arrangement = NULL,
+  barcode_sequences = NULL,
+  extra_basecaller_params = NULL
 )
 }
 \arguments{
@@ -46,6 +49,21 @@ classification is performed during basecalling.}
 
 \item{sample_sheet}{Optional MinKNOW-compatible sample sheet. Requires
 \code{kit_name} and applies barcode filtering and aliases during basecalling.}
+
+\item{barcode_arrangement}{Optional path to a custom Dorado barcode
+arrangement TOML file. Requires \code{kit_name}; \code{kit_name} should match the
+arrangement name declared in the TOML file.}
+
+\item{barcode_sequences}{Optional path to a FASTA file containing custom
+barcode sequences. Requires \code{barcode_arrangement}.}
+
+\item{extra_basecaller_params}{Optional character vector of additional
+arguments appended to \verb{dorado basecaller}, for example
+\code{c("--device", "cuda:all")}. Options managed by dedicated arguments
+(\code{--kit-name}, \code{--sample-sheet}, \code{--barcode-arrangement}, and
+\code{--barcode-sequences}) cannot be repeated here. Output-mode options
+\code{--emit-fastq} and \code{--emit-sam} are also rejected because this function
+captures Dorado standard output as BAM.}
 }
 \value{
 Invisibly returns a list with \code{status}, \code{command}, \code{args},
@@ -88,5 +106,23 @@ classified <- basecall_one(
   echo = FALSE
 )
 classified$command_string
+
+# Plan basecalling with a custom barcode arrangement and extra Dorado
+# options. Dorado itself validates the TOML and FASTA contents when run.
+arrangement <- tempfile(fileext = ".toml")
+sequences <- tempfile(fileext = ".fasta")
+writeLines(c("[arrangement]", "name = \"MY_CUSTOM_KIT\""), arrangement)
+writeLines(c(">BC01", "ACGTACGT"), sequences)
+custom <- basecall_one(
+  pod5_file = pod5,
+  bam_file = tempfile(fileext = ".bam"),
+  kit_name = "MY_CUSTOM_KIT",
+  barcode_arrangement = arrangement,
+  barcode_sequences = sequences,
+  extra_basecaller_params = c("--device", "cuda:all"),
+  dry_run = TRUE,
+  echo = FALSE
+)
+custom$command_string
 
 }

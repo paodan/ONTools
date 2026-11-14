@@ -49,6 +49,86 @@ test_that("basecall_one builds direct and conda dry-run commands", {
   )
 })
 
+test_that("basecall_one adds custom barcode files and extra parameters", {
+  pod5 <- tempfile(fileext = ".pod5")
+  arrangement <- tempfile(fileext = ".toml")
+  sequences <- tempfile(fileext = ".fasta")
+  writeLines("pod5", pod5)
+  writeLines(c("[arrangement]", "name = \"MY_CUSTOM_KIT\""), arrangement)
+  writeLines(c(">BC01", "ACGT"), sequences)
+
+  result <- basecall_one(
+    pod5_file = pod5,
+    bam_file = tempfile(fileext = ".bam"),
+    kit_name = "MY_CUSTOM_KIT",
+    barcode_arrangement = arrangement,
+    barcode_sequences = sequences,
+    extra_basecaller_params = c("--device", "cuda:all", "--batchsize", "0"),
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_equal(
+    tail(result$args, 10L),
+    c(
+      "--kit-name", "MY_CUSTOM_KIT",
+      "--barcode-arrangement", normalizePath(arrangement),
+      "--barcode-sequences", normalizePath(sequences),
+      "--device", "cuda:all", "--batchsize", "0"
+    )
+  )
+  expect_equal(result$paths$barcode_arrangement, normalizePath(arrangement))
+  expect_equal(result$paths$barcode_sequences, normalizePath(sequences))
+})
+
+test_that("basecall_one validates custom barcode and extra parameters", {
+  pod5 <- tempfile(fileext = ".pod5")
+  arrangement <- tempfile(fileext = ".toml")
+  sequences <- tempfile(fileext = ".fasta")
+  writeLines("pod5", pod5)
+  writeLines("[arrangement]", arrangement)
+  writeLines(c(">BC01", "ACGT"), sequences)
+
+  expect_error(
+    basecall_one(
+      pod5, tempfile(fileext = ".bam"),
+      barcode_arrangement = arrangement, dry_run = TRUE, echo = FALSE
+    ),
+    "requires `kit_name`"
+  )
+  expect_error(
+    basecall_one(
+      pod5, tempfile(fileext = ".bam"), kit_name = "CUSTOM",
+      barcode_sequences = sequences, dry_run = TRUE, echo = FALSE
+    ),
+    "requires `barcode_arrangement`"
+  )
+  expect_error(
+    basecall_one(
+      pod5, tempfile(fileext = ".bam"),
+      extra_basecaller_params = c("--kit-name", "OTHER"),
+      dry_run = TRUE, echo = FALSE
+    ),
+    "cannot contain"
+  )
+  expect_error(
+    basecall_one(
+      pod5, tempfile(fileext = ".bam"),
+      extra_basecaller_params = "--emit-fastq",
+      dry_run = TRUE, echo = FALSE
+    ),
+    "output-changing"
+  )
+  expect_error(
+    basecall_one(
+      pod5, tempfile(fileext = ".bam"),
+      extra_basecaller_params = c("--device", NA_character_),
+      dry_run = TRUE, echo = FALSE
+    ),
+    "without missing"
+  )
+})
+
 test_that("basecall_one runs Dorado and publishes a completed BAM", {
   pod5 <- tempfile(fileext = ".pod5")
   bam <- tempfile(fileext = ".bam")
@@ -120,6 +200,31 @@ test_that("watch_basecalling plans only POD5 files without BAM files", {
   expect_named(result$basecalls, "new")
   expect_equal(result$basecalls$new$status, NA_integer_)
   expect_equal(result$basecalls$new$paths$bam_file, file.path(normalizePath(bam_dir), "new.bam"))
+})
+
+test_that("watch_basecalling passes custom basecaller parameters through", {
+  pod5_dir <- tempfile("pod5-")
+  bam_dir <- tempfile("bam-")
+  arrangement <- tempfile(fileext = ".toml")
+  sequences <- tempfile(fileext = ".fasta")
+  dir.create(pod5_dir)
+  writeLines("pod5", file.path(pod5_dir, "batch01.pod5"))
+  writeLines("[arrangement]", arrangement)
+  writeLines(c(">BC01", "ACGT"), sequences)
+
+  result <- watch_basecalling(
+    pod5_dir,
+    bam_dir,
+    kit_name = "CUSTOM",
+    barcode_arrangement = arrangement,
+    barcode_sequences = sequences,
+    extra_basecaller_params = c("--device", "cpu"),
+    dry_run = TRUE,
+    echo = FALSE
+  )
+
+  expect_true("--barcode-arrangement" %in% result$basecalls$batch01$args)
+  expect_equal(tail(result$basecalls$batch01$args, 2L), c("--device", "cpu"))
 })
 
 test_that("watch_basecalling invokes the real basecaller", {

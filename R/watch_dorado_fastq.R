@@ -618,6 +618,13 @@ write_done_marker <- function(done_file,
 #' @param kit_name Dorado barcode kit name.
 #' @param sample_sheet Existing MinKNOW-compatible sample sheet containing
 #'   aliases. The file is read in place and is not copied into `run_path`.
+#' @param barcode_arrangement Optional custom Dorado barcode arrangement TOML
+#'   file passed to [basecall_one()]. Requires `kit_name`.
+#' @param barcode_sequences Optional custom barcode sequence FASTA file passed
+#'   to [basecall_one()]. Requires `barcode_arrangement`.
+#' @param extra_basecaller_params Optional character vector of additional
+#'   `dorado basecaller` arguments passed to [basecall_one()]. Dedicated
+#'   barcode and sample-sheet options must use their named arguments instead.
 #' @param threads Optional Dorado demux thread count.
 #' @param include_unclassified Publish unclassified reads.
 #' @param compress_fastq Gzip-compress each published per-POD5 FASTQ fragment.
@@ -702,6 +709,17 @@ write_done_marker <- function(done_file,
 #'   qc_every_n_pod5 = 1,
 #'   qc_plot_args = list(min_distance = 100, density_n = 1024)
 #' )
+#'
+#' # Custom barcodes: `kit_name` must match the name in the arrangement TOML.
+#' process_one_pod5(
+#'   pod5_file = "/data/minknow/run01/pod5/batch001.pod5",
+#'   sample_sheet = "/data/config/sample_sheet.csv",
+#'   run_path = "/data/project/run01",
+#'   kit_name = "MY_CUSTOM_KIT",
+#'   barcode_arrangement = "/data/config/custom_barcodes.toml",
+#'   barcode_sequences = "/data/config/custom_barcodes.fasta",
+#'   extra_basecaller_params = c("--device", "cuda:all")
+#' )
 #' completed$paths
 #' }
 #' @export
@@ -730,7 +748,10 @@ process_one_pod5 <- function(pod5_file,
                              dry_run = FALSE,
                              echo = TRUE,
                              stderr = "",
-                             run_path = NULL) {
+                             run_path = NULL,
+                             barcode_arrangement = NULL,
+                             barcode_sequences = NULL,
+                             extra_basecaller_params = NULL) {
   layout <- NULL
   if (!is.null(run_path)) {
     layout <- create_dorado_run_structure(run_path)
@@ -819,7 +840,10 @@ process_one_pod5 <- function(pod5_file,
       conda = conda,
       dry_run = dry_run,
       echo = echo,
-      stderr = stderr
+      stderr = stderr,
+      barcode_arrangement = barcode_arrangement,
+      barcode_sequences = barcode_sequences,
+      extra_basecaller_params = extra_basecaller_params
     )
   } else if (is.na(file.info(bam_file)$size) || file.info(bam_file)$size == 0) {
     stop("Existing BAM is empty: ", bam_file, call. = FALSE)
@@ -995,6 +1019,9 @@ process_one_pod5 <- function(pod5_file,
 #'   qc_include_unclassified = FALSE,
 #'   qc_every_n_pod5 = 1,
 #'   qc_plot_args = list(min_distance = 100, density_n = 1024),
+#'   barcode_arrangement = "/data/config/custom_barcodes.toml",
+#'   barcode_sequences = "/data/config/custom_barcodes.fasta",
+#'   extra_basecaller_params = c("--device", "cuda:all"),
 #'   max_run_time = 72 * 60 * 60,
 #'   check_interval = 3,
 #'   idle_interval = 30
@@ -1029,7 +1056,10 @@ watch_dorado_fastq <- function(pod5_path,
                                dry_run = FALSE,
                                echo = TRUE,
                                stderr = "",
-                               run_path = NULL) {
+                               run_path = NULL,
+                               barcode_arrangement = NULL,
+                               barcode_sequences = NULL,
+                               extra_basecaller_params = NULL) {
   layout <- NULL
   if (!is.null(run_path)) {
     layout <- create_dorado_run_structure(run_path)
@@ -1117,7 +1147,10 @@ watch_dorado_fastq <- function(pod5_path,
           qc_width = qc_width, qc_height = qc_height, qc_dpi = qc_dpi,
           qc_plot_args = qc_plot_args,
           dorado = dorado, conda_env = conda_env, conda = conda,
-          dry_run = TRUE, echo = echo, stderr = stderr
+          dry_run = TRUE, echo = echo, stderr = stderr,
+          barcode_arrangement = barcode_arrangement,
+          barcode_sequences = barcode_sequences,
+          extra_basecaller_params = extra_basecaller_params
         )
       }
       break
@@ -1162,7 +1195,10 @@ watch_dorado_fastq <- function(pod5_path,
         qc_width = qc_width, qc_height = qc_height, qc_dpi = qc_dpi,
         qc_plot_args = qc_plot_args,
         dorado = dorado, conda_env = conda_env, conda = conda,
-        dry_run = FALSE, echo = echo, stderr = stderr
+        dry_run = FALSE, echo = echo, stderr = stderr,
+        barcode_arrangement = barcode_arrangement,
+        barcode_sequences = barcode_sequences,
+        extra_basecaller_params = extra_basecaller_params
       )
     }
   }

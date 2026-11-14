@@ -16,7 +16,12 @@ watch_basecalling(
   conda = "conda",
   dry_run = FALSE,
   echo = TRUE,
-  stderr = ""
+  stderr = "",
+  kit_name = NULL,
+  sample_sheet = NULL,
+  barcode_arrangement = NULL,
+  barcode_sequences = NULL,
+  extra_basecaller_params = NULL
 )
 }
 \arguments{
@@ -48,6 +53,27 @@ running Dorado or creating the BAM file.}
 
 \item{stderr}{Passed to \code{\link[=system2]{system2()}} for Dorado's standard error stream. Use
 \code{""} to show progress in the R console or a file path to save a log.}
+
+\item{kit_name}{Optional Dorado barcode kit name. When supplied, barcode
+classification is performed during basecalling.}
+
+\item{sample_sheet}{Optional MinKNOW-compatible sample sheet. Requires
+\code{kit_name} and applies barcode filtering and aliases during basecalling.}
+
+\item{barcode_arrangement}{Optional path to a custom Dorado barcode
+arrangement TOML file. Requires \code{kit_name}; \code{kit_name} should match the
+arrangement name declared in the TOML file.}
+
+\item{barcode_sequences}{Optional path to a FASTA file containing custom
+barcode sequences. Requires \code{barcode_arrangement}.}
+
+\item{extra_basecaller_params}{Optional character vector of additional
+arguments appended to \verb{dorado basecaller}, for example
+\code{c("--device", "cuda:all")}. Options managed by dedicated arguments
+(\code{--kit-name}, \code{--sample-sheet}, \code{--barcode-arrangement}, and
+\code{--barcode-sequences}) cannot be repeated here. Output-mode options
+\code{--emit-fastq} and \code{--emit-sam} are also rejected because this function
+captures Dorado standard output as BAM.}
 }
 \value{
 Invisibly returns a list containing elapsed time and the results

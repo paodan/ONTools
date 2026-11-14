@@ -30,7 +30,10 @@ process_one_pod5(
   dry_run = FALSE,
   echo = TRUE,
   stderr = "",
-  run_path = NULL
+  run_path = NULL,
+  barcode_arrangement = NULL,
+  barcode_sequences = NULL,
+  extra_basecaller_params = NULL
 )
 }
 \arguments{
@@ -84,6 +87,16 @@ Dorado functions.}
 \item{run_path}{Optional standardized run root created by
 \code{\link[=create_dorado_run_structure]{create_dorado_run_structure()}}. It supplies missing output directories;
 it does not alter \code{pod5_file} or \code{sample_sheet}.}
+
+\item{barcode_arrangement}{Optional custom Dorado barcode arrangement TOML
+file passed to \code{\link[=basecall_one]{basecall_one()}}. Requires \code{kit_name}.}
+
+\item{barcode_sequences}{Optional custom barcode sequence FASTA file passed
+to \code{\link[=basecall_one]{basecall_one()}}. Requires \code{barcode_arrangement}.}
+
+\item{extra_basecaller_params}{Optional character vector of additional
+\verb{dorado basecaller} arguments passed to \code{\link[=basecall_one]{basecall_one()}}. Dedicated
+barcode and sample-sheet options must use their named arguments instead.}
 }
 \value{
 Invisibly returns paths and component results.
@@ -153,6 +166,17 @@ completed <- process_one_pod5(
   update_qc = TRUE,
   qc_every_n_pod5 = 1,
   qc_plot_args = list(min_distance = 100, density_n = 1024)
+)
+
+# Custom barcodes: `kit_name` must match the name in the arrangement TOML.
+process_one_pod5(
+  pod5_file = "/data/minknow/run01/pod5/batch001.pod5",
+  sample_sheet = "/data/config/sample_sheet.csv",
+  run_path = "/data/project/run01",
+  kit_name = "MY_CUSTOM_KIT",
+  barcode_arrangement = "/data/config/custom_barcodes.toml",
+  barcode_sequences = "/data/config/custom_barcodes.fasta",
+  extra_basecaller_params = c("--device", "cuda:all")
 )
 completed$paths
 }
