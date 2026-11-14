@@ -64,6 +64,10 @@ watch_file <- function(path, extension = ".pod5") {
 #' @param bam_file Output BAM file. An existing file is never overwritten.
 #' @param model Dorado model name, model alias such as `"fast"`, `"hac"`, or
 #'   `"sup"`, or a path to a downloaded model.
+#' @param kit_name Optional Dorado barcode kit name. When supplied, barcode
+#'   classification is performed during basecalling.
+#' @param sample_sheet Optional MinKNOW-compatible sample sheet. Requires
+#'   `kit_name` and applies barcode filtering and aliases during basecalling.
 #' @param dorado Command name or executable path for Dorado.
 #' @param conda_env Optional Conda environment name. When supplied, Dorado is
 #'   run using `conda run --no-capture-output`.
@@ -97,10 +101,20 @@ basecall_one <- function(pod5_file,
                          conda = "conda",
                          dry_run = FALSE,
                          echo = TRUE,
-                         stderr = "") {
+                         stderr = "",
+                         kit_name = NULL,
+                         sample_sheet = NULL) {
   check_file_arg(pod5_file, "pod5_file")
   check_scalar_character(bam_file, "bam_file")
   check_scalar_character(model, "model")
+  if (!is.null(kit_name)) check_scalar_character(kit_name, "kit_name")
+  if (!is.null(sample_sheet)) {
+    if (is.null(kit_name)) {
+      stop("`sample_sheet` requires `kit_name`.", call. = FALSE)
+    }
+    check_file_arg(sample_sheet, "sample_sheet")
+    sample_sheet <- normalizePath(sample_sheet, mustWork = TRUE)
+  }
   check_scalar_character(dorado, "dorado")
   check_scalar_character(conda, "conda")
   check_logical_scalar(dry_run, "dry_run")
@@ -118,6 +132,12 @@ basecall_one <- function(pod5_file,
   }
 
   dorado_args <- c("basecaller", model, pod5_file)
+  if (!is.null(kit_name)) {
+    dorado_args <- c(dorado_args, "--kit-name", kit_name)
+  }
+  if (!is.null(sample_sheet)) {
+    dorado_args <- c(dorado_args, "--sample-sheet", sample_sheet)
+  }
   if (is.null(conda_env)) {
     call <- list(command = dorado, args = dorado_args)
   } else {
@@ -139,7 +159,11 @@ basecall_one <- function(pod5_file,
   }
   if (isTRUE(echo)) message(command_string)
 
-  paths <- list(pod5_file = pod5_file, bam_file = bam_file)
+  paths <- list(
+    pod5_file = pod5_file,
+    bam_file = bam_file,
+    sample_sheet = sample_sheet
+  )
   result <- list(
     status = NA_integer_,
     command = call$command,

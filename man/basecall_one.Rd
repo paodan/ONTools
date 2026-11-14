@@ -13,7 +13,9 @@ basecall_one(
   conda = "conda",
   dry_run = FALSE,
   echo = TRUE,
-  stderr = ""
+  stderr = "",
+  kit_name = NULL,
+  sample_sheet = NULL
 )
 }
 \arguments{
@@ -38,6 +40,12 @@ running Dorado or creating the BAM file.}
 
 \item{stderr}{Passed to \code{\link[=system2]{system2()}} for Dorado's standard error stream. Use
 \code{""} to show progress in the R console or a file path to save a log.}
+
+\item{kit_name}{Optional Dorado barcode kit name. When supplied, barcode
+classification is performed during basecalling.}
+
+\item{sample_sheet}{Optional MinKNOW-compatible sample sheet. Requires
+\code{kit_name} and applies barcode filtering and aliases during basecalling.}
 }
 \value{
 Invisibly returns a list with \code{status}, \code{command}, \code{args},
