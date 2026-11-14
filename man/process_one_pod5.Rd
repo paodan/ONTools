@@ -6,9 +6,9 @@
 \usage{
 process_one_pod5(
   pod5_file,
-  bam_dir,
-  fastq_dir,
-  state_dir,
+  bam_dir = NULL,
+  fastq_dir = NULL,
+  state_dir = NULL,
   model = "hac",
   kit_name,
   sample_sheet,
@@ -16,6 +16,7 @@ process_one_pod5(
   include_unclassified = TRUE,
   compress_fastq = TRUE,
   update_qc = TRUE,
+  qc_include_unclassified = include_unclassified,
   qc_path = NULL,
   qc_every_n_pod5 = 1L,
   qc_format = "png",
@@ -28,23 +29,28 @@ process_one_pod5(
   conda = "conda",
   dry_run = FALSE,
   echo = TRUE,
-  stderr = ""
+  stderr = "",
+  run_path = NULL
 )
 }
 \arguments{
 \item{pod5_file}{Input POD5 file.}
 
-\item{bam_dir}{Directory for the corresponding BAM file.}
+\item{bam_dir}{Directory for the corresponding BAM file. May be \code{NULL} when
+\code{run_path} is supplied.}
 
-\item{fastq_dir}{Root directory for per-alias FASTQ fragments.}
+\item{fastq_dir}{Root directory for per-alias FASTQ fragments. May be \code{NULL}
+when \code{run_path} is supplied.}
 
-\item{state_dir}{Directory for \code{.done} markers and temporary demux output.}
+\item{state_dir}{Directory for \code{.done} markers and temporary demux output.
+May be \code{NULL} when \code{run_path} is supplied.}
 
 \item{model}{Dorado basecalling model or alias.}
 
 \item{kit_name}{Dorado barcode kit name.}
 
-\item{sample_sheet}{MinKNOW-compatible sample sheet containing aliases.}
+\item{sample_sheet}{Existing MinKNOW-compatible sample sheet containing
+aliases. The file is read in place and is not copied into \code{run_path}.}
 
 \item{threads}{Optional Dorado demux thread count.}
 
@@ -54,6 +60,10 @@ process_one_pod5(
 
 \item{update_qc}{Logical. After the \code{.done} marker is written, update one
 cumulative FASTQ statistics plot for the entire \code{fastq_dir}.}
+
+\item{qc_include_unclassified}{Include \code{unclassified} in the live QC plot.
+This is independent of \code{include_unclassified}, which controls whether
+unclassified FASTQ fragments are published.}
 
 \item{qc_path}{Root directory for live QC plots. When \code{NULL}, use
 \code{qc_live} beside \code{fastq_dir}.}
@@ -70,6 +80,10 @@ fifth completed POD5. A failed attempt is retried by a later eligible batch.}
 
 \item{dorado, conda_env, conda, dry_run, echo, stderr}{Passed to the component
 Dorado functions.}
+
+\item{run_path}{Optional standardized run root created by
+\code{\link[=create_dorado_run_structure]{create_dorado_run_structure()}}. It supplies missing output directories;
+it does not alter \code{pod5_file} or \code{sample_sheet}.}
 }
 \value{
 Invisibly returns paths and component results.
@@ -99,10 +113,11 @@ run-level FASTQ files; call \code{\link[=finalize_run_fastqs]{finalize_run_fastq
 complete.
 }
 \examples{
-root <- tempfile("one-pod5-")
-dir.create(root)
-pod5 <- file.path(root, "batch001.pod5")
-sheet <- file.path(root, "sample_sheet.csv")
+input_dir <- tempfile("one-pod5-input-")
+dir.create(input_dir)
+run_dir <- tempfile("one-pod5-output-")
+pod5 <- file.path(input_dir, "batch001.pod5")
+sheet <- file.path(input_dir, "sample_sheet.csv")
 writeLines("pod5", pod5)
 writeLines(
   c(
@@ -116,11 +131,9 @@ writeLines(
 # requiring a Dorado installation or a real POD5 file.
 planned <- process_one_pod5(
   pod5_file = pod5,
-  bam_dir = file.path(root, "bam"),
-  fastq_dir = file.path(root, "fastq_live"),
-  state_dir = file.path(root, "state"),
-  kit_name = "SQK-NBD114-96",
   sample_sheet = sheet,
+  run_path = run_dir,
+  kit_name = "SQK-NBD114-96",
   dry_run = TRUE,
   echo = FALSE
 )
@@ -131,16 +144,13 @@ planned$demux$command_string
 \dontrun{
 # With Dorado installed and a real POD5, omit dry_run.
 completed <- process_one_pod5(
-  pod5_file = "/data/project/pod5/batch001.pod5",
-  bam_dir = "/data/project/bam",
-  fastq_dir = "/data/project/fastq_live",
-  state_dir = "/data/project/state",
+  pod5_file = "/data/minknow/run01/pod5/batch001.pod5",
+  sample_sheet = "/data/config/sample_sheet.csv",
+  run_path = "/data/project/run01",
   model = "hac",
   kit_name = "SQK-NBD114-96",
-  sample_sheet = "/data/project/sample_sheet.csv",
   threads = 8,
   update_qc = TRUE,
-  qc_path = "/data/project/qc_live",
   qc_every_n_pod5 = 1,
   qc_plot_args = list(min_distance = 100, density_n = 1024)
 )

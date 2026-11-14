@@ -5,19 +5,22 @@
 \title{Finalize a run by merging per-POD5 FASTQ fragments by alias}
 \usage{
 finalize_run_fastqs(
-  fastq_path,
-  output_path,
+  fastq_path = NULL,
+  output_path = NULL,
   include_unclassified = TRUE,
   preserve_subdirs = FALSE,
   compress = TRUE,
   write_md5 = FALSE,
-  overwrite = FALSE
+  overwrite = FALSE,
+  run_path = NULL
 )
 }
 \arguments{
-\item{fastq_path}{Root directory created by \code{publish_demux_fastqs()}.}
+\item{fastq_path}{Root directory created by \code{publish_demux_fastqs()}. May be
+\code{NULL} when \code{run_path} is supplied.}
 
-\item{output_path}{Directory for one final FASTQ per alias.}
+\item{output_path}{Directory for one final FASTQ per alias. May be \code{NULL}
+when \code{run_path} is supplied.}
 
 \item{include_unclassified}{Include the \code{unclassified} alias.}
 
@@ -35,6 +38,10 @@ final FASTQ.GZ (or FASTQ when \code{compress = FALSE}) and write
 \verb{<final_fastq>.md5} beside it.}
 
 \item{overwrite}{Replace existing final FASTQ files.}
+
+\item{run_path}{Optional standardized run root created by
+\code{\link[=create_dorado_run_structure]{create_dorado_run_structure()}}. It supplies missing \code{fastq_path} and
+\code{output_path} values.}
 }
 \value{
 A data frame describing the final FASTQ files.
@@ -69,7 +76,8 @@ stopped and every expected POD5 has a \code{.done} marker.
 }
 \examples{
 root <- tempfile("finalize-fastq-")
-live <- file.path(root, "fastq_live")
+layout <- create_dorado_run_structure(root)
+live <- layout$fastq_path
 dir.create(file.path(live, "sampleA"), recursive = TRUE)
 dir.create(file.path(live, "sampleB"), recursive = TRUE)
 
@@ -87,8 +95,7 @@ writeLines(
 )
 
 final <- finalize_run_fastqs(
-  fastq_path = live,
-  output_path = file.path(root, "fastq_final"),
+  run_path = root,
   preserve_subdirs = TRUE,
   compress = TRUE,
   write_md5 = TRUE

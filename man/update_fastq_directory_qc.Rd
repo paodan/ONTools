@@ -5,8 +5,8 @@
 \title{Update one cumulative QC plot for an entire FASTQ directory}
 \usage{
 update_fastq_directory_qc(
-  fastq_path,
-  qc_path,
+  fastq_path = NULL,
+  qc_path = NULL,
   include_unclassified = TRUE,
   output_name = "fastq_statistics",
   format = c("png", "pdf"),
@@ -14,13 +14,16 @@ update_fastq_directory_qc(
   height = 10,
   dpi = 150,
   plot_args = list(),
-  error_action = c("warn", "silent", "stop")
+  error_action = c("warn", "silent", "stop"),
+  run_path = NULL
 )
 }
 \arguments{
-\item{fastq_path}{Root directory containing one subdirectory per alias.}
+\item{fastq_path}{Root directory containing one subdirectory per alias.
+May be \code{NULL} when \code{run_path} is supplied.}
 
-\item{qc_path}{Directory in which the run-level QC plot is written.}
+\item{qc_path}{Directory in which the run-level QC plot is written. May be
+\code{NULL} when \code{run_path} is supplied.}
 
 \item{include_unclassified}{Include the \code{unclassified} alias.}
 
@@ -38,6 +41,10 @@ update_fastq_directory_qc(
 \item{error_action}{Action when plotting fails: \code{"warn"} records an
 error log and emits a warning, \code{"silent"} only records the log, and
 \code{"stop"} records the log and stops.}
+
+\item{run_path}{Optional standardized run root created by
+\code{\link[=create_dorado_run_structure]{create_dorado_run_structure()}}. It supplies missing \code{fastq_path} and
+\code{qc_path} values.}
 }
 \value{
 A one-row data frame describing the status, alias and fragment
@@ -63,8 +70,9 @@ updated. A later call automatically retries with all fragments then present.
 }
 \examples{
 root <- tempfile("directory-qc-")
-dir.create(file.path(root, "fastq_live", "sampleA"), recursive = TRUE)
-dir.create(file.path(root, "fastq_live", "sampleB"), recursive = TRUE)
+layout <- create_dorado_run_structure(root)
+dir.create(file.path(layout$fastq_path, "sampleA"))
+dir.create(file.path(layout$fastq_path, "sampleB"))
 write_example <- function(path, prefix, lengths) {
   records <- unlist(lapply(seq_along(lengths), function(i) {
     sequence <- paste(rep("A", lengths[[i]]), collapse = "")
@@ -79,17 +87,17 @@ write_example <- function(path, prefix, lengths) {
   close(con)
 }
 write_example(
-  file.path(root, "fastq_live", "sampleA", "batch001__sampleA.fastq.gz"),
+  file.path(layout$fastq_path, "sampleA", "batch001__sampleA.fastq.gz"),
   "a", c(95:105, 295:305)
 )
 write_example(
-  file.path(root, "fastq_live", "sampleB", "batch001__sampleB.fastq.gz"),
+  file.path(layout$fastq_path, "sampleB", "batch001__sampleB.fastq.gz"),
   "b", c(145:155, 395:405)
 )
 
 qc <- update_fastq_directory_qc(
-  fastq_path = file.path(root, "fastq_live"),
-  qc_path = file.path(root, "qc_live"),
+  run_path = root,
+  include_unclassified = FALSE,
   plot_args = list(min_distance = 100, density_n = 1024)
 )
 qc[, c("status", "n_aliases", "n_fragments")]

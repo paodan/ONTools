@@ -28,6 +28,24 @@ fake_realtime_dorado <- function() {
   path
 }
 
+test_that("create_dorado_run_structure creates the standardized layout", {
+  root <- tempfile("standard-run-")
+  layout <- create_dorado_run_structure(root)
+
+  expect_s3_class(layout, "dorado_run_structure")
+  expect_equal(layout$run_path, normalizePath(root))
+  expect_true(all(vapply(
+    layout[c(
+      "bam_path", "fastq_path", "final_fastq_path",
+      "qc_path", "qc_cache_path", "state_path", "log_path"
+    )],
+    dir.exists,
+    logical(1)
+  )))
+  expect_false("pod5_path" %in% names(layout))
+  expect_false("sample_sheet" %in% names(layout))
+})
+
 test_that("basecall_one adds barcode and sample sheet arguments", {
   pod5 <- tempfile(fileext = ".pod5")
   sheet <- tempfile(fileext = ".csv")
@@ -165,13 +183,33 @@ test_that("finalize_run_fastqs recompresses FASTQ.GZ fragments", {
   close(merged)
 })
 
+test_that("finalize_run_fastqs resolves standardized run paths", {
+  root <- tempfile("finalize-standard-run-")
+  layout <- create_dorado_run_structure(root)
+  alias_dir <- file.path(layout$fastq_path, "sampleA")
+  dir.create(alias_dir)
+  writeLines(
+    c("@a", "AC", "+", "II"),
+    file.path(alias_dir, "batch01__sampleA.fastq")
+  )
+
+  result <- finalize_run_fastqs(run_path = root, compress = FALSE)
+
+  expect_equal(
+    result$output_fastq,
+    normalizePath(file.path(layout$final_fastq_path, "sampleA.fastq"))
+  )
+})
+
 test_that("directory QC merges each alias and preserves the last good plot", {
   root <- tempfile("live-qc-")
   alias_a <- file.path(root, "fastq", "sampleA")
   alias_b <- file.path(root, "fastq", "sampleB")
+  unclassified <- file.path(root, "fastq", "unclassified")
   qc_dir <- file.path(root, "qc")
   dir.create(alias_a, recursive = TRUE)
   dir.create(alias_b, recursive = TRUE)
+  dir.create(unclassified, recursive = TRUE)
 
   write_qc_fastq <- function(path, start, lengths) {
     records <- unlist(lapply(seq_along(lengths), function(i) {
@@ -203,10 +241,16 @@ test_that("directory QC merges each alias and preserves the last good plot", {
     200L,
     c(145:155, 395:405)
   )
+  write_qc_fastq(
+    file.path(unclassified, "batch01__unclassified.fastq.gz"),
+    300L,
+    c(195:205, 495:505)
+  )
 
   result <- update_fastq_directory_qc(
     fastq_path = file.path(root, "fastq"),
     qc_path = qc_dir,
+    include_unclassified = FALSE,
     plot_args = list(min_distance = 100, density_n = 1024),
     error_action = "stop"
   )
@@ -220,6 +264,7 @@ test_that("directory QC merges each alias and preserves the last good plot", {
   failed <- update_fastq_directory_qc(
     fastq_path = file.path(root, "fastq"),
     qc_path = qc_dir,
+    include_unclassified = FALSE,
     plot_args = list(heights = 1),
     error_action = "silent"
   )
@@ -230,19 +275,21 @@ test_that("directory QC merges each alias and preserves the last good plot", {
 
 test_that("watch_dorado_fastq processes stable POD5 files once", {
   root <- tempfile("watch-realtime-")
-  pod5_dir <- file.path(root, "pod5")
-  dir.create(pod5_dir, recursive = TRUE)
-  writeLines("pod5", file.path(pod5_dir, "batch01.pod5"))
-  sheet <- file.path(root, "sample_sheet.csv")
-  writeLines("experiment_id,flow_cell_id,kit", sheet)
+  layout <- create_dorado_run_structure(root)
+  input_dir <- tempfile("watch-input-")
+  dir.create(input_dir)
+  pod5_dir <- file.path(input_dir, "pod5")
+  dir.create(pod5_dir)
+  pod5_file <- file.path(pod5_dir, "batch01.pod5")
+  sample_sheet <- file.path(input_dir, "sample_sheet.csv")
+  writeLines("pod5", pod5_file)
+  writeLines("experiment_id,flow_cell_id,kit", sample_sheet)
 
   result <- watch_dorado_fastq(
     pod5_path = pod5_dir,
-    bam_path = file.path(root, "bam"),
-    fastq_path = file.path(root, "fastq"),
-    state_path = file.path(root, "state"),
+    sample_sheet = sample_sheet,
+    run_path = root,
     kit_name = "SQK-NBD114-96",
-    sample_sheet = sheet,
     max_run_time = 0.5,
     check_interval = 0.01,
     idle_interval = 0.01,
@@ -254,5 +301,8 @@ test_that("watch_dorado_fastq processes stable POD5 files once", {
 
   expect_named(result$batches, "batch01")
   expect_equal(result$batches$batch01$status, "completed")
-  expect_true(file.exists(file.path(root, "state", "batch01.done")))
+  expect_true(file.exists(file.path(layout$state_path, "batch01.done")))
+  expect_equal(result$paths$run_path, normalizePath(root))
+  expect_true(file.exists(pod5_file))
+  expect_true(file.exists(sample_sheet))
 })

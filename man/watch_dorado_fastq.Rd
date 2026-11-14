@@ -6,9 +6,9 @@
 \usage{
 watch_dorado_fastq(
   pod5_path,
-  bam_path,
-  fastq_path,
-  state_path,
+  bam_path = NULL,
+  fastq_path = NULL,
+  state_path = NULL,
   kit_name,
   sample_sheet,
   max_run_time = 10,
@@ -19,6 +19,7 @@ watch_dorado_fastq(
   include_unclassified = TRUE,
   compress_fastq = TRUE,
   update_qc = TRUE,
+  qc_include_unclassified = include_unclassified,
   qc_path = NULL,
   qc_every_n_pod5 = 1L,
   qc_format = "png",
@@ -31,21 +32,27 @@ watch_dorado_fastq(
   conda = "conda",
   dry_run = FALSE,
   echo = TRUE,
-  stderr = ""
+  stderr = "",
+  run_path = NULL
 )
 }
 \arguments{
-\item{pod5_path}{Directory containing POD5 files.}
+\item{pod5_path}{Existing directory containing POD5 files. It is monitored
+in place and is not copied or moved into \code{run_path}.}
 
-\item{bam_path}{Directory for one BAM per POD5.}
+\item{bam_path}{Directory for one BAM per POD5. May be \code{NULL} when
+\code{run_path} is supplied.}
 
-\item{fastq_path}{Root directory for per-alias FASTQ fragments.}
+\item{fastq_path}{Root directory for per-alias FASTQ fragments. May be
+\code{NULL} when \code{run_path} is supplied.}
 
-\item{state_path}{Directory for completion markers.}
+\item{state_path}{Directory for completion markers. May be \code{NULL} when
+\code{run_path} is supplied.}
 
 \item{kit_name}{Dorado barcode kit name.}
 
-\item{sample_sheet}{MinKNOW-compatible sample sheet containing aliases.}
+\item{sample_sheet}{Existing MinKNOW-compatible sample sheet containing
+aliases. The file is read in place and is not copied into \code{run_path}.}
 
 \item{max_run_time}{Maximum watcher runtime in seconds.}
 
@@ -64,6 +71,10 @@ watch_dorado_fastq(
 \item{update_qc}{Logical. After the \code{.done} marker is written, update one
 cumulative FASTQ statistics plot for the entire \code{fastq_dir}.}
 
+\item{qc_include_unclassified}{Include \code{unclassified} in the live QC plot.
+This is independent of \code{include_unclassified}, which controls whether
+unclassified FASTQ fragments are published.}
+
 \item{qc_path}{Root directory for live QC plots. When \code{NULL}, use
 \code{qc_live} beside \code{fastq_dir}.}
 
@@ -79,6 +90,10 @@ fifth completed POD5. A failed attempt is retried by a later eligible batch.}
 
 \item{dorado, conda_env, conda, dry_run, echo, stderr}{Passed to the component
 Dorado functions.}
+
+\item{run_path}{Optional standardized run root created by
+\code{\link[=create_dorado_run_structure]{create_dorado_run_structure()}}. It supplies missing output directories;
+it does not alter \code{pod5_file} or \code{sample_sheet}.}
 }
 \value{
 Invisibly returns elapsed time and per-POD5 results.
@@ -109,12 +124,14 @@ run-level merged FASTQ during sequencing.
 to the desired monitoring window and invoke the watcher again if necessary.
 }
 \examples{
-root <- tempfile("watch-dorado-")
-pod5_dir <- file.path(root, "pod5")
-dir.create(pod5_dir, recursive = TRUE)
+input_dir <- tempfile("watch-dorado-input-")
+dir.create(input_dir)
+pod5_dir <- file.path(input_dir, "pod5")
+dir.create(pod5_dir)
+sheet <- file.path(input_dir, "sample_sheet.csv")
+run_dir <- tempfile("watch-dorado-output-")
 writeLines("pod5", file.path(pod5_dir, "batch001.pod5"))
 writeLines("pod5", file.path(pod5_dir, "batch002.pod5"))
-sheet <- file.path(root, "sample_sheet.csv")
 writeLines(
   c(
     "experiment_id,flow_cell_id,kit,barcode,alias",
@@ -127,11 +144,9 @@ writeLines(
 # Plan both batches without sleeping or running Dorado.
 plan <- watch_dorado_fastq(
   pod5_path = pod5_dir,
-  bam_path = file.path(root, "bam"),
-  fastq_path = file.path(root, "fastq_live"),
-  state_path = file.path(root, "state"),
-  kit_name = "SQK-NBD114-96",
   sample_sheet = sheet,
+  run_path = run_dir,
+  kit_name = "SQK-NBD114-96",
   dry_run = TRUE,
   echo = FALSE
 )
@@ -140,17 +155,16 @@ names(plan$batches)
 \dontrun{
 # A realistic 72-hour watcher invocation.
 watch_dorado_fastq(
-  pod5_path = "/data/project/pod5",
-  bam_path = "/data/project/bam",
-  fastq_path = "/data/project/fastq_live",
-  state_path = "/data/project/state",
+  pod5_path = "/data/minknow/run01/pod5",
+  sample_sheet = "/data/config/sample_sheet.csv",
+  run_path = "/data/project/run01",
   kit_name = "SQK-NBD114-96",
-  sample_sheet = "/data/project/sample_sheet.csv",
   model = "hac",
   threads = 8,
   compress_fastq = TRUE,
+  include_unclassified = TRUE,
   update_qc = TRUE,
-  qc_path = "/data/project/qc_live",
+  qc_include_unclassified = FALSE,
   qc_every_n_pod5 = 1,
   qc_plot_args = list(min_distance = 100, density_n = 1024),
   max_run_time = 72 * 60 * 60,

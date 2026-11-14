@@ -1,3 +1,77 @@
+#' Create a standardized Dorado run directory structure
+#'
+#' `create_dorado_run_structure()` creates all directories used by the
+#' real-time POD5-to-FASTQ workflow and returns their resolved paths.
+#'
+#' @param run_path Root directory for one sequencing run.
+#' @param create Logical. Create missing directories when `TRUE`; when `FALSE`,
+#'   only return the paths that would be used.
+#'
+#' @return A named list containing the run root and standardized output
+#'   directories.
+#'
+#' @details
+#' The standardized layout is:
+#'
+#' ```
+#' <run_path>/
+#' |-- bam/
+#' |-- fastq_live/
+#' |-- fastq_final/
+#' |-- qc_live/
+#' |-- qc_cache/
+#' |-- state/
+#' `-- logs/
+#' ```
+#'
+#' POD5 files and the sample sheet are inputs and are deliberately not copied,
+#' moved, or created under `run_path`. Pass their existing paths directly to
+#' [watch_dorado_fastq()] or [process_one_pod5()].
+#'
+#' @examples
+#' layout <- create_dorado_run_structure(tempfile("dorado-run-"))
+#' names(layout)
+#' dir.exists(layout$fastq_path)
+#' @export
+create_dorado_run_structure <- function(run_path, create = TRUE) {
+  check_scalar_character(run_path, "run_path")
+  check_logical_scalar(create, "create")
+  if (!nzchar(run_path)) stop("`run_path` must not be empty.", call. = FALSE)
+
+  if (isTRUE(create)) {
+    dir.create(run_path, recursive = TRUE, showWarnings = FALSE)
+    if (!dir.exists(run_path)) {
+      stop("Unable to create `run_path`: ", run_path, call. = FALSE)
+    }
+  }
+  root <- normalizePath(run_path, mustWork = create)
+  layout <- list(
+    run_path = root,
+    bam_path = file.path(root, "bam"),
+    fastq_path = file.path(root, "fastq_live"),
+    final_fastq_path = file.path(root, "fastq_final"),
+    qc_path = file.path(root, "qc_live"),
+    qc_cache_path = file.path(root, "qc_cache"),
+    state_path = file.path(root, "state"),
+    log_path = file.path(root, "logs")
+  )
+  if (isTRUE(create)) {
+    directories <- unlist(layout[c(
+      "bam_path", "fastq_path", "final_fastq_path",
+      "qc_path", "qc_cache_path", "state_path", "log_path"
+    )], use.names = FALSE)
+    for (directory in directories) {
+      dir.create(directory, recursive = TRUE, showWarnings = FALSE)
+      if (!dir.exists(directory)) {
+        stop("Unable to create run directory: ", directory, call. = FALSE)
+      }
+    }
+    layout <- lapply(layout, normalizePath, mustWork = TRUE)
+  }
+  class(layout) <- c("dorado_run_structure", "list")
+  layout
+}
+
 #' Demultiplex one classified BAM directly to FASTQ
 #'
 #' `demux_one_bam_fastq()` runs `dorado demux --no-classify --emit-fastq` on a
@@ -242,7 +316,12 @@ publish_demux_fastqs <- function(demux_dir,
 #' [plot_fastq_statistics()] in a single call.
 #'
 #' @param fastq_path Root directory containing one subdirectory per alias.
-#' @param qc_path Directory in which the run-level QC plot is written.
+#'   May be `NULL` when `run_path` is supplied.
+#' @param qc_path Directory in which the run-level QC plot is written. May be
+#'   `NULL` when `run_path` is supplied.
+#' @param run_path Optional standardized run root created by
+#'   [create_dorado_run_structure()]. It supplies missing `fastq_path` and
+#'   `qc_path` values.
 #' @param include_unclassified Include the `unclassified` alias.
 #' @param output_name Base name for the QC plot, without an extension.
 #' @param format Plot format, either `"png"` or `"pdf"`.
@@ -271,8 +350,9 @@ publish_demux_fastqs <- function(demux_dir,
 #'
 #' @examples
 #' root <- tempfile("directory-qc-")
-#' dir.create(file.path(root, "fastq_live", "sampleA"), recursive = TRUE)
-#' dir.create(file.path(root, "fastq_live", "sampleB"), recursive = TRUE)
+#' layout <- create_dorado_run_structure(root)
+#' dir.create(file.path(layout$fastq_path, "sampleA"))
+#' dir.create(file.path(layout$fastq_path, "sampleB"))
 #' write_example <- function(path, prefix, lengths) {
 #'   records <- unlist(lapply(seq_along(lengths), function(i) {
 #'     sequence <- paste(rep("A", lengths[[i]]), collapse = "")
@@ -287,24 +367,24 @@ publish_demux_fastqs <- function(demux_dir,
 #'   close(con)
 #' }
 #' write_example(
-#'   file.path(root, "fastq_live", "sampleA", "batch001__sampleA.fastq.gz"),
+#'   file.path(layout$fastq_path, "sampleA", "batch001__sampleA.fastq.gz"),
 #'   "a", c(95:105, 295:305)
 #' )
 #' write_example(
-#'   file.path(root, "fastq_live", "sampleB", "batch001__sampleB.fastq.gz"),
+#'   file.path(layout$fastq_path, "sampleB", "batch001__sampleB.fastq.gz"),
 #'   "b", c(145:155, 395:405)
 #' )
 #'
 #' qc <- update_fastq_directory_qc(
-#'   fastq_path = file.path(root, "fastq_live"),
-#'   qc_path = file.path(root, "qc_live"),
+#'   run_path = root,
+#'   include_unclassified = FALSE,
 #'   plot_args = list(min_distance = 100, density_n = 1024)
 #' )
 #' qc[, c("status", "n_aliases", "n_fragments")]
 #' file.exists(qc$plot_file)
 #' @export
-update_fastq_directory_qc <- function(fastq_path,
-                                      qc_path,
+update_fastq_directory_qc <- function(fastq_path = NULL,
+                                      qc_path = NULL,
                                       include_unclassified = TRUE,
                                       output_name = "fastq_statistics",
                                       format = c("png", "pdf"),
@@ -312,7 +392,19 @@ update_fastq_directory_qc <- function(fastq_path,
                                       height = 10,
                                       dpi = 150,
                                       plot_args = list(),
-                                      error_action = c("warn", "silent", "stop")) {
+                                      error_action = c("warn", "silent", "stop"),
+                                      run_path = NULL) {
+  if (!is.null(run_path)) {
+    layout <- create_dorado_run_structure(run_path)
+    if (is.null(fastq_path)) fastq_path <- layout$fastq_path
+    if (is.null(qc_path)) qc_path <- layout$qc_path
+  }
+  if (is.null(fastq_path)) {
+    stop("Supply `fastq_path` or `run_path`.", call. = FALSE)
+  }
+  if (is.null(qc_path)) {
+    stop("Supply `qc_path` or `run_path`.", call. = FALSE)
+  }
   check_dir_arg(fastq_path, "fastq_path")
   check_scalar_character(qc_path, "qc_path")
   check_logical_scalar(include_unclassified, "include_unclassified")
@@ -513,17 +605,27 @@ write_done_marker <- function(done_file,
 #' Process one completed POD5 file through FASTQ publication
 #'
 #' @param pod5_file Input POD5 file.
-#' @param bam_dir Directory for the corresponding BAM file.
-#' @param fastq_dir Root directory for per-alias FASTQ fragments.
+#' @param bam_dir Directory for the corresponding BAM file. May be `NULL` when
+#'   `run_path` is supplied.
+#' @param fastq_dir Root directory for per-alias FASTQ fragments. May be `NULL`
+#'   when `run_path` is supplied.
 #' @param state_dir Directory for `.done` markers and temporary demux output.
+#'   May be `NULL` when `run_path` is supplied.
+#' @param run_path Optional standardized run root created by
+#'   [create_dorado_run_structure()]. It supplies missing output directories;
+#'   it does not alter `pod5_file` or `sample_sheet`.
 #' @param model Dorado basecalling model or alias.
 #' @param kit_name Dorado barcode kit name.
-#' @param sample_sheet MinKNOW-compatible sample sheet containing aliases.
+#' @param sample_sheet Existing MinKNOW-compatible sample sheet containing
+#'   aliases. The file is read in place and is not copied into `run_path`.
 #' @param threads Optional Dorado demux thread count.
 #' @param include_unclassified Publish unclassified reads.
 #' @param compress_fastq Gzip-compress each published per-POD5 FASTQ fragment.
 #' @param update_qc Logical. After the `.done` marker is written, update one
 #'   cumulative FASTQ statistics plot for the entire `fastq_dir`.
+#' @param qc_include_unclassified Include `unclassified` in the live QC plot.
+#'   This is independent of `include_unclassified`, which controls whether
+#'   unclassified FASTQ fragments are published.
 #' @param qc_path Root directory for live QC plots. When `NULL`, use
 #'   `qc_live` beside `fastq_dir`.
 #' @param qc_every_n_pod5 Positive integer controlling run-level QC frequency.
@@ -559,10 +661,11 @@ write_done_marker <- function(done_file,
 #' complete.
 #'
 #' @examples
-#' root <- tempfile("one-pod5-")
-#' dir.create(root)
-#' pod5 <- file.path(root, "batch001.pod5")
-#' sheet <- file.path(root, "sample_sheet.csv")
+#' input_dir <- tempfile("one-pod5-input-")
+#' dir.create(input_dir)
+#' run_dir <- tempfile("one-pod5-output-")
+#' pod5 <- file.path(input_dir, "batch001.pod5")
+#' sheet <- file.path(input_dir, "sample_sheet.csv")
 #' writeLines("pod5", pod5)
 #' writeLines(
 #'   c(
@@ -576,11 +679,9 @@ write_done_marker <- function(done_file,
 #' # requiring a Dorado installation or a real POD5 file.
 #' planned <- process_one_pod5(
 #'   pod5_file = pod5,
-#'   bam_dir = file.path(root, "bam"),
-#'   fastq_dir = file.path(root, "fastq_live"),
-#'   state_dir = file.path(root, "state"),
-#'   kit_name = "SQK-NBD114-96",
 #'   sample_sheet = sheet,
+#'   run_path = run_dir,
+#'   kit_name = "SQK-NBD114-96",
 #'   dry_run = TRUE,
 #'   echo = FALSE
 #' )
@@ -591,16 +692,13 @@ write_done_marker <- function(done_file,
 #' \dontrun{
 #' # With Dorado installed and a real POD5, omit dry_run.
 #' completed <- process_one_pod5(
-#'   pod5_file = "/data/project/pod5/batch001.pod5",
-#'   bam_dir = "/data/project/bam",
-#'   fastq_dir = "/data/project/fastq_live",
-#'   state_dir = "/data/project/state",
+#'   pod5_file = "/data/minknow/run01/pod5/batch001.pod5",
+#'   sample_sheet = "/data/config/sample_sheet.csv",
+#'   run_path = "/data/project/run01",
 #'   model = "hac",
 #'   kit_name = "SQK-NBD114-96",
-#'   sample_sheet = "/data/project/sample_sheet.csv",
 #'   threads = 8,
 #'   update_qc = TRUE,
-#'   qc_path = "/data/project/qc_live",
 #'   qc_every_n_pod5 = 1,
 #'   qc_plot_args = list(min_distance = 100, density_n = 1024)
 #' )
@@ -608,9 +706,9 @@ write_done_marker <- function(done_file,
 #' }
 #' @export
 process_one_pod5 <- function(pod5_file,
-                             bam_dir,
-                             fastq_dir,
-                             state_dir,
+                             bam_dir = NULL,
+                             fastq_dir = NULL,
+                             state_dir = NULL,
                              model = "hac",
                              kit_name,
                              sample_sheet,
@@ -618,6 +716,7 @@ process_one_pod5 <- function(pod5_file,
                              include_unclassified = TRUE,
                              compress_fastq = TRUE,
                              update_qc = TRUE,
+                             qc_include_unclassified = include_unclassified,
                              qc_path = NULL,
                              qc_every_n_pod5 = 1L,
                              qc_format = "png",
@@ -630,7 +729,23 @@ process_one_pod5 <- function(pod5_file,
                              conda = "conda",
                              dry_run = FALSE,
                              echo = TRUE,
-                             stderr = "") {
+                             stderr = "",
+                             run_path = NULL) {
+  layout <- NULL
+  if (!is.null(run_path)) {
+    layout <- create_dorado_run_structure(run_path)
+    if (is.null(bam_dir)) bam_dir <- layout$bam_path
+    if (is.null(fastq_dir)) fastq_dir <- layout$fastq_path
+    if (is.null(state_dir)) state_dir <- layout$state_path
+    if (is.null(qc_path)) qc_path <- layout$qc_path
+  }
+  if (is.null(bam_dir) || is.null(fastq_dir) || is.null(state_dir)) {
+    stop("Supply `bam_dir`, `fastq_dir`, and `state_dir`, or supply `run_path`.",
+         call. = FALSE)
+  }
+  if (is.null(sample_sheet)) {
+    stop("Supply the existing `sample_sheet` path.", call. = FALSE)
+  }
   check_file_arg(pod5_file, "pod5_file")
   check_scalar_character(bam_dir, "bam_dir")
   check_scalar_character(fastq_dir, "fastq_dir")
@@ -641,6 +756,7 @@ process_one_pod5 <- function(pod5_file,
   check_logical_scalar(include_unclassified, "include_unclassified")
   check_logical_scalar(compress_fastq, "compress_fastq")
   check_logical_scalar(update_qc, "update_qc")
+  check_logical_scalar(qc_include_unclassified, "qc_include_unclassified")
   check_logical_scalar(dry_run, "dry_run")
   if (!is.null(qc_path)) check_scalar_character(qc_path, "qc_path")
   qc_every_n_pod5 <- validate_optional_positive_integer(
@@ -765,7 +881,7 @@ process_one_pod5 <- function(pod5_file,
       qc_result <- update_fastq_directory_qc(
         fastq_path = fastq_dir,
         qc_path = qc_path,
-        include_unclassified = include_unclassified,
+        include_unclassified = qc_include_unclassified,
         format = qc_format,
         width = qc_width,
         height = qc_height,
@@ -787,7 +903,8 @@ process_one_pod5 <- function(pod5_file,
       bam_file = normalizePath(bam_file, mustWork = TRUE),
       fastq_files = publication$output_fastq,
       done_file = done_file,
-      qc_path = qc_path
+      qc_path = qc_path,
+      run_path = if (is.null(layout)) NULL else layout$run_path
     )
   ))
 }
@@ -797,10 +914,14 @@ process_one_pod5 <- function(pod5_file,
 #' The watcher preserves the existing ONTools stability rule: a POD5 is
 #' processed after its size is unchanged across one checking interval.
 #'
-#' @param pod5_path Directory containing POD5 files.
-#' @param bam_path Directory for one BAM per POD5.
-#' @param fastq_path Root directory for per-alias FASTQ fragments.
-#' @param state_path Directory for completion markers.
+#' @param pod5_path Existing directory containing POD5 files. It is monitored
+#'   in place and is not copied or moved into `run_path`.
+#' @param bam_path Directory for one BAM per POD5. May be `NULL` when
+#'   `run_path` is supplied.
+#' @param fastq_path Root directory for per-alias FASTQ fragments. May be
+#'   `NULL` when `run_path` is supplied.
+#' @param state_path Directory for completion markers. May be `NULL` when
+#'   `run_path` is supplied.
 #' @param max_run_time Maximum watcher runtime in seconds.
 #' @param check_interval Seconds between POD5 size checks.
 #' @param idle_interval Maximum seconds to sleep when no work is available.
@@ -831,12 +952,14 @@ process_one_pod5 <- function(pod5_file,
 #' to the desired monitoring window and invoke the watcher again if necessary.
 #'
 #' @examples
-#' root <- tempfile("watch-dorado-")
-#' pod5_dir <- file.path(root, "pod5")
-#' dir.create(pod5_dir, recursive = TRUE)
+#' input_dir <- tempfile("watch-dorado-input-")
+#' dir.create(input_dir)
+#' pod5_dir <- file.path(input_dir, "pod5")
+#' dir.create(pod5_dir)
+#' sheet <- file.path(input_dir, "sample_sheet.csv")
+#' run_dir <- tempfile("watch-dorado-output-")
 #' writeLines("pod5", file.path(pod5_dir, "batch001.pod5"))
 #' writeLines("pod5", file.path(pod5_dir, "batch002.pod5"))
-#' sheet <- file.path(root, "sample_sheet.csv")
 #' writeLines(
 #'   c(
 #'     "experiment_id,flow_cell_id,kit,barcode,alias",
@@ -849,11 +972,9 @@ process_one_pod5 <- function(pod5_file,
 #' # Plan both batches without sleeping or running Dorado.
 #' plan <- watch_dorado_fastq(
 #'   pod5_path = pod5_dir,
-#'   bam_path = file.path(root, "bam"),
-#'   fastq_path = file.path(root, "fastq_live"),
-#'   state_path = file.path(root, "state"),
-#'   kit_name = "SQK-NBD114-96",
 #'   sample_sheet = sheet,
+#'   run_path = run_dir,
+#'   kit_name = "SQK-NBD114-96",
 #'   dry_run = TRUE,
 #'   echo = FALSE
 #' )
@@ -862,17 +983,16 @@ process_one_pod5 <- function(pod5_file,
 #' \dontrun{
 #' # A realistic 72-hour watcher invocation.
 #' watch_dorado_fastq(
-#'   pod5_path = "/data/project/pod5",
-#'   bam_path = "/data/project/bam",
-#'   fastq_path = "/data/project/fastq_live",
-#'   state_path = "/data/project/state",
+#'   pod5_path = "/data/minknow/run01/pod5",
+#'   sample_sheet = "/data/config/sample_sheet.csv",
+#'   run_path = "/data/project/run01",
 #'   kit_name = "SQK-NBD114-96",
-#'   sample_sheet = "/data/project/sample_sheet.csv",
 #'   model = "hac",
 #'   threads = 8,
 #'   compress_fastq = TRUE,
+#'   include_unclassified = TRUE,
 #'   update_qc = TRUE,
-#'   qc_path = "/data/project/qc_live",
+#'   qc_include_unclassified = FALSE,
 #'   qc_every_n_pod5 = 1,
 #'   qc_plot_args = list(min_distance = 100, density_n = 1024),
 #'   max_run_time = 72 * 60 * 60,
@@ -882,9 +1002,9 @@ process_one_pod5 <- function(pod5_file,
 #' }
 #' @export
 watch_dorado_fastq <- function(pod5_path,
-                               bam_path,
-                               fastq_path,
-                               state_path,
+                               bam_path = NULL,
+                               fastq_path = NULL,
+                               state_path = NULL,
                                kit_name,
                                sample_sheet,
                                max_run_time = 10,
@@ -895,6 +1015,7 @@ watch_dorado_fastq <- function(pod5_path,
                                include_unclassified = TRUE,
                                compress_fastq = TRUE,
                                update_qc = TRUE,
+                               qc_include_unclassified = include_unclassified,
                                qc_path = NULL,
                                qc_every_n_pod5 = 1L,
                                qc_format = "png",
@@ -907,7 +1028,23 @@ watch_dorado_fastq <- function(pod5_path,
                                conda = "conda",
                                dry_run = FALSE,
                                echo = TRUE,
-                               stderr = "") {
+                               stderr = "",
+                               run_path = NULL) {
+  layout <- NULL
+  if (!is.null(run_path)) {
+    layout <- create_dorado_run_structure(run_path)
+    if (is.null(bam_path)) bam_path <- layout$bam_path
+    if (is.null(fastq_path)) fastq_path <- layout$fastq_path
+    if (is.null(state_path)) state_path <- layout$state_path
+    if (is.null(qc_path)) qc_path <- layout$qc_path
+  }
+  if (is.null(bam_path) || is.null(fastq_path) || is.null(state_path)) {
+    stop("Supply the output directories, or supply `run_path`.",
+         call. = FALSE)
+  }
+  if (is.null(sample_sheet)) {
+    stop("Supply the existing `sample_sheet` path.", call. = FALSE)
+  }
   check_dir_arg(pod5_path, "pod5_path")
   check_scalar_character(bam_path, "bam_path")
   check_scalar_character(fastq_path, "fastq_path")
@@ -921,6 +1058,7 @@ watch_dorado_fastq <- function(pod5_path,
   check_logical_scalar(echo, "echo")
   check_logical_scalar(compress_fastq, "compress_fastq")
   check_logical_scalar(update_qc, "update_qc")
+  check_logical_scalar(qc_include_unclassified, "qc_include_unclassified")
   if (!is.null(qc_path)) check_scalar_character(qc_path, "qc_path")
   qc_every_n_pod5 <- validate_optional_positive_integer(
     qc_every_n_pod5, "qc_every_n_pod5"
@@ -972,7 +1110,9 @@ watch_dorado_fastq <- function(pod5_path,
           model = model, kit_name = kit_name, sample_sheet = sample_sheet,
           threads = threads, include_unclassified = include_unclassified,
           compress_fastq = compress_fastq,
-          update_qc = update_qc, qc_path = qc_path,
+          update_qc = update_qc,
+          qc_include_unclassified = qc_include_unclassified,
+          qc_path = qc_path,
           qc_every_n_pod5 = qc_every_n_pod5, qc_format = qc_format,
           qc_width = qc_width, qc_height = qc_height, qc_dpi = qc_dpi,
           qc_plot_args = qc_plot_args,
@@ -1015,7 +1155,9 @@ watch_dorado_fastq <- function(pod5_path,
         model = model, kit_name = kit_name, sample_sheet = sample_sheet,
         threads = threads, include_unclassified = include_unclassified,
         compress_fastq = compress_fastq,
-        update_qc = update_qc, qc_path = qc_path,
+        update_qc = update_qc,
+        qc_include_unclassified = qc_include_unclassified,
+        qc_path = qc_path,
         qc_every_n_pod5 = qc_every_n_pod5, qc_format = qc_format,
         qc_width = qc_width, qc_height = qc_height, qc_dpi = qc_dpi,
         qc_plot_args = qc_plot_args,
@@ -1030,7 +1172,8 @@ watch_dorado_fastq <- function(pod5_path,
     batches = results,
     paths = list(pod5_path = pod5_path, bam_path = bam_path,
                  fastq_path = fastq_path, state_path = state_path,
-                 qc_path = qc_path)
+                 qc_path = qc_path,
+                 run_path = if (is.null(layout)) NULL else layout$run_path)
   ))
 }
 
@@ -1040,8 +1183,13 @@ watch_dorado_fastq <- function(pod5_path,
 #' should only be called by the user after sequencing and real-time processing
 #' are complete.
 #'
-#' @param fastq_path Root directory created by `publish_demux_fastqs()`.
-#' @param output_path Directory for one final FASTQ per alias.
+#' @param fastq_path Root directory created by `publish_demux_fastqs()`. May be
+#'   `NULL` when `run_path` is supplied.
+#' @param output_path Directory for one final FASTQ per alias. May be `NULL`
+#'   when `run_path` is supplied.
+#' @param run_path Optional standardized run root created by
+#'   [create_dorado_run_structure()]. It supplies missing `fastq_path` and
+#'   `output_path` values.
 #' @param include_unclassified Include the `unclassified` alias.
 #' @param preserve_subdirs Logical. If `TRUE`, retain each alias subdirectory
 #'   under `output_path` and write the final file as
@@ -1082,7 +1230,8 @@ watch_dorado_fastq <- function(pod5_path,
 #'
 #' @examples
 #' root <- tempfile("finalize-fastq-")
-#' live <- file.path(root, "fastq_live")
+#' layout <- create_dorado_run_structure(root)
+#' live <- layout$fastq_path
 #' dir.create(file.path(live, "sampleA"), recursive = TRUE)
 #' dir.create(file.path(live, "sampleB"), recursive = TRUE)
 #'
@@ -1100,8 +1249,7 @@ watch_dorado_fastq <- function(pod5_path,
 #' )
 #'
 #' final <- finalize_run_fastqs(
-#'   fastq_path = live,
-#'   output_path = file.path(root, "fastq_final"),
+#'   run_path = root,
 #'   preserve_subdirs = TRUE,
 #'   compress = TRUE,
 #'   write_md5 = TRUE
@@ -1110,13 +1258,23 @@ watch_dorado_fastq <- function(pod5_path,
 #' readLines(final$output_fastq[final$alias == "sampleA"])
 #' readLines(final$md5_file[final$alias == "sampleA"])
 #' @export
-finalize_run_fastqs <- function(fastq_path,
-                                output_path,
+finalize_run_fastqs <- function(fastq_path = NULL,
+                                output_path = NULL,
                                 include_unclassified = TRUE,
                                 preserve_subdirs = FALSE,
                                 compress = TRUE,
                                 write_md5 = FALSE,
-                                overwrite = FALSE) {
+                                overwrite = FALSE,
+                                run_path = NULL) {
+  if (!is.null(run_path)) {
+    layout <- create_dorado_run_structure(run_path)
+    if (is.null(fastq_path)) fastq_path <- layout$fastq_path
+    if (is.null(output_path)) output_path <- layout$final_fastq_path
+  }
+  if (is.null(fastq_path) || is.null(output_path)) {
+    stop("Supply `fastq_path` and `output_path`, or supply `run_path`.",
+         call. = FALSE)
+  }
   check_dir_arg(fastq_path, "fastq_path")
   check_scalar_character(output_path, "output_path")
   check_logical_scalar(include_unclassified, "include_unclassified")
