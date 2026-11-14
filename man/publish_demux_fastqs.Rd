@@ -9,6 +9,7 @@ publish_demux_fastqs(
   pod5_stem,
   fastq_dir,
   include_unclassified = TRUE,
+  compress = TRUE,
   overwrite = FALSE
 )
 }
@@ -21,6 +22,9 @@ publish_demux_fastqs(
 
 \item{include_unclassified}{Include the \code{unclassified} group.}
 
+\item{compress}{Logical. If \code{TRUE} (the default), gzip-compress each
+published per-POD5 FASTQ. If \code{FALSE}, write uncompressed \code{.fastq} files.}
+
 \item{overwrite}{Replace an existing file for the same POD5 and alias.}
 }
 \value{
@@ -29,13 +33,14 @@ A data frame describing the published files.
 \description{
 FASTQ chunks produced by Dorado are grouped by alias and concatenated into
 one immutable file per POD5 and alias, named
-\verb{<pod5_stem>__<alias>.fastq[.gz]}.
+\verb{<pod5_stem>__<alias>.fastq.gz} by default.
 }
 \details{
 Dorado may create several FASTQ chunks for one alias. They are concatenated
-without parsing the records. Gzip inputs remain valid because concatenated
-gzip members are valid gzip streams. The published files are organized as
-\verb{fastq_dir/<alias>/<pod5_stem>__<alias>.fastq[.gz]}.
+without parsing the records. With \code{compress = TRUE}, uncompressed Dorado
+output is streamed directly through gzip into the published file. The
+published files are organized as
+\verb{fastq_dir/<alias>/<pod5_stem>__<alias>.fastq.gz}.
 }
 \examples{
 demux <- tempfile("demux-")
@@ -51,8 +56,11 @@ writeLines(
 published <- publish_demux_fastqs(
   demux_dir = demux,
   pod5_stem = "batch001",
-  fastq_dir = tempfile("fastq-live-")
+  fastq_dir = tempfile("fastq-live-"),
+  compress = TRUE
 )
 published
-readLines(published$output_fastq)
+con <- gzfile(published$output_fastq, open = "rt")
+readLines(con)
+close(con)
 }

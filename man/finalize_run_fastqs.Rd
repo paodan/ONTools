@@ -9,6 +9,7 @@ finalize_run_fastqs(
   output_path,
   include_unclassified = TRUE,
   preserve_subdirs = FALSE,
+  compress = TRUE,
   write_md5 = FALSE,
   overwrite = FALSE
 )
@@ -22,11 +23,16 @@ finalize_run_fastqs(
 
 \item{preserve_subdirs}{Logical. If \code{TRUE}, retain each alias subdirectory
 under \code{output_path} and write the final file as
-\verb{<output_path>/<alias>/<alias>.fastq[.gz]}. If \code{FALSE}, write final files
+\verb{<output_path>/<alias>/<alias>.fastq.gz}. If \code{FALSE}, write final files
 directly under \code{output_path}.}
 
+\item{compress}{Logical. If \code{TRUE} (the default), write every final file as
+gzip-compressed FASTQ.GZ. If \code{FALSE}, write uncompressed FASTQ even when
+the source fragments are compressed.}
+
 \item{write_md5}{Logical. If \code{TRUE}, calculate an MD5 checksum for every
-final FASTQ or FASTQ.GZ and write \verb{<final_fastq>.md5} beside it.}
+final FASTQ.GZ (or FASTQ when \code{compress = FALSE}) and write
+\verb{<final_fastq>.md5} beside it.}
 
 \item{overwrite}{Replace existing final FASTQ files.}
 }
@@ -43,8 +49,14 @@ The input must have the layout created by \code{\link[=publish_demux_fastqs]{pub
 directory per alias and one immutable FASTQ fragment per POD5. All fragments
 for an alias are concatenated into one final file. With
 \code{preserve_subdirs = FALSE}, the output is
-\verb{<output_path>/<alias>.fastq[.gz]}. With \code{preserve_subdirs = TRUE}, it is
-\verb{<output_path>/<alias>/<alias>.fastq[.gz]}.
+\verb{<output_path>/<alias>.fastq.gz}. With \code{preserve_subdirs = TRUE}, it is
+\verb{<output_path>/<alias>/<alias>.fastq.gz}. Set \code{compress = FALSE} to use the
+corresponding \code{.fastq} names instead.
+
+Compression is based on file content rather than simply changing the file
+extension. Uncompressed source fragments are streamed through gzip. Gzip
+source fragments are decompressed and recompressed into one final gzip
+stream. Source fragments are never modified.
 
 \code{write_md5 = TRUE} writes a standard two-column checksum file containing the
 checksum and final FASTQ basename. It does not alter or remove source
@@ -78,6 +90,7 @@ final <- finalize_run_fastqs(
   fastq_path = live,
   output_path = file.path(root, "fastq_final"),
   preserve_subdirs = TRUE,
+  compress = TRUE,
   write_md5 = TRUE
 )
 final

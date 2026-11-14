@@ -57,6 +57,27 @@ test_that("plot_fastq_statistics falls back to source_file grouping", {
   expect_identical(attr(plot, "barcode_column"), "source_file")
 })
 
+test_that("plot_fastq_statistics uses explicit sample names for merged FASTQs", {
+  fastq_dir <- tempfile("named-fastq-statistics-")
+  dir.create(fastq_dir)
+  files <- file.path(fastq_dir, c("merged_1.fastq", "merged_2.fastq"))
+  write_statistics_fastq(files[[1L]], c(95:105, 295:305))
+  write_statistics_fastq(files[[2L]], c(145:155, 395:405))
+
+  plot <- plot_fastq_statistics(
+    fastqs = files,
+    barcode_column = "source_file",
+    sample_names = c("sampleA", "sampleB"),
+    min_distance = 100,
+    density_n = 1024
+  )
+
+  distribution <- attr(plot, "read_distribution")
+  depth <- attr(distribution, "sample_depth")
+  expect_setequal(depth$sample, c("sampleA", "sampleB"))
+  expect_identical(attr(plot, "sample_names"), c("sampleA", "sampleB"))
+})
+
 test_that("plot_fastq_statistics validates layout and grouping arguments", {
   fastq <- tempfile(fileext = ".fastq")
   write_statistics_fastq(fastq, c(95:105, 295:305))

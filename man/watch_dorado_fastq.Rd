@@ -17,6 +17,15 @@ watch_dorado_fastq(
   model = "hac",
   threads = NULL,
   include_unclassified = TRUE,
+  compress_fastq = TRUE,
+  update_qc = TRUE,
+  qc_path = NULL,
+  qc_every_n_pod5 = 1L,
+  qc_format = "png",
+  qc_width = 12,
+  qc_height = 10,
+  qc_dpi = 150,
+  qc_plot_args = list(),
   dorado = "dorado",
   conda_env = NULL,
   conda = "conda",
@@ -50,6 +59,24 @@ watch_dorado_fastq(
 
 \item{include_unclassified}{Publish unclassified reads.}
 
+\item{compress_fastq}{Gzip-compress each published per-POD5 FASTQ fragment.}
+
+\item{update_qc}{Logical. After the \code{.done} marker is written, update one
+cumulative FASTQ statistics plot for the entire \code{fastq_dir}.}
+
+\item{qc_path}{Root directory for live QC plots. When \code{NULL}, use
+\code{qc_live} beside \code{fastq_dir}.}
+
+\item{qc_every_n_pod5}{Positive integer controlling run-level QC frequency.
+For example, \code{1} updates after every completed POD5 and \code{5} after every
+fifth completed POD5. A failed attempt is retried by a later eligible batch.}
+
+\item{qc_format, qc_width, qc_height, qc_dpi}{Plot settings passed to
+\code{\link[=update_fastq_directory_qc]{update_fastq_directory_qc()}}.}
+
+\item{qc_plot_args}{Named list of additional arguments passed from
+\code{\link[=update_fastq_directory_qc]{update_fastq_directory_qc()}} to \code{\link[=plot_fastq_statistics]{plot_fastq_statistics()}}.}
+
 \item{dorado, conda_env, conda, dry_run, echo, stderr}{Passed to the component
 Dorado functions.}
 }
@@ -68,8 +95,9 @@ one \code{check_interval} and process the file when its size is unchanged.
 Processing is sequential. Each completed POD5 produces:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{bam/<pod5_stem>.bam
-fastq_live/<alias>/<pod5_stem>__<alias>.fastq
+fastq_live/<alias>/<pod5_stem>__<alias>.fastq.gz
 state/<pod5_stem>.done
+qc_live/fastq_statistics.png
 }\if{html}{\out{</div>}}
 
 Restarting the watcher is safe: \code{.done} batches are skipped, while an
@@ -120,6 +148,11 @@ watch_dorado_fastq(
   sample_sheet = "/data/project/sample_sheet.csv",
   model = "hac",
   threads = 8,
+  compress_fastq = TRUE,
+  update_qc = TRUE,
+  qc_path = "/data/project/qc_live",
+  qc_every_n_pod5 = 1,
+  qc_plot_args = list(min_distance = 100, density_n = 1024),
   max_run_time = 72 * 60 * 60,
   check_interval = 3,
   idle_interval = 30

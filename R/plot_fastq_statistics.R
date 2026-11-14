@@ -14,6 +14,10 @@
 #'   used to group reads in the distribution panels. When `NULL`, the function
 #'   uses `barcode` if that column contains at least one non-missing, non-empty
 #'   value; otherwise it uses `source_file`.
+#' @param sample_names Optional character vector assigning a sample name to
+#'   each entry of `fastqs`, in the same order. This relabels `source_file` and
+#'   is useful when each FASTQ represents one pre-merged sample. Use together
+#'   with `barcode_column = "source_file"`.
 #' @inheritParams plot_peaks_statistics
 #' @param heights Positive numeric vector of length two giving the relative
 #'   heights of the read-distribution section and peak-statistics section.
@@ -85,6 +89,7 @@ plot_fastq_statistics <- function(
     path = NULL,
     title = NULL,
     barcode_column = NULL,
+    sample_names = NULL,
     log_scale = FALSE,
     adjust = 1,
     min_relative_height = 0.05,
@@ -104,6 +109,12 @@ plot_fastq_statistics <- function(
   if (!is.null(barcode_column)) {
     check_scalar_character(barcode_column, "barcode_column")
   }
+  if (!is.null(sample_names) &&
+      (!is.character(sample_names) || length(sample_names) != length(fastqs) ||
+       anyNA(sample_names) || any(!nzchar(sample_names)))) {
+    stop("`sample_names` must contain one non-empty name per FASTQ.",
+         call. = FALSE)
+  }
   check_logical_scalar(verbose, "verbose")
   if (!is.numeric(heights) || length(heights) != 2L || anyNA(heights) ||
       any(!is.finite(heights)) || any(heights <= 0)) {
@@ -119,6 +130,20 @@ plot_fastq_statistics <- function(
   )
   detected_format <- attr(info, "header_format", exact = TRUE)
   selected_parser <- attr(info, "parser", exact = TRUE)
+
+  if (!is.null(sample_names)) {
+    selected_files <- resolve_fastq_info_files(path, ".fastq.gz", fastqs)
+    source_files <- basename(selected_files)
+    if (anyDuplicated(source_files)) {
+      stop("`sample_names` requires unique FASTQ base names.", call. = FALSE)
+    }
+    source_map <- stats::setNames(sample_names, source_files)
+    mapped <- unname(source_map[as.character(info$source_file)])
+    if (anyNA(mapped)) {
+      stop("Unable to map every parsed FASTQ to `sample_names`.", call. = FALSE)
+    }
+    info$source_file <- mapped
+  }
 
   if (is.null(barcode_column)) {
     has_barcode <- "barcode" %in% names(info) && any(
@@ -165,6 +190,7 @@ plot_fastq_statistics <- function(
   attr(plot, "header_format") <- detected_format
   attr(plot, "parser") <- selected_parser
   attr(plot, "barcode_column") <- barcode_column
+  attr(plot, "sample_names") <- sample_names
   attr(plot, "read_distribution") <- read_distribution
   attr(plot, "peak_statistics") <- peak_statistics
   plot

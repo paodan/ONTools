@@ -9,6 +9,7 @@ plot_fastq_statistics(
   path = NULL,
   title = NULL,
   barcode_column = NULL,
+  sample_names = NULL,
   log_scale = FALSE,
   adjust = 1,
   min_relative_height = 0.05,
@@ -37,6 +38,11 @@ read-count panel. Use \code{NULL} to omit the title.}
 used to group reads in the distribution panels. When \code{NULL}, the function
 uses \code{barcode} if that column contains at least one non-missing, non-empty
 value; otherwise it uses \code{source_file}.}
+
+\item{sample_names}{Optional character vector assigning a sample name to
+each entry of \code{fastqs}, in the same order. This relabels \code{source_file} and
+is useful when each FASTQ represents one pre-merged sample. Use together
+with \code{barcode_column = "source_file"}.}
 
 \item{log_scale}{Logical. If \code{TRUE}, estimate density for
 \code{log10(read_length)}. This is useful when lengths span several orders of

@@ -66,6 +66,7 @@ test_that("process_one_pod5 publishes per-alias FASTQ files and a marker", {
     state_dir,
     kit_name = "SQK-NBD114-96",
     sample_sheet = sheet,
+    update_qc = FALSE,
     dorado = fake_realtime_dorado(),
     echo = FALSE,
     stderr = FALSE
@@ -73,8 +74,8 @@ test_that("process_one_pod5 publishes per-alias FASTQ files and a marker", {
 
   expect_equal(result$status, "completed")
   expect_true(file.exists(file.path(bam_dir, "batch01.bam")))
-  expect_true(file.exists(file.path(fastq_dir, "sampleA", "batch01__sampleA.fastq")))
-  expect_true(file.exists(file.path(fastq_dir, "sampleB", "batch01__sampleB.fastq")))
+  expect_true(file.exists(file.path(fastq_dir, "sampleA", "batch01__sampleA.fastq.gz")))
+  expect_true(file.exists(file.path(fastq_dir, "sampleB", "batch01__sampleB.fastq.gz")))
   expect_true(file.exists(file.path(state_dir, "batch01.done")))
 
   repeated <- process_one_pod5(
@@ -84,6 +85,7 @@ test_that("process_one_pod5 publishes per-alias FASTQ files and a marker", {
     state_dir,
     kit_name = "SQK-NBD114-96",
     sample_sheet = sheet,
+    update_qc = FALSE,
     dorado = fake_realtime_dorado(),
     echo = FALSE,
     stderr = FALSE
@@ -101,7 +103,7 @@ test_that("finalize_run_fastqs concatenates batches for each alias", {
   writeLines(c("@b", "GT", "+", "II"), file.path(fastq_dir, "sampleA", "batch02__sampleA.fastq"))
   writeLines(c("@c", "AA", "+", "II"), file.path(fastq_dir, "sampleB", "batch01__sampleB.fastq"))
 
-  result <- finalize_run_fastqs(fastq_dir, final_dir)
+  result <- finalize_run_fastqs(fastq_dir, final_dir, compress = FALSE)
 
   expect_setequal(result$alias, c("sampleA", "sampleB"))
   expect_equal(readLines(file.path(final_dir, "sampleA.fastq")),
@@ -126,16 +128,104 @@ test_that("finalize_run_fastqs preserves alias subdirectories and writes MD5", {
     write_md5 = TRUE
   )
 
-  expected_fastq <- file.path(final_dir, "sampleA", "sampleA.fastq")
+  expected_fastq <- file.path(final_dir, "sampleA", "sampleA.fastq.gz")
   expected_md5 <- paste0(expected_fastq, ".md5")
   expect_equal(result$output_fastq, normalizePath(expected_fastq))
   expect_equal(result$md5_file, normalizePath(expected_md5))
   expect_true(file.exists(expected_md5))
+  con <- gzfile(expected_fastq, open = "rt")
+  expect_equal(readLines(con), c("@a", "AC", "+", "II", "@b", "GT", "+", "II"))
+  close(con)
   expect_equal(
     readLines(expected_md5),
     paste(unname(tools::md5sum(expected_fastq)), basename(expected_fastq))
   )
   expect_true(dir.exists(file.path(fastq_dir, "sampleA")))
+})
+
+test_that("finalize_run_fastqs recompresses FASTQ.GZ fragments", {
+  root <- tempfile("finalize-gzip-")
+  alias_dir <- file.path(root, "fastq", "sampleA")
+  dir.create(alias_dir, recursive = TRUE)
+  first <- gzfile(file.path(alias_dir, "batch01__sampleA.fastq.gz"), open = "wt")
+  writeLines(c("@a", "AC", "+", "II"), first)
+  close(first)
+  second <- gzfile(file.path(alias_dir, "batch02__sampleA.fastq.gz"), open = "wt")
+  writeLines(c("@b", "GT", "+", "II"), second)
+  close(second)
+
+  result <- finalize_run_fastqs(
+    fastq_path = file.path(root, "fastq"),
+    output_path = file.path(root, "final")
+  )
+
+  expect_match(result$output_fastq, "[.]fastq[.]gz$")
+  merged <- gzfile(result$output_fastq, open = "rt")
+  expect_equal(readLines(merged), c("@a", "AC", "+", "II", "@b", "GT", "+", "II"))
+  close(merged)
+})
+
+test_that("directory QC merges each alias and preserves the last good plot", {
+  root <- tempfile("live-qc-")
+  alias_a <- file.path(root, "fastq", "sampleA")
+  alias_b <- file.path(root, "fastq", "sampleB")
+  qc_dir <- file.path(root, "qc")
+  dir.create(alias_a, recursive = TRUE)
+  dir.create(alias_b, recursive = TRUE)
+
+  write_qc_fastq <- function(path, start, lengths) {
+    records <- unlist(lapply(seq_along(lengths), function(i) {
+      sequence <- paste(rep("A", lengths[[i]]), collapse = "")
+      quality <- paste(rep("I", lengths[[i]]), collapse = "")
+      c(
+        paste0("@read", start + i, " qs:f:15.5 ch:i:1 SM:Z:barcode01"),
+        sequence,
+        "+",
+        quality
+      )
+    }), use.names = FALSE)
+    connection <- gzfile(path, open = "wt")
+    writeLines(records, connection)
+    close(connection)
+  }
+  write_qc_fastq(
+    file.path(alias_a, "batch01__sampleA.fastq.gz"),
+    0L,
+    95:105
+  )
+  write_qc_fastq(
+    file.path(alias_a, "batch02__sampleA.fastq.gz"),
+    100L,
+    295:305
+  )
+  write_qc_fastq(
+    file.path(alias_b, "batch01__sampleB.fastq.gz"),
+    200L,
+    c(145:155, 395:405)
+  )
+
+  result <- update_fastq_directory_qc(
+    fastq_path = file.path(root, "fastq"),
+    qc_path = qc_dir,
+    plot_args = list(min_distance = 100, density_n = 1024),
+    error_action = "stop"
+  )
+
+  expect_equal(result$status, "updated")
+  expect_equal(result$n_aliases, 2L)
+  expect_equal(result$n_fragments, 3L)
+  expect_true(file.exists(result$plot_file))
+  first_md5 <- unname(tools::md5sum(result$plot_file))
+
+  failed <- update_fastq_directory_qc(
+    fastq_path = file.path(root, "fastq"),
+    qc_path = qc_dir,
+    plot_args = list(heights = 1),
+    error_action = "silent"
+  )
+  expect_equal(failed$status, "error")
+  expect_true(file.exists(failed$error_file))
+  expect_equal(unname(tools::md5sum(failed$plot_file)), first_md5)
 })
 
 test_that("watch_dorado_fastq processes stable POD5 files once", {
@@ -156,6 +246,7 @@ test_that("watch_dorado_fastq processes stable POD5 files once", {
     max_run_time = 0.5,
     check_interval = 0.01,
     idle_interval = 0.01,
+    update_qc = FALSE,
     dorado = fake_realtime_dorado(),
     echo = FALSE,
     stderr = FALSE

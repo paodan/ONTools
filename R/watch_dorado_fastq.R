@@ -111,21 +111,24 @@ demux_one_bam_fastq <- function(bam_file,
 #'
 #' FASTQ chunks produced by Dorado are grouped by alias and concatenated into
 #' one immutable file per POD5 and alias, named
-#' `<pod5_stem>__<alias>.fastq[.gz]`.
+#' `<pod5_stem>__<alias>.fastq.gz` by default.
 #'
 #' @param demux_dir Dorado demultiplexing output directory.
 #' @param pod5_stem POD5 basename without the `.pod5` extension.
 #' @param fastq_dir Root directory in which alias directories are created.
 #' @param include_unclassified Include the `unclassified` group.
+#' @param compress Logical. If `TRUE` (the default), gzip-compress each
+#'   published per-POD5 FASTQ. If `FALSE`, write uncompressed `.fastq` files.
 #' @param overwrite Replace an existing file for the same POD5 and alias.
 #'
 #' @return A data frame describing the published files.
 #'
 #' @details
 #' Dorado may create several FASTQ chunks for one alias. They are concatenated
-#' without parsing the records. Gzip inputs remain valid because concatenated
-#' gzip members are valid gzip streams. The published files are organized as
-#' `fastq_dir/<alias>/<pod5_stem>__<alias>.fastq[.gz]`.
+#' without parsing the records. With `compress = TRUE`, uncompressed Dorado
+#' output is streamed directly through gzip into the published file. The
+#' published files are organized as
+#' `fastq_dir/<alias>/<pod5_stem>__<alias>.fastq.gz`.
 #'
 #' @examples
 #' demux <- tempfile("demux-")
@@ -141,20 +144,25 @@ demux_one_bam_fastq <- function(bam_file,
 #' published <- publish_demux_fastqs(
 #'   demux_dir = demux,
 #'   pod5_stem = "batch001",
-#'   fastq_dir = tempfile("fastq-live-")
+#'   fastq_dir = tempfile("fastq-live-"),
+#'   compress = TRUE
 #' )
 #' published
-#' readLines(published$output_fastq)
+#' con <- gzfile(published$output_fastq, open = "rt")
+#' readLines(con)
+#' close(con)
 #' @export
 publish_demux_fastqs <- function(demux_dir,
                                  pod5_stem,
                                  fastq_dir,
                                  include_unclassified = TRUE,
+                                 compress = TRUE,
                                  overwrite = FALSE) {
   check_dir_arg(demux_dir, "demux_dir")
   check_scalar_character(pod5_stem, "pod5_stem")
   check_scalar_character(fastq_dir, "fastq_dir")
   check_logical_scalar(include_unclassified, "include_unclassified")
+  check_logical_scalar(compress, "compress")
   check_logical_scalar(overwrite, "overwrite")
   if (!nzchar(pod5_stem) || grepl("[/\\\\]", pod5_stem)) {
     stop("`pod5_stem` must be a non-empty file stem.", call. = FALSE)
@@ -184,11 +192,17 @@ publish_demux_fastqs <- function(demux_dir,
            call. = FALSE)
     }
     alias_dir <- file.path(fastq_dir, alias)
-    output <- file.path(
-      alias_dir,
-      paste0(pod5_stem, "__", alias, if (compressed[[1L]]) ".fastq.gz" else ".fastq")
+    output <- file.path(alias_dir, paste0(
+      pod5_stem, "__", alias,
+      if (isTRUE(compress)) ".fastq.gz" else ".fastq"
+    ))
+    list(
+      alias = alias,
+      inputs = files,
+      input_compressed = compressed[[1L]],
+      alias_dir = alias_dir,
+      output = output
     )
-    list(alias = alias, inputs = files, alias_dir = alias_dir, output = output)
   })
 
   existing <- vapply(plan, function(x) file.exists(x$output), logical(1))
@@ -201,7 +215,13 @@ publish_demux_fastqs <- function(demux_dir,
   for (i in seq_along(plan)) {
     item <- plan[[i]]
     dir.create(item$alias_dir, recursive = TRUE, showWarnings = FALSE)
-    realtime_concatenate_files(item$inputs, item$output, overwrite = overwrite)
+    realtime_concatenate_fastq_files(
+      inputs = item$inputs,
+      output = item$output,
+      input_compressed = item$input_compressed,
+      output_compressed = compress,
+      overwrite = overwrite
+    )
     outputs[[i]] <- normalizePath(item$output, mustWork = TRUE)
   }
 
@@ -209,6 +229,213 @@ publish_demux_fastqs <- function(demux_dir,
     alias = names(groups),
     output_fastq = outputs,
     n_chunks = vapply(plan, function(x) length(x$inputs), integer(1)),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+#' Update one cumulative QC plot for an entire FASTQ directory
+#'
+#' `update_fastq_directory_qc()` treats every immediate alias directory as one
+#' sample. It temporarily merges all per-POD5 FASTQ fragments belonging to an
+#' alias, then passes the complete set of one-file-per-alias inputs to
+#' [plot_fastq_statistics()] in a single call.
+#'
+#' @param fastq_path Root directory containing one subdirectory per alias.
+#' @param qc_path Directory in which the run-level QC plot is written.
+#' @param include_unclassified Include the `unclassified` alias.
+#' @param output_name Base name for the QC plot, without an extension.
+#' @param format Plot format, either `"png"` or `"pdf"`.
+#' @param width,height Positive plot dimensions in inches.
+#' @param dpi Positive PNG resolution in dots per inch.
+#' @param plot_args Named list of additional arguments passed to
+#'   [plot_fastq_statistics()]. Do not include `fastqs` or `path`.
+#' @param error_action Action when plotting fails: `"warn"` records an
+#'   error log and emits a warning, `"silent"` only records the log, and
+#'   `"stop"` records the log and stops.
+#'
+#' @return A one-row data frame describing the status, alias and fragment
+#'   counts, plot path, error-log path, and any error message.
+#'
+#' @details
+#' Merged alias FASTQs exist only in a temporary working directory and are
+#' deleted when the function returns. `plot_fastq_statistics()` is called once
+#' with these merged files, `barcode_column = "source_file"`, and explicit
+#' sample labels equal to the alias directory names. Consequently, each alias
+#' contributes one sample to both the read-depth and peak-statistics panels,
+#' regardless of barcode tags stored in the FASTQ headers.
+#'
+#' The final plot is published atomically. If plotting fails, the previous
+#' successful plot is preserved and `<qc_path>/<output_name>.error.log` is
+#' updated. A later call automatically retries with all fragments then present.
+#'
+#' @examples
+#' root <- tempfile("directory-qc-")
+#' dir.create(file.path(root, "fastq_live", "sampleA"), recursive = TRUE)
+#' dir.create(file.path(root, "fastq_live", "sampleB"), recursive = TRUE)
+#' write_example <- function(path, prefix, lengths) {
+#'   records <- unlist(lapply(seq_along(lengths), function(i) {
+#'     sequence <- paste(rep("A", lengths[[i]]), collapse = "")
+#'     quality <- paste(rep("I", lengths[[i]]), collapse = "")
+#'     c(
+#'       paste0("@", prefix, i, " qs:f:15.5 ch:i:1 SM:Z:barcode01"),
+#'       sequence, "+", quality
+#'     )
+#'   }), use.names = FALSE)
+#'   con <- gzfile(path, "wt")
+#'   writeLines(records, con)
+#'   close(con)
+#' }
+#' write_example(
+#'   file.path(root, "fastq_live", "sampleA", "batch001__sampleA.fastq.gz"),
+#'   "a", c(95:105, 295:305)
+#' )
+#' write_example(
+#'   file.path(root, "fastq_live", "sampleB", "batch001__sampleB.fastq.gz"),
+#'   "b", c(145:155, 395:405)
+#' )
+#'
+#' qc <- update_fastq_directory_qc(
+#'   fastq_path = file.path(root, "fastq_live"),
+#'   qc_path = file.path(root, "qc_live"),
+#'   plot_args = list(min_distance = 100, density_n = 1024)
+#' )
+#' qc[, c("status", "n_aliases", "n_fragments")]
+#' file.exists(qc$plot_file)
+#' @export
+update_fastq_directory_qc <- function(fastq_path,
+                                      qc_path,
+                                      include_unclassified = TRUE,
+                                      output_name = "fastq_statistics",
+                                      format = c("png", "pdf"),
+                                      width = 12,
+                                      height = 10,
+                                      dpi = 150,
+                                      plot_args = list(),
+                                      error_action = c("warn", "silent", "stop")) {
+  check_dir_arg(fastq_path, "fastq_path")
+  check_scalar_character(qc_path, "qc_path")
+  check_logical_scalar(include_unclassified, "include_unclassified")
+  check_scalar_character(output_name, "output_name")
+  if (!nzchar(output_name) || grepl("[/\\\\]", output_name)) {
+    stop("`output_name` must be a non-empty file name without a path.", call. = FALSE)
+  }
+  format <- match.arg(format)
+  error_action <- match.arg(error_action)
+  width <- realtime_positive_number(width, "width")
+  height <- realtime_positive_number(height, "height")
+  dpi <- realtime_positive_number(dpi, "dpi")
+  if (!is.list(plot_args)) {
+    stop("`plot_args` must be a list.", call. = FALSE)
+  }
+  if (length(plot_args)) {
+    if (is.null(names(plot_args)) || any(!nzchar(names(plot_args))) || anyDuplicated(names(plot_args))) {
+      stop("`plot_args` must be a uniquely named list.", call. = FALSE)
+    }
+    reserved <- intersect(names(plot_args), c(
+      "fastqs", "path", "barcode_column", "sample_names"
+    ))
+    if (length(reserved)) {
+      stop("`plot_args` must not contain: ", paste(reserved, collapse = ", "),
+           call. = FALSE)
+    }
+  }
+
+  fastq_path <- normalizePath(fastq_path, mustWork = TRUE)
+  dir.create(qc_path, recursive = TRUE, showWarnings = FALSE)
+  qc_path <- normalizePath(qc_path, mustWork = TRUE)
+  alias_dirs <- list.dirs(fastq_path, recursive = FALSE, full.names = TRUE)
+  if (!isTRUE(include_unclassified)) {
+    alias_dirs <- alias_dirs[basename(alias_dirs) != "unclassified"]
+  }
+  fragment_lists <- lapply(alias_dirs, realtime_fastq_files)
+  keep <- lengths(fragment_lists) > 0L
+  alias_dirs <- alias_dirs[keep]
+  fragment_lists <- fragment_lists[keep]
+  aliases <- basename(alias_dirs)
+  if (!length(aliases)) {
+    stop("No per-alias FASTQ fragments found under: ", fastq_path, call. = FALSE)
+  }
+
+  plot_file <- file.path(qc_path, paste0(output_name, ".", format))
+  error_file <- file.path(qc_path, paste0(output_name, ".error.log"))
+  work_dir <- tempfile("merged-alias-fastq-")
+  dir.create(work_dir)
+  on.exit(unlink(work_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  error_message <- tryCatch({
+    merged_fastqs <- vapply(seq_along(aliases), function(i) {
+      fragments <- fragment_lists[[i]]
+      compressed <- grepl("[.]gz$", fragments, ignore.case = TRUE)
+      if (length(unique(compressed)) != 1L) {
+        stop("Mixed compressed and uncompressed FASTQ fragments for alias: ",
+             aliases[[i]], call. = FALSE)
+      }
+      output <- file.path(work_dir, sprintf("sample_%06d.fastq.gz", i))
+      realtime_concatenate_fastq_files(
+        inputs = fragments,
+        output = output,
+        input_compressed = compressed[[1L]],
+        output_compressed = TRUE,
+        overwrite = FALSE
+      )
+      output
+    }, character(1))
+
+    args <- plot_args
+    args$fastqs <- merged_fastqs
+    args$barcode_column <- "source_file"
+    args$sample_names <- aliases
+    if (!"title" %in% names(args)) args$title <- "Cumulative FASTQ statistics"
+    plot <- do.call(plot_fastq_statistics, args)
+    temporary <- tempfile(
+      pattern = paste0(output_name, "."),
+      tmpdir = qc_path,
+      fileext = paste0(".", format)
+    )
+    on.exit(unlink(temporary), add = TRUE)
+    ggplot2::ggsave(
+      filename = temporary,
+      plot = plot,
+      device = format,
+      width = width,
+      height = height,
+      units = "in",
+      dpi = dpi,
+      limitsize = FALSE
+    )
+    if (!file.exists(temporary) || is.na(file.info(temporary)$size) ||
+        file.info(temporary)$size == 0) {
+      stop("QC renderer produced an empty plot file.", call. = FALSE)
+    }
+    realtime_publish_file(temporary, plot_file)
+    if (file.exists(error_file)) unlink(error_file)
+    NULL
+  }, error = function(e) conditionMessage(e))
+
+  status <- if (is.null(error_message)) "updated" else "error"
+  if (!is.null(error_message)) {
+    realtime_write_lines_atomic(
+      c(
+        paste("updated_at", format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"), sep = "\t"),
+        paste("n_aliases", length(aliases), sep = "\t"),
+        paste("n_fragments", sum(lengths(fragment_lists)), sep = "\t"),
+        paste("error", error_message, sep = "\t")
+      ),
+      error_file
+    )
+    message_text <- paste0("FASTQ directory QC failed: ", error_message)
+    if (identical(error_action, "warn")) warning(message_text, call. = FALSE)
+    if (identical(error_action, "stop")) stop(message_text, call. = FALSE)
+  }
+
+  data.frame(
+    status = status,
+    n_aliases = length(aliases),
+    n_fragments = sum(lengths(fragment_lists)),
+    plot_file = if (file.exists(plot_file)) normalizePath(plot_file) else NA_character_,
+    error_file = if (file.exists(error_file)) normalizePath(error_file) else NA_character_,
+    error_message = if (is.null(error_message)) NA_character_ else error_message,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
@@ -294,6 +521,18 @@ write_done_marker <- function(done_file,
 #' @param sample_sheet MinKNOW-compatible sample sheet containing aliases.
 #' @param threads Optional Dorado demux thread count.
 #' @param include_unclassified Publish unclassified reads.
+#' @param compress_fastq Gzip-compress each published per-POD5 FASTQ fragment.
+#' @param update_qc Logical. After the `.done` marker is written, update one
+#'   cumulative FASTQ statistics plot for the entire `fastq_dir`.
+#' @param qc_path Root directory for live QC plots. When `NULL`, use
+#'   `qc_live` beside `fastq_dir`.
+#' @param qc_every_n_pod5 Positive integer controlling run-level QC frequency.
+#'   For example, `1` updates after every completed POD5 and `5` after every
+#'   fifth completed POD5. A failed attempt is retried by a later eligible batch.
+#' @param qc_format,qc_width,qc_height,qc_dpi Plot settings passed to
+#'   [update_fastq_directory_qc()].
+#' @param qc_plot_args Named list of additional arguments passed from
+#'   [update_fastq_directory_qc()] to [plot_fastq_statistics()].
 #' @param dorado,conda_env,conda,dry_run,echo,stderr Passed to the component
 #'   Dorado functions.
 #'
@@ -305,11 +544,15 @@ write_done_marker <- function(done_file,
 #' 1. Create or reuse `<bam_dir>/<pod5_stem>.bam`.
 #' 2. Run Dorado demultiplexing in a private temporary directory.
 #' 3. Publish one FASTQ fragment per alias under `fastq_dir`.
-#' 4. Write `<state_dir>/<pod5_stem>.done` last.
+#' 4. Write `<state_dir>/<pod5_stem>.done`.
+#' 5. Optionally update one cumulative run-level QC plot, treating every alias
+#'    directory as one merged sample.
 #'
 #' If the BAM exists but the marker does not, basecalling is not repeated; the
 #' function retries demultiplexing and publication. If the marker exists, the
-#' batch is returned with status `"skipped"`.
+#' batch is returned with status `"skipped"`. The completion marker is written
+#' before QC, so a plotting failure never causes basecalling or demultiplexing
+#' to be repeated. QC errors are recorded under `qc_path` and retried later.
 #'
 #' The FASTQ fragments created here are per-POD5 files. They are not the final
 #' run-level FASTQ files; call [finalize_run_fastqs()] only after sequencing is
@@ -355,7 +598,11 @@ write_done_marker <- function(done_file,
 #'   model = "hac",
 #'   kit_name = "SQK-NBD114-96",
 #'   sample_sheet = "/data/project/sample_sheet.csv",
-#'   threads = 8
+#'   threads = 8,
+#'   update_qc = TRUE,
+#'   qc_path = "/data/project/qc_live",
+#'   qc_every_n_pod5 = 1,
+#'   qc_plot_args = list(min_distance = 100, density_n = 1024)
 #' )
 #' completed$paths
 #' }
@@ -369,6 +616,15 @@ process_one_pod5 <- function(pod5_file,
                              sample_sheet,
                              threads = NULL,
                              include_unclassified = TRUE,
+                             compress_fastq = TRUE,
+                             update_qc = TRUE,
+                             qc_path = NULL,
+                             qc_every_n_pod5 = 1L,
+                             qc_format = "png",
+                             qc_width = 12,
+                             qc_height = 10,
+                             qc_dpi = 150,
+                             qc_plot_args = list(),
                              dorado = "dorado",
                              conda_env = NULL,
                              conda = "conda",
@@ -383,7 +639,23 @@ process_one_pod5 <- function(pod5_file,
   check_scalar_character(kit_name, "kit_name")
   check_file_arg(sample_sheet, "sample_sheet")
   check_logical_scalar(include_unclassified, "include_unclassified")
+  check_logical_scalar(compress_fastq, "compress_fastq")
+  check_logical_scalar(update_qc, "update_qc")
   check_logical_scalar(dry_run, "dry_run")
+  if (!is.null(qc_path)) check_scalar_character(qc_path, "qc_path")
+  qc_every_n_pod5 <- validate_optional_positive_integer(
+    qc_every_n_pod5, "qc_every_n_pod5"
+  )
+  if (is.null(qc_every_n_pod5)) {
+    stop("`qc_every_n_pod5` must be a positive integer.", call. = FALSE)
+  }
+  qc_format <- match.arg(qc_format, c("png", "pdf"))
+  qc_width <- realtime_positive_number(qc_width, "qc_width")
+  qc_height <- realtime_positive_number(qc_height, "qc_height")
+  qc_dpi <- realtime_positive_number(qc_dpi, "qc_dpi")
+  if (!is.list(qc_plot_args)) {
+    stop("`qc_plot_args` must be a list.", call. = FALSE)
+  }
 
   pod5_file <- normalizePath(pod5_file, mustWork = TRUE)
   sample_sheet <- normalizePath(sample_sheet, mustWork = TRUE)
@@ -398,6 +670,13 @@ process_one_pod5 <- function(pod5_file,
   bam_dir <- normalizePath(bam_dir, mustWork = TRUE)
   fastq_dir <- normalizePath(fastq_dir, mustWork = TRUE)
   state_dir <- normalizePath(state_dir, mustWork = TRUE)
+  if (is.null(qc_path)) qc_path <- file.path(dirname(fastq_dir), "qc_live")
+  if (isTRUE(update_qc)) {
+    dir.create(qc_path, recursive = TRUE, showWarnings = FALSE)
+    qc_path <- normalizePath(qc_path, mustWork = TRUE)
+  } else {
+    qc_path <- normalizePath(qc_path, mustWork = FALSE)
+  }
   bam_file <- file.path(bam_dir, paste0(stem, ".bam"))
   done_file <- file.path(state_dir, paste0(stem, ".done"))
 
@@ -405,7 +684,9 @@ process_one_pod5 <- function(pod5_file,
     return(invisible(list(
       status = "skipped",
       paths = list(pod5_file = pod5_file, bam_file = bam_file,
-                   fastq_files = character(), done_file = done_file)
+                   fastq_files = character(), done_file = done_file,
+                   qc_path = qc_path),
+      qc = NULL
     )))
   }
 
@@ -451,7 +732,9 @@ process_one_pod5 <- function(pod5_file,
       basecall = basecall_result,
       demux = demux_result,
       paths = list(pod5_file = pod5_file, bam_file = bam_file,
-                   fastq_files = character(), done_file = done_file)
+                   fastq_files = character(), done_file = done_file,
+                   qc_path = qc_path),
+      qc = NULL
     )))
   }
 
@@ -460,6 +743,7 @@ process_one_pod5 <- function(pod5_file,
     pod5_stem = stem,
     fastq_dir = fastq_dir,
     include_unclassified = include_unclassified,
+    compress = compress_fastq,
     overwrite = TRUE
   )
   done_file <- write_done_marker(
@@ -470,16 +754,40 @@ process_one_pod5 <- function(pod5_file,
     overwrite = TRUE
   )
 
+  qc_result <- NULL
+  if (isTRUE(update_qc)) {
+    completed_pod5 <- length(list.files(
+      state_dir,
+      pattern = "[.]done$",
+      full.names = TRUE
+    ))
+    if (completed_pod5 %% qc_every_n_pod5 == 0L) {
+      qc_result <- update_fastq_directory_qc(
+        fastq_path = fastq_dir,
+        qc_path = qc_path,
+        include_unclassified = include_unclassified,
+        format = qc_format,
+        width = qc_width,
+        height = qc_height,
+        dpi = qc_dpi,
+        plot_args = qc_plot_args,
+        error_action = "warn"
+      )
+    }
+  }
+
   invisible(list(
     status = "completed",
     basecall = basecall_result,
     demux = demux_result,
     publication = publication,
+    qc = qc_result,
     paths = list(
       pod5_file = pod5_file,
       bam_file = normalizePath(bam_file, mustWork = TRUE),
       fastq_files = publication$output_fastq,
-      done_file = done_file
+      done_file = done_file,
+      qc_path = qc_path
     )
   ))
 }
@@ -509,8 +817,9 @@ process_one_pod5 <- function(pod5_file,
 #'
 #' ```
 #' bam/<pod5_stem>.bam
-#' fastq_live/<alias>/<pod5_stem>__<alias>.fastq
+#' fastq_live/<alias>/<pod5_stem>__<alias>.fastq.gz
 #' state/<pod5_stem>.done
+#' qc_live/fastq_statistics.png
 #' ```
 #'
 #' Restarting the watcher is safe: `.done` batches are skipped, while an
@@ -561,6 +870,11 @@ process_one_pod5 <- function(pod5_file,
 #'   sample_sheet = "/data/project/sample_sheet.csv",
 #'   model = "hac",
 #'   threads = 8,
+#'   compress_fastq = TRUE,
+#'   update_qc = TRUE,
+#'   qc_path = "/data/project/qc_live",
+#'   qc_every_n_pod5 = 1,
+#'   qc_plot_args = list(min_distance = 100, density_n = 1024),
 #'   max_run_time = 72 * 60 * 60,
 #'   check_interval = 3,
 #'   idle_interval = 30
@@ -579,6 +893,15 @@ watch_dorado_fastq <- function(pod5_path,
                                model = "hac",
                                threads = NULL,
                                include_unclassified = TRUE,
+                               compress_fastq = TRUE,
+                               update_qc = TRUE,
+                               qc_path = NULL,
+                               qc_every_n_pod5 = 1L,
+                               qc_format = "png",
+                               qc_width = 12,
+                               qc_height = 10,
+                               qc_dpi = 150,
+                               qc_plot_args = list(),
                                dorado = "dorado",
                                conda_env = NULL,
                                conda = "conda",
@@ -596,6 +919,22 @@ watch_dorado_fastq <- function(pod5_path,
   idle_interval <- validate_watch_duration(idle_interval, "idle_interval")
   check_logical_scalar(dry_run, "dry_run")
   check_logical_scalar(echo, "echo")
+  check_logical_scalar(compress_fastq, "compress_fastq")
+  check_logical_scalar(update_qc, "update_qc")
+  if (!is.null(qc_path)) check_scalar_character(qc_path, "qc_path")
+  qc_every_n_pod5 <- validate_optional_positive_integer(
+    qc_every_n_pod5, "qc_every_n_pod5"
+  )
+  if (is.null(qc_every_n_pod5)) {
+    stop("`qc_every_n_pod5` must be a positive integer.", call. = FALSE)
+  }
+  qc_format <- match.arg(qc_format, c("png", "pdf"))
+  qc_width <- realtime_positive_number(qc_width, "qc_width")
+  qc_height <- realtime_positive_number(qc_height, "qc_height")
+  qc_dpi <- realtime_positive_number(qc_dpi, "qc_dpi")
+  if (!is.list(qc_plot_args)) {
+    stop("`qc_plot_args` must be a list.", call. = FALSE)
+  }
 
   pod5_path <- normalizePath(pod5_path, mustWork = TRUE)
   dir.create(bam_path, recursive = TRUE, showWarnings = FALSE)
@@ -604,6 +943,13 @@ watch_dorado_fastq <- function(pod5_path,
   bam_path <- normalizePath(bam_path, mustWork = TRUE)
   fastq_path <- normalizePath(fastq_path, mustWork = TRUE)
   state_path <- normalizePath(state_path, mustWork = TRUE)
+  if (is.null(qc_path)) qc_path <- file.path(dirname(fastq_path), "qc_live")
+  if (isTRUE(update_qc)) {
+    dir.create(qc_path, recursive = TRUE, showWarnings = FALSE)
+    qc_path <- normalizePath(qc_path, mustWork = TRUE)
+  } else {
+    qc_path <- normalizePath(qc_path, mustWork = FALSE)
+  }
 
   start_time <- Sys.time()
   elapsed_time <- function() as.numeric(difftime(Sys.time(), start_time, units = "secs"))
@@ -625,6 +971,11 @@ watch_dorado_fastq <- function(pod5_path,
           input, bam_path, fastq_path, state_path,
           model = model, kit_name = kit_name, sample_sheet = sample_sheet,
           threads = threads, include_unclassified = include_unclassified,
+          compress_fastq = compress_fastq,
+          update_qc = update_qc, qc_path = qc_path,
+          qc_every_n_pod5 = qc_every_n_pod5, qc_format = qc_format,
+          qc_width = qc_width, qc_height = qc_height, qc_dpi = qc_dpi,
+          qc_plot_args = qc_plot_args,
           dorado = dorado, conda_env = conda_env, conda = conda,
           dry_run = TRUE, echo = echo, stderr = stderr
         )
@@ -663,6 +1014,11 @@ watch_dorado_fastq <- function(pod5_path,
         input, bam_path, fastq_path, state_path,
         model = model, kit_name = kit_name, sample_sheet = sample_sheet,
         threads = threads, include_unclassified = include_unclassified,
+        compress_fastq = compress_fastq,
+        update_qc = update_qc, qc_path = qc_path,
+        qc_every_n_pod5 = qc_every_n_pod5, qc_format = qc_format,
+        qc_width = qc_width, qc_height = qc_height, qc_dpi = qc_dpi,
+        qc_plot_args = qc_plot_args,
         dorado = dorado, conda_env = conda_env, conda = conda,
         dry_run = FALSE, echo = echo, stderr = stderr
       )
@@ -673,7 +1029,8 @@ watch_dorado_fastq <- function(pod5_path,
     elapsed_time = elapsed_time(),
     batches = results,
     paths = list(pod5_path = pod5_path, bam_path = bam_path,
-                 fastq_path = fastq_path, state_path = state_path)
+                 fastq_path = fastq_path, state_path = state_path,
+                 qc_path = qc_path)
   ))
 }
 
@@ -688,10 +1045,14 @@ watch_dorado_fastq <- function(pod5_path,
 #' @param include_unclassified Include the `unclassified` alias.
 #' @param preserve_subdirs Logical. If `TRUE`, retain each alias subdirectory
 #'   under `output_path` and write the final file as
-#'   `<output_path>/<alias>/<alias>.fastq[.gz]`. If `FALSE`, write final files
+#'   `<output_path>/<alias>/<alias>.fastq.gz`. If `FALSE`, write final files
 #'   directly under `output_path`.
+#' @param compress Logical. If `TRUE` (the default), write every final file as
+#'   gzip-compressed FASTQ.GZ. If `FALSE`, write uncompressed FASTQ even when
+#'   the source fragments are compressed.
 #' @param write_md5 Logical. If `TRUE`, calculate an MD5 checksum for every
-#'   final FASTQ or FASTQ.GZ and write `<final_fastq>.md5` beside it.
+#'   final FASTQ.GZ (or FASTQ when `compress = FALSE`) and write
+#'   `<final_fastq>.md5` beside it.
 #' @param overwrite Replace existing final FASTQ files.
 #'
 #' @return A data frame describing the final FASTQ files.
@@ -701,8 +1062,14 @@ watch_dorado_fastq <- function(pod5_path,
 #' directory per alias and one immutable FASTQ fragment per POD5. All fragments
 #' for an alias are concatenated into one final file. With
 #' `preserve_subdirs = FALSE`, the output is
-#' `<output_path>/<alias>.fastq[.gz]`. With `preserve_subdirs = TRUE`, it is
-#' `<output_path>/<alias>/<alias>.fastq[.gz]`.
+#' `<output_path>/<alias>.fastq.gz`. With `preserve_subdirs = TRUE`, it is
+#' `<output_path>/<alias>/<alias>.fastq.gz`. Set `compress = FALSE` to use the
+#' corresponding `.fastq` names instead.
+#'
+#' Compression is based on file content rather than simply changing the file
+#' extension. Uncompressed source fragments are streamed through gzip. Gzip
+#' source fragments are decompressed and recompressed into one final gzip
+#' stream. Source fragments are never modified.
 #'
 #' `write_md5 = TRUE` writes a standard two-column checksum file containing the
 #' checksum and final FASTQ basename. It does not alter or remove source
@@ -736,6 +1103,7 @@ watch_dorado_fastq <- function(pod5_path,
 #'   fastq_path = live,
 #'   output_path = file.path(root, "fastq_final"),
 #'   preserve_subdirs = TRUE,
+#'   compress = TRUE,
 #'   write_md5 = TRUE
 #' )
 #' final
@@ -746,12 +1114,14 @@ finalize_run_fastqs <- function(fastq_path,
                                 output_path,
                                 include_unclassified = TRUE,
                                 preserve_subdirs = FALSE,
+                                compress = TRUE,
                                 write_md5 = FALSE,
                                 overwrite = FALSE) {
   check_dir_arg(fastq_path, "fastq_path")
   check_scalar_character(output_path, "output_path")
   check_logical_scalar(include_unclassified, "include_unclassified")
   check_logical_scalar(preserve_subdirs, "preserve_subdirs")
+  check_logical_scalar(compress, "compress")
   check_logical_scalar(write_md5, "write_md5")
   check_logical_scalar(overwrite, "overwrite")
 
@@ -780,13 +1150,11 @@ finalize_run_fastqs <- function(fastq_path,
     } else {
       output_path
     }
-    output <- file.path(
-      alias_output_dir,
-      paste0(alias, if (compressed[[1L]]) ".fastq.gz" else ".fastq")
-    )
+    output <- file.path(alias_output_dir, paste0(alias, if (isTRUE(compress)) ".fastq.gz" else ".fastq"))
     list(
       alias = alias,
       inputs = sort(inputs),
+      input_compressed = compressed[[1L]],
       output_dir = alias_output_dir,
       output = output,
       md5_file = paste0(output, ".md5")
@@ -801,7 +1169,13 @@ finalize_run_fastqs <- function(fastq_path,
 
   for (item in plan) {
     dir.create(item$output_dir, recursive = TRUE, showWarnings = FALSE)
-    realtime_concatenate_files(item$inputs, item$output, overwrite = overwrite)
+    realtime_concatenate_fastq_files(
+      inputs = item$inputs,
+      output = item$output,
+      input_compressed = item$input_compressed,
+      output_compressed = compress,
+      overwrite = overwrite
+    )
   }
   if (isTRUE(write_md5)) {
     for (item in plan) {
@@ -820,6 +1194,43 @@ finalize_run_fastqs <- function(fastq_path,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
+}
+
+realtime_positive_number <- function(x, name) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) || !is.finite(x) || x <= 0) {
+    stop("`", name, "` must be a finite positive number.", call. = FALSE)
+  }
+  as.numeric(x)
+}
+
+realtime_publish_file <- function(temporary, output) {
+  if (!file.exists(temporary)) {
+    stop("Temporary output does not exist: ", temporary, call. = FALSE)
+  }
+  backup <- NULL
+  if (file.exists(output)) {
+    backup <- tempfile(pattern = paste0(basename(output), ".backup."),
+                       tmpdir = dirname(output))
+    if (!file.rename(output, backup)) {
+      stop("Unable to preserve existing output: ", output, call. = FALSE)
+    }
+  }
+  if (!file.rename(temporary, output)) {
+    if (!is.null(backup) && file.exists(backup)) file.rename(backup, output)
+    stop("Unable to publish output file: ", output, call. = FALSE)
+  }
+  if (!is.null(backup) && file.exists(backup)) unlink(backup)
+  invisible(output)
+}
+
+realtime_write_lines_atomic <- function(lines, output) {
+  dir.create(dirname(output), recursive = TRUE, showWarnings = FALSE)
+  temporary <- tempfile(pattern = paste0(basename(output), "."),
+                        tmpdir = dirname(output))
+  on.exit(unlink(temporary), add = TRUE)
+  writeLines(lines, temporary, useBytes = TRUE)
+  realtime_publish_file(temporary, output)
+  invisible(output)
 }
 
 realtime_dorado_external_call <- function(dorado, args, conda_env, conda) {
@@ -866,6 +1277,53 @@ realtime_concatenate_files <- function(inputs, output, overwrite = FALSE) {
   close(destination)
   on.exit(NULL, add = FALSE)
 
+  if (file.exists(output)) unlink(output)
+  if (!file.rename(temporary, output)) {
+    stop("Unable to publish output file: ", output, call. = FALSE)
+  }
+  invisible(output)
+}
+
+realtime_concatenate_fastq_files <- function(inputs,
+                                             output,
+                                             input_compressed,
+                                             output_compressed,
+                                             overwrite = FALSE) {
+  if (file.exists(output) && !isTRUE(overwrite)) {
+    stop("Output file already exists: ", output, call. = FALSE)
+  }
+
+  temporary <- tempfile(pattern = paste0(basename(output), "."), tmpdir = dirname(output))
+  on.exit(unlink(temporary), add = TRUE)
+  destination <- if (isTRUE(output_compressed)) {
+    gzfile(temporary, open = "wb", compression = 6L)
+  } else {
+    file(temporary, open = "wb")
+  }
+  destination_open <- TRUE
+  on.exit(if (destination_open) close(destination), add = TRUE)
+
+  for (input in inputs) {
+    source <- if (isTRUE(input_compressed)) gzfile(input, open = "rb") else file(input, open = "rb")
+    source_open <- TRUE
+    tryCatch(
+      repeat {
+        chunk <- readBin(source, what = "raw", n = 1024L * 1024L)
+        if (!length(chunk)) break
+        writeBin(chunk, destination)
+      },
+      finally = {
+        if (source_open) close(source)
+        source_open <- FALSE
+      }
+    )
+  }
+
+  close(destination)
+  destination_open <- FALSE
+  if (!file.exists(temporary) || is.na(file.info(temporary)$size) || file.info(temporary)$size == 0) {
+    stop("Final FASTQ is empty after concatenation: ", output, call. = FALSE)
+  }
   if (file.exists(output)) unlink(output)
   if (!file.rename(temporary, output)) {
     stop("Unable to publish output file: ", output, call. = FALSE)

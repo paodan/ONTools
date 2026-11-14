@@ -14,6 +14,15 @@ process_one_pod5(
   sample_sheet,
   threads = NULL,
   include_unclassified = TRUE,
+  compress_fastq = TRUE,
+  update_qc = TRUE,
+  qc_path = NULL,
+  qc_every_n_pod5 = 1L,
+  qc_format = "png",
+  qc_width = 12,
+  qc_height = 10,
+  qc_dpi = 150,
+  qc_plot_args = list(),
   dorado = "dorado",
   conda_env = NULL,
   conda = "conda",
@@ -41,6 +50,24 @@ process_one_pod5(
 
 \item{include_unclassified}{Publish unclassified reads.}
 
+\item{compress_fastq}{Gzip-compress each published per-POD5 FASTQ fragment.}
+
+\item{update_qc}{Logical. After the \code{.done} marker is written, update one
+cumulative FASTQ statistics plot for the entire \code{fastq_dir}.}
+
+\item{qc_path}{Root directory for live QC plots. When \code{NULL}, use
+\code{qc_live} beside \code{fastq_dir}.}
+
+\item{qc_every_n_pod5}{Positive integer controlling run-level QC frequency.
+For example, \code{1} updates after every completed POD5 and \code{5} after every
+fifth completed POD5. A failed attempt is retried by a later eligible batch.}
+
+\item{qc_format, qc_width, qc_height, qc_dpi}{Plot settings passed to
+\code{\link[=update_fastq_directory_qc]{update_fastq_directory_qc()}}.}
+
+\item{qc_plot_args}{Named list of additional arguments passed from
+\code{\link[=update_fastq_directory_qc]{update_fastq_directory_qc()}} to \code{\link[=plot_fastq_statistics]{plot_fastq_statistics()}}.}
+
 \item{dorado, conda_env, conda, dry_run, echo, stderr}{Passed to the component
 Dorado functions.}
 }
@@ -56,12 +83,16 @@ The function performs one transactional batch:
 \item Create or reuse \verb{<bam_dir>/<pod5_stem>.bam}.
 \item Run Dorado demultiplexing in a private temporary directory.
 \item Publish one FASTQ fragment per alias under \code{fastq_dir}.
-\item Write \verb{<state_dir>/<pod5_stem>.done} last.
+\item Write \verb{<state_dir>/<pod5_stem>.done}.
+\item Optionally update one cumulative run-level QC plot, treating every alias
+directory as one merged sample.
 }
 
 If the BAM exists but the marker does not, basecalling is not repeated; the
 function retries demultiplexing and publication. If the marker exists, the
-batch is returned with status \code{"skipped"}.
+batch is returned with status \code{"skipped"}. The completion marker is written
+before QC, so a plotting failure never causes basecalling or demultiplexing
+to be repeated. QC errors are recorded under \code{qc_path} and retried later.
 
 The FASTQ fragments created here are per-POD5 files. They are not the final
 run-level FASTQ files; call \code{\link[=finalize_run_fastqs]{finalize_run_fastqs()}} only after sequencing is
@@ -107,7 +138,11 @@ completed <- process_one_pod5(
   model = "hac",
   kit_name = "SQK-NBD114-96",
   sample_sheet = "/data/project/sample_sheet.csv",
-  threads = 8
+  threads = 8,
+  update_qc = TRUE,
+  qc_path = "/data/project/qc_live",
+  qc_every_n_pod5 = 1,
+  qc_plot_args = list(min_distance = 100, density_n = 1024)
 )
 completed$paths
 }
