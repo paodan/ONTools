@@ -18,6 +18,7 @@ Imports:
     DECIPHER,
     ggplot2,
     grid,
+    gtools,
     patchwork,
     parallel,
     pheatmap,

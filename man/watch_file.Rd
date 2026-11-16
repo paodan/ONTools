@@ -17,7 +17,9 @@ basename without \code{extension} and \code{size} is measured in bytes.
 }
 \description{
 \code{watch_file()} lists files with a requested extension and reports the file
-stem, size, and absolute path. It is primarily used by
+stem, size, and absolute path. Results use natural numeric ordering, so
+names such as \code{batch2.pod5} are listed before \code{batch10.pod5}. It is
+primarily used by
 \code{\link[=watch_basecalling]{watch_basecalling()}} to compare POD5 inputs with completed BAM outputs.
 }
 \examples{

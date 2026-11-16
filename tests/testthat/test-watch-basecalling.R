@@ -20,6 +20,22 @@ test_that("watch_file validates its extension", {
   expect_error(watch_file(path, "."), "include a suffix")
 })
 
+test_that("watch_file uses natural numeric ordering", {
+  path <- tempfile("watch-natural-order-")
+  dir.create(path)
+  stems <- c("batch11", "batch2", "batch0", "batch10", "batch1", "batch9")
+  for (stem in stems) {
+    writeLines("pod5", file.path(path, paste0(stem, ".pod5")))
+  }
+
+  result <- watch_file(path, ".pod5")
+
+  expect_equal(
+    result$name,
+    c("batch0", "batch1", "batch2", "batch9", "batch10", "batch11")
+  )
+})
+
 test_that("basecall_one builds direct and conda dry-run commands", {
   pod5 <- tempfile(fileext = ".pod5")
   writeLines("pod5", pod5)

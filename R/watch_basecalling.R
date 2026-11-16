@@ -1,7 +1,9 @@
 #' List sequencing files in a directory
 #'
 #' `watch_file()` lists files with a requested extension and reports the file
-#' stem, size, and absolute path. It is primarily used by
+#' stem, size, and absolute path. Results use natural numeric ordering, so
+#' names such as `batch2.pod5` are listed before `batch10.pod5`. It is
+#' primarily used by
 #' [watch_basecalling()] to compare POD5 inputs with completed BAM outputs.
 #'
 #' @param path Directory to scan.
@@ -42,6 +44,11 @@ watch_file <- function(path, extension = ".pod5") {
   keep <- !is.na(info$isdir) & !info$isdir
   files <- files[keep]
   info <- info[keep, , drop = FALSE]
+  file_names <- basename(files)
+  sorted_names <- gtools::mixedsort(file_names)
+  file_order <- match(sorted_names, file_names)
+  files <- files[file_order]
+  info <- info[file_order, , drop = FALSE]
   file_names <- basename(files)
   stems <- substr(file_names, 1L, nchar(file_names) - nchar(extension))
 
